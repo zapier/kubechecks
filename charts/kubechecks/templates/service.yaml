@@ -1,0 +1,17 @@
+{{- if .Values.service.create -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kubechecks.fullname" . }}
+  labels:
+    {{- include "kubechecks.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.name }}
+      protocol: TCP
+      name: {{ .Values.service.name }}
+  selector:
+    {{- include "kubechecks.selectorLabels" . | nindent 4 }}
+{{- end }}

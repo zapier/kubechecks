@@ -1,0 +1,120 @@
+# -*- mode: Python -*-
+load('ext://uibutton', 'cmd_button')
+version_settings(constraint='>=0.30.13')
+
+def local_terraform_resource(
+  name,
+  dir='',
+  targets=[],
+  vars={},
+  # varFiles={},
+  env={},
+  deps=[],
+  resource_deps=[],
+  labels=None
+):
+  """Run local terraform apply
+  Args:
+    name: The name of the resource in the Tilt UI.
+    dir: The directory to run terraform commands in. Defaults to the current working directory.
+    targets: A list of Terraform resources to target, equivalent to using `-target xyz` TF flag. (NOT IMPLEMENTED)
+    vars: A dict of variables to supply to Terraform. (NOT IMPLEMENTED)
+    deps: A list of file dependencies that should trigger a deployment.
+    resource_deps: Tilt resources to depend on.
+    labels: Labels for categorizing the resource.
+  """
+
+  if not dir:
+    dir=os.getcwd()
+
+  init_cmd = ['terraform', 'init', '-upgrade', '-no-color']
+  apply_cmd = ['terraform', 'apply', '-auto-approve']
+  destroy_cmd = ['terraform', 'destroy', '-auto-approve']
+  show_cmd = ['terraform', 'show', '-json']
+  outputs = {}
+
+  def tfInit():
+    # local_resource("{}-init".format(name), init_cmd, dir=dir, env=env, labels=labels, deps=deps)
+    local(init_cmd,dir=dir, env=env,quiet=True,echo_off=True)
+
+  def getOutputs():
+    outputs = {}
+    show_json=decode_json(local(show_cmd, dir=dir, quiet=True, echo_off=False))
+    if 'values' in show_json.keys() and 'outputs' in show_json.get("values").keys():
+      rawOutputs = show_json.get("values").get("outputs")
+
+      for key in rawOutputs:
+        outputs[key]=rawOutputs[key].get('value')
+    return outputs
+
+  def destroy():
+    print("Running terrform destroy in dir: {}".format(dir))
+    local(
+      destroy_cmd,
+      dir=dir,
+      env=env,
+    )
+
+  envList = []
+  for key in env:
+    envList.append(key + "=" + env[key])
+
+  cmd_button(name+'apply',
+    argv=['terraform', '-chdir={}'.format(dir), 'apply', '-auto-approve'],
+    env=envList,
+    resource=name,
+    icon_name='todo',
+    text='Terraform Apply',
+  )
+
+  cmd_button(name+'plan',
+    argv=['terraform', '-chdir={}'.format(dir), 'plan'],
+    env=envList,
+    resource=name,
+    icon_name='change_circle',
+    text='Terraform Plan',
+  )
+
+  cmd_button(name+'destroy',
+     argv=['terraform', '-chdir={}'.format(dir), 'destroy', '-auto-approve'],
+     env=envList,
+     resource=name,
+     icon_name='delete',
+     text='Terraform Destroy',
+     requires_confirmation=True,
+  )
+
+  cmd_button(name+'refresh',
+     argv=['terraform', '-chdir={}'.format(dir), 'refresh'],
+     env=envList,
+     resource=name,
+     icon_name='sync',
+     text='Terraform Refresh',
+     requires_confirmation=False,
+  )
+
+  tf_deps = resource_deps
+
+  if config.tilt_subcommand == 'down':
+    local_resource(name, "true")
+    # grab outputs before we destory in case they are used elsewhere
+    outputs = getOutputs()
+    destroy()
+    return
+
+  else:
+    tfInit()
+    # apply
+    local_resource(
+      name, 
+      apply_cmd, 
+      dir=dir, 
+      env=env,
+      labels=labels,
+      deps=deps,
+      resource_deps=tf_deps,
+    )
+    # grab terraform outputs
+    outputs = getOutputs()
+
+    return outputs

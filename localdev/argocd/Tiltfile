@@ -1,0 +1,67 @@
+def deploy_argo():
+    k8s_yaml(kustomize('./localdev/argocd/'))
+    k8s_resource(
+        'argocd-server',
+        resource_deps=['k8s:namespace'],
+        labels=["argocd"],
+        port_forwards="8081:8080",
+        links=[
+            link('https://localhost:8081/argocd/', 'ArgoCD UI (admin/admin123)')
+        ]
+    )
+
+    # relabel and categorize items in the UI
+    k8s_resource('argocd-application-controller', labels=['argocd'], resource_deps=['k8s:namespace'])
+    k8s_resource('argocd-applicationset-controller', labels=['argocd'], resource_deps=['k8s:namespace'])
+    k8s_resource('argocd-dex-server', labels=['argocd'], resource_deps=['k8s:namespace'])
+    #k8s_resource('argocd-notifications-controller', labels=['argocd'])
+    k8s_resource('argocd-redis', labels=['argocd'], resource_deps=['k8s:namespace'])
+    k8s_resource('argocd-repo-server', labels=['argocd'], resource_deps=['k8s:namespace'])
+    k8s_resource(
+        objects=[
+            'applications.argoproj.io:customresourcedefinition',
+            'applicationsets.argoproj.io:customresourcedefinition',
+            'appprojects.argoproj.io:customresourcedefinition',
+            'argocd-application-controller:serviceaccount',
+            'argocd-applicationset-controller:serviceaccount',
+            #'argocd-notifications-controller:serviceaccount',
+            'argocd-redis:serviceaccount',
+            'argocd-repo-server:serviceaccount',
+            'argocd-server:serviceaccount',
+            'argocd-application-controller:role',
+            'argocd-applicationset-controller:role',
+            'argocd-dex-server:role',
+            #'argocd-notifications-controller:role',
+            'argocd-server:role',
+            'argocd-application-controller:rolebinding',
+            'argocd-applicationset-controller:rolebinding',
+            'argocd-dex-server:rolebinding',
+            'argocd-dex-server:ServiceAccount',
+            #'argocd-notifications-controller:rolebinding',
+            'argocd-redis:rolebinding',
+            'argocd-server:rolebinding',
+            'argocd-cm:configmap',
+            'argocd-cmd-params-cm:configmap',
+            'argocd-gpg-keys-cm:configmap',
+            #'argocd-notifications-cm:configmap',
+            'argocd-rbac-cm:configmap',
+            'argocd-ssh-known-hosts-cm:configmap',
+            'argocd-tls-certs-cm:configmap',
+            'argocd-initial-admin-secret:secret',
+            #'argocd-notifications-secret:secret',
+            'argocd-secret:secret',
+            'argocd-application-controller-network-policy:networkpolicy',
+            'argocd-applicationset-controller-network-policy:networkpolicy',
+            'argocd-dex-server-network-policy:networkpolicy',
+            #'argocd-notifications-controller-network-policy:networkpolicy',
+            'argocd-redis-network-policy:networkpolicy',
+            'argocd-repo-server-network-policy:networkpolicy',
+            'argocd-server-network-policy:networkpolicy',
+        ],
+        new_name='argocd',
+        labels=["argocd"],
+        resource_deps=['k8s:namespace']
+    )
+
+def cleanup_argo_apps(ctx, ns):
+    local("kubectl --context {} delete applications.argoproj.io --all -n {}".format(ctx, ns))

@@ -1,0 +1,4 @@
+
+def check_env_set(key):
+  if not os.getenv(key):
+    fail("{} not set".format(key))

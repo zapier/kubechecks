@@ -1,0 +1,107 @@
+suite: basics
+
+templates: [deployment.yaml]
+
+values: [basics.min-values.yaml]
+
+tests:
+  - it: should render
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/zapier/kubechecks-server:1.0.0 # App Version, not chart versions
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/name: kubechecks
+            app.kubernetes.io/version: 1.0.0
+            helm.sh/chart: kubechecks-0.1.0
+  - it: should allow arbitrary annotations
+    set:
+      deployment:
+        annotations:
+          fake-annotation.xyz/abc: "123"
+    asserts:
+      - equal:
+          path: metadata.annotations["fake-annotation.xyz/abc"]
+          value: "123"
+  - it: should allow configuration of resources
+    set:
+      deployment:
+        resources:
+          limits:
+            memory: 192Mi
+            cpu: 100m
+          requests:
+            memory: 128Mi
+            cpu: 50m
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits:
+              memory: 192Mi
+              cpu: 100m
+            requests:
+              memory: 128Mi
+              cpu: 50m
+  - it: should allow configuration of replicaCount
+    set:
+      deployment:
+        replicaCount: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+  - it: should allow configuration of probes
+    set:
+      deployment:
+        startupProbe:
+          failureThreshold: 300
+          periodSeconds: 5
+        livenessProbe:
+          failureThreshold: 200
+          periodSeconds: 50
+        readinessProbe:
+          failureThreshold: 100
+          periodSeconds: 10
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe
+          value:
+            failureThreshold: 300
+            httpGet:
+              path: /live
+              port: 8080
+              scheme: HTTP
+            periodSeconds: 5
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe
+          value: 
+            failureThreshold: 200
+            httpGet:
+              path: /live
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 50
+            successThreshold: 1
+            timeoutSeconds: 5
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe
+          value:
+            failureThreshold: 100
+            httpGet:
+              path: /ready
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+
+

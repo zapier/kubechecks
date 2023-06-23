@@ -1,0 +1,19 @@
+package k8s.images
+
+import data.lib.kubernetes as k8s
+
+is_approved_registry(image) {
+  startswith(image, "<accountid>.dkr.ecr.us-east-1.amazonaws.com/")
+}
+
+warn[msg] {
+	k8s.containers[container]
+  not is_approved_registry(container.image)
+	msg = k8s.format(sprintf("container [%s] in the %s [%s] has an image [%s], from an untrusted registry", [k8s.container_name(container), k8s.kind, k8s.name, container.image]))
+}
+
+warn[msg] {
+	k8s.containers[container]
+	[image_name, "latest"] = k8s.split_image(container.image)
+	msg = k8s.format(sprintf("container [%s] in the %s [%s] has an image [%s], using the 'latest' tag", [k8s.container_name(container), k8s.kind, k8s.name, image_name]))
+}

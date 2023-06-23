@@ -1,0 +1,15 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: httpbin-internal
+  annotations:
+    kubernetes.io/ingress.class: myingressclass
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /helloworld/(.*)
+            backend:
+              serviceName: helloworld-svc
+              servicePort: 8080

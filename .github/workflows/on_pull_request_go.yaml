@@ -1,0 +1,23 @@
+name: go ci
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/on_pull_request_go.yaml'
+      - 'Earthfile'
+      - '*/**.go'
+      - '*.go'
+      - 'go.mod'
+      - 'go.sum'
+
+jobs:
+  ci-golang:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: wistia/parse-tool-versions@v1.0
+
+      - uses: earthly/actions-setup@v1
+        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
+
+      - run: earthly +ci-golang --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}

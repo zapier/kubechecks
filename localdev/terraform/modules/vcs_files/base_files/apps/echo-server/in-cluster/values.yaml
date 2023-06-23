@@ -1,0 +1,2 @@
+echo-server:
+  replicaCount: 2

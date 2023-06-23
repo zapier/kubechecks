@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubechecks.fullname" . }}
+  {{- with .Values.deployment.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end}}
+  labels:
+    {{- include "kubechecks.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.deployment.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubechecks.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubechecks.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.deployment.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.serviceAccount.enabled}}
+      serviceAccountName: {{ include "kubechecks.serviceAccountName" . }}
+      {{- end }}
+      securityContext: {{- toYaml .Values.deployment.securityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.deployment.image }}
+          image: "{{ if .repository }}{{ .repository }}/{{ end }}{{ .name }}:{{ coalesce .tag $.Chart.AppVersion }}"
+          imagePullPolicy: {{ .pullPolicy }}
+          {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "kubechecks.name" . }}
+            - secretRef:
+                name: {{ include "kubechecks.secretsName" . }}
+          env:
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: KUBECHECKS_OTEL_COLLECTOR_HOST
+            valueFrom:
+              fieldRef:
+                fieldPath: status.hostIP
+          ports:
+            - name: {{ .Values.service.name }}
+              containerPort: 8080
+              protocol: TCP
+          {{- with .Values.deployment.securityContext}}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.deployment.resources | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /live
+              port: 8080
+              scheme: HTTP
+            {{- toYaml .Values.deployment.startupProbe | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+              scheme: HTTP
+            {{- toYaml .Values.deployment.livenessProbe | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+              scheme: HTTP
+            {{- toYaml .Values.deployment.readinessProbe | nindent 12 }}
+      {{- with .Values.deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

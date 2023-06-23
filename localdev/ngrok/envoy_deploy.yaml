@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy
+  labels:
+    app: envoy
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: envoy
+      labels:
+        app: envoy
+    spec:
+      containers:
+        - name: envoy
+          image: envoyproxy/envoy:v1.18-latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/local/bin/envoy
+          args:
+            - --config-path
+            - /etc/envoy/envoy.yaml
+            - --log-level
+            - info
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: envoy-config
+              mountPath: /etc/envoy
+      volumes:
+        - name: envoy-config
+          configMap:
+            name: envoy-config
+      restartPolicy: Always
+  selector:
+    matchLabels:
+      app: envoy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy
+spec:
+  selector:
+    app: envoy
+  ports:
+    - port: 8080
+  type: NodePort

@@ -1,0 +1,16 @@
+applications:
+  - name: in-cluster-httpbin
+    cluster: in-cluster
+    path: apps/httpbin/overlays/in-cluster
+    additionalPaths:
+    - apps/httpbin/base
+  - name: in-cluster-echo-server
+    cluster: in-cluster
+    path: apps/echo-server/in-cluster
+
+applicationSets:
+  - name: httpdump
+    paths:
+    - apps/httpdump/base
+    - apps/httpdump/overlays/a
+    - apps/httpdump/overlays/b

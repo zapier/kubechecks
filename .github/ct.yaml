@@ -1,0 +1,12 @@
+# See https://github.com/helm/chart-testing#configuration
+remote: origin
+target-branch: main
+helm-extra-args: --kube-version v1.24.0
+check-version-increment: false
+validate-maintainers: false
+additional-commands:
+  - "./.github/kubeconform.sh 1.23.0 {{ .Path }}"
+  - "./.github/kubeconform.sh 1.24.0 {{ .Path }}"
+  - "./.github/kubeconform.sh 1.25.0 {{ .Path }}"
+  - "./.github/kubeconform.sh 1.26.0 {{ .Path }}"
+  - "./.github/helm-unittest.sh {{ .Path }}"

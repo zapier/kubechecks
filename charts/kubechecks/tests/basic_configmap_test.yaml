@@ -1,0 +1,24 @@
+suite: basics
+
+templates: [configmap.yaml]
+
+values: [basics.min-values.yaml]
+
+tests:
+  - it: should render
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: data
+          value: 
+            KUBECHECKS_ARGOCD_API_INSECURE: "false"
+            KUBECHECKS_TEST_VALUE: Hello
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/name: kubechecks
+            app.kubernetes.io/version: 1.0.0
+            helm.sh/chart: kubechecks-0.1.0
