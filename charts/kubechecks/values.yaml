@@ -1,7 +1,7 @@
 deployment:
   annotations: {}
     # reloader.stakater.com/auto: "true"
-  
+
   # Default values for kubechecks.
   resources:
     limits:
@@ -9,14 +9,14 @@ deployment:
     requests:
       memory: 256Mi
       cpu: 200m
-  
+
   replicaCount: 1
 
   image:
     repository: ghcr.io/zapier
     pullPolicy: Always
     name: "kubechecks-server"
-    tag: "" # Defaults to the .Chart.AppVersion
+    tag: ""  # Defaults to the .Chart.AppVersion
 
   imagePullSecrets: []
 
@@ -61,7 +61,7 @@ deployment:
     periodSeconds: 10
     successThreshold: 1
     timeoutSeconds: 5
-    
+
   readinessProbe:
     failureThreshold: 30
     initialDelaySeconds: 5
