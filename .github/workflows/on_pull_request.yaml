@@ -13,6 +13,9 @@ on:
 
 jobs:
   build:
+    env:
+      EARTHLY_TOOL_VERSION: 0.6.30
+      GOLANG_TOOL_VERSION: 1.20.0
     runs-on: ubuntu-22.04
     steps:
       - name: Set up QEMU
