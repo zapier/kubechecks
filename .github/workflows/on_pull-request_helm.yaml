@@ -6,6 +6,10 @@ on:
       - 'Earthfile'
       - 'charts/**'
 
+env:
+  EARTHLY_TOOL_VERSION: 0.7
+  GOLANG_TOOL_VERSION: 1.19.3
+  
 jobs:
   ci-helm:
     runs-on: ubuntu-22.04

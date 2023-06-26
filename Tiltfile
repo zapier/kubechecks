@@ -242,11 +242,13 @@ k8s_resource(
 # /////////////////////////////////////////////////////////////////////////////
 # Test Apps
 # /////////////////////////////////////////////////////////////////////////////
+# Load the terraform url we output, default to gitlab if cant find a vcs-type variable
+vcsPath = "./localdev/terraform/{}/project.url".format(cfg.get('vcs-type', 'gitlab'))
+print("Path to url: " + vcsPath)
+projectUrl=str(read_file(vcsPath, "")).strip('\n')
+print("Remote Project URL: " + projectUrl)
 
-glProjectUrl=str(read_file('./localdev/terraform/gitlab/project.url', "")).strip('\n')
-print("GitLab Project URL: " + glProjectUrl)
-
-if glProjectUrl != "":
+if projectUrl != "":
   for app in ["echo-server", "httpbin"]:
     print("Creating Test App: " + app)
     # apply the test Application manifests to the test namespace
@@ -264,7 +266,7 @@ if glProjectUrl != "":
         ] ,
         apply_dir = 'localdev/test_apps/',
         apply_env = {
-            "REPO_URL": glProjectUrl,
+            "REPO_URL": projectUrl,
         } ,
         delete_dir = 'localdev/test_apps/',
         delete_env = {},
@@ -287,7 +289,7 @@ if glProjectUrl != "":
         ] ,
         apply_dir = 'localdev/test_appsets/',
         apply_env = {
-            "REPO_URL": glProjectUrl,
+            "REPO_URL": projectUrl,
         } ,
         delete_dir = 'localdev/test_appsets/',
         delete_env = {},

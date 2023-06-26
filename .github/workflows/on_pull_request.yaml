@@ -10,7 +10,10 @@ on:
       - '!.gitattributes'
       - '!.gitignore'
 
-
+# TODO: Move this to repo config 
+env:
+  EARTHLY_TOOL_VERSION: 0.7
+  GOLANG_TOOL_VERSION: 1.19.3
 jobs:
   build:
     runs-on: ubuntu-22.04

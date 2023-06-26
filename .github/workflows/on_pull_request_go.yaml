@@ -8,7 +8,9 @@ on:
       - '*.go'
       - 'go.mod'
       - 'go.sum'
-
+env:
+  EARTHLY_TOOL_VERSION: 0.7
+  GOLANG_TOOL_VERSION: 1.19.3
 jobs:
   ci-golang:
     runs-on: ubuntu-22.04
