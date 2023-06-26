@@ -98,8 +98,6 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 		return echo.ErrBadRequest
 	}
 
-	fmt.Printf("eventRequest: %+v\n\n\n\n", eventRequest)
-
 	// At this point, our client has validated the secret, and parsed a valid event.
 	// We try to build a generic Repo from this data, to construct our CheckEvent
 	repo, err := h.client.CreateRepo(ctx, eventRequest)

@@ -4,24 +4,24 @@ kind: Kustomization
 namespace: kubechecks
 
 images:
-- name: quay.io/argoproj/argocd
-  newName: quay.io/argoproj/argocd
-  newTag: v2.6.4
+  - name: quay.io/argoproj/argocd
+    newName: quay.io/argoproj/argocd
+    newTag: v2.6.4
 
 resources:
-- argocd-initial-admin-secret.yaml
-- ./manifests/crds
-- ./manifests/cluster-rbac
-- ./manifests/base/application-controller
-- ./manifests/base/applicationset-controller
-- ./manifests/base/dex
-- ./manifests/base/repo-server
-- ./manifests/base/server
-- ./manifests/base/config
-- ./manifests/base/redis
+  - argocd-initial-admin-secret.yaml
+  - ./manifests/crds
+  - ./manifests/cluster-rbac
+  - ./manifests/base/application-controller
+  - ./manifests/base/applicationset-controller
+  - ./manifests/base/dex
+  - ./manifests/base/repo-server
+  - ./manifests/base/server
+  - ./manifests/base/config
+  - ./manifests/base/redis
 
-patches:
-- path: ./argocd-cm-patch.yaml
-- path: ./argocd-rbac-cm-patch.yaml
-- path: ./argocd-secret-patch.yaml
-- path: ./argocd-server-patch.yaml
+patchesStrategicMerge:
+  - ./argocd-cm-patch.yaml
+  - ./argocd-rbac-cm-patch.yaml
+  - ./argocd-secret-patch.yaml
+  - ./argocd-server-patch.yaml

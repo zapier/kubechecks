@@ -21,6 +21,16 @@ resource "github_branch_default" "default" {
   ]
 }
 
+resource "local_file" "github_project" {
+  filename = "project.url"
+  content  = github_repository.kubechecks.html_url
+
+  depends_on = [
+    # delay creating this until initial files have been uploaded
+    github_repository_file.base_files
+  ]
+}
+
 
 // Set up a webhook for kubechecks to use 
 resource "github_repository_webhook" "kubechecks" {
@@ -37,19 +47,6 @@ resource "github_repository_webhook" "kubechecks" {
 
   // We only listen for PR events, so limit the scope
   events = ["pull_request"]
-}
-
-resource "github_repository_file" "github_project" {
-  repository          = github_repository.kubechecks.name
-  branch              = "main"
-  file                = "project.url"
-  content             = github_repository.kubechecks.html_url
-  overwrite_on_create = true
-
-  depends_on = [
-    # delay creating this until initial files have been uploaded
-    github_repository_file.base_files
-  ]
 }
 
 resource "github_repository_file" "base_files" {
