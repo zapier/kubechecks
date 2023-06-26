@@ -16,6 +16,9 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, prID int, 
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
+	// As this is our first time posting a comment for this run, delete any existing comments
+	c.pruneOldComments(ctx, projectName, prID)
+
 	repoNameComponents := strings.Split(projectName, "/")
 	log.Debug().Msgf("Posting message to PR %d in repo %s", prID, projectName)
 	comment, _, err := c.Issues.CreateComment(
@@ -64,4 +67,39 @@ func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg 
 	m.NoteID = int(*comment.ID)
 
 	return nil
+}
+
+// Pull all comments for the specified PR, and delete any comments that already exist from the bot
+// This is different from updating an existing message, as this will delete comments from previous runs of the bot
+// Whereas updates occur mid-execution
+func (c *Client) pruneOldComments(ctx context.Context, projectName string, prID int) error {
+	_, span := otel.Tracer("Kubechecks").Start(ctx, "pruneOldComments")
+	defer span.End()
+
+	repoNameComponents := strings.Split(projectName, "/")
+	log.Debug().Msgf("Posting message to PR %d in repo %s", prID, projectName)
+	issueComments, _, err := c.Issues.ListComments(ctx, repoNameComponents[0], repoNameComponents[1], prID, nil)
+
+	if err != nil {
+		telemetry.SetError(span, err, "Get Issue Comments failed")
+		log.Error().Err(err).Msg("could not get issue")
+		return err
+	}
+
+	// delete all comments from the bot
+	username, _, err := c.getUserDetails()
+	if err != nil {
+		telemetry.SetError(span, err, "Get User Details failed")
+		log.Error().Err(err).Msg("could not get user details")
+		return err
+	}
+
+	for _, comment := range issueComments {
+		if *comment.User.Login == username {
+			c.Issues.DeleteComment(ctx, repoNameComponents[0], repoNameComponents[1], *comment.ID)
+		}
+	}
+
+	return nil
+
 }
