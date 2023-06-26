@@ -10,12 +10,12 @@ on:
       - '!.gitattributes'
       - '!.gitignore'
 
-
+# TODO: Move this to repo config 
+env:
+  EARTHLY_TOOL_VERSION: 0.7
+  GOLANG_TOOL_VERSION: 1.19.3
 jobs:
   build:
-    env:
-      EARTHLY_TOOL_VERSION: 0.7
-      GOLANG_TOOL_VERSION: 1.19.3
     runs-on: ubuntu-22.04
     steps:
       - name: Set up QEMU

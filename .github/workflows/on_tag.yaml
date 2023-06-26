@@ -5,10 +5,13 @@ on:
   release:
     types: [published]
 
+env:
+  EARTHLY_TOOL_VERSION: 0.7
+  GOLANG_TOOL_VERSION: 1.19.3
+  
 jobs:
   release:
     runs-on: ubuntu-22.04
-
     steps:
       - name: Set up QEMU
         id: qemu
