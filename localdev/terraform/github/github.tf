@@ -10,6 +10,9 @@ resource "github_repository" "kubechecks" {
 resource "github_branch" "main" {
   repository = github_repository.kubechecks.name
   branch     = "main"
+  depends_on = [
+    github_repository.kubechecks
+  ]
 }
 
 resource "github_branch_default" "default" {

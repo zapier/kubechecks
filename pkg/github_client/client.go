@@ -2,6 +2,7 @@ package github_client
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -75,12 +76,21 @@ func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error)
 	return github.ParseWebHook(github.WebHookType(r), payload)
 }
 
+// Creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
+// Has already occured previously, so we expect a valid event type for the Github client in the payload arg
 func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Repo, error) {
 	switch p := payload.(type) {
 	case *github.PullRequestEvent:
-		return buildRepoFromEvent(p), nil
+		switch p.GetAction() {
+		case "opened", "synchronize", "reopened":
+			log.Info().Str("action", p.GetAction()).Msg("handling Github open, sync event from PR")
+			return buildRepoFromEvent(p), nil
+		default:
+			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
+			return nil, fmt.Errorf("ignoring Github pull request event due to non commit based action")
+		}
 	default:
-		return nil, nil
+		return nil, fmt.Errorf("Invalid event provided to Github client")
 	}
 }
 
