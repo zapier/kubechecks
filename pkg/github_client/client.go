@@ -84,7 +84,32 @@ func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Rep
 	}
 }
 
+// We need an email and username for authenticating our local git repository
+// Grab the current authenticated client login and email
+func (c *Client) getUserDetails() (string, string, error) {
+	user, _, err := c.Users.Get(context.Background(), "")
+	if err != nil {
+		return "", "", err
+	}
+
+	// Some users on Github don't have an email listed; if so, catch that and return empty string
+	if user.Email == nil {
+		log.Error().Msg("could not load Github user email")
+		return *user.Login, "", nil
+	}
+
+	return *user.Login, *user.Email, nil
+
+}
+
 func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
+	username, email, err := githubClient.getUserDetails()
+	if err != nil {
+		log.Fatal().Err(err).Msg("could not load Github user details")
+		username = ""
+		email = ""
+	}
+
 	return &repo.Repo{
 		BaseRef:       *event.PullRequest.Base.Ref,
 		HeadRef:       *event.PullRequest.Head.Ref,
@@ -94,7 +119,7 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		Name:          event.Repo.GetName(),
 		CheckID:       int(*event.PullRequest.Number),
 		SHA:           *event.PullRequest.Head.SHA,
-		Username:      *event.Sender.Login,
-		Email:         *event.Sender.Email,
+		Username:      username,
+		Email:         email, // THIS IS THE BAD LINE
 	}
 }
