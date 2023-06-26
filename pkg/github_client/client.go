@@ -130,6 +130,6 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		CheckID:       int(*event.PullRequest.Number),
 		SHA:           *event.PullRequest.Head.SHA,
 		Username:      username,
-		Email:         email, // THIS IS THE BAD LINE
+		Email:         email,
 	}
 }
