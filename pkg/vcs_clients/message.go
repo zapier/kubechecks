@@ -76,7 +76,7 @@ func (m *Message) buildComment(ctx context.Context) string {
 	fmt.Fprintf(&sb, "# Kubechecks Report \n")
 	// m.Msg = fmt.Sprintf("%s \n\n---\n\n%s", m.Msg, msg)
 	for app, msg := range m.Apps {
-		fmt.Fprint(&sb, fmt.Sprintf(appFormat, app, msg))
+		fmt.Fprintf(&sb, appFormat, app, msg)
 	}
 	return sb.String()
 }

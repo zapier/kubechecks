@@ -17,7 +17,12 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, prID int, 
 	defer span.End()
 
 	// As this is our first time posting a comment for this run, delete any existing comments
-	c.pruneOldComments(ctx, projectName, prID)
+	err := c.pruneOldComments(ctx, projectName, prID)
+	if err != nil {
+		telemetry.SetError(span, err, "Prune old comments")
+		log.Error().Err(err).Msg("could not prune old comments")
+		// Continue anyway if we can't delete old ones
+	}
 
 	repoNameComponents := strings.Split(projectName, "/")
 	log.Debug().Msgf("Posting message to PR %d in repo %s", prID, projectName)
@@ -89,16 +94,8 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, prID 
 		return err
 	}
 
-	// delete all comments from the bot
-	username, _, err := c.getUserDetails()
-	if err != nil {
-		telemetry.SetError(span, err, "Get User Details failed")
-		log.Error().Err(err).Msg("could not get user details")
-		return err
-	}
-
 	for _, comment := range issueComments {
-		if *comment.User.Login == username {
+		if *comment.User.Login == githubTokenUser {
 			c.Issues.DeleteComment(ctx, repoNameComponents[0], repoNameComponents[1], *comment.ID)
 		}
 	}

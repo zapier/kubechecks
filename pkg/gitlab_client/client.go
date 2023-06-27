@@ -53,7 +53,7 @@ func GetGitlabClient() (*Client, string) {
 
 func createGitlabClient() *Client {
 	// Initialize the GitLab client with access token
-	t := viper.GetString("gitlab-token")
+	t := viper.GetString("vcs-token")
 	if t == "" {
 		log.Fatal().Msg("gitlab token needs to be set")
 	}
