@@ -207,6 +207,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 
 	if len(ce.affectedApps) <= 0 && len(ce.affectedAppSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
+		ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, "No changes")
 		return
 	}
 
@@ -257,9 +258,6 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 		// ce.CommitStatus(ctx, gitlab.Success)
 		ce.logger.Error().Msg("Errors found")
 		return
-	} else {
-		ce.logger.Debug().Msg("No errors found")
-		//ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, "No changes")
 	}
 
 	// TODO: Handle this
