@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 )
 
@@ -64,7 +63,7 @@ func (m *Message) AddToAppMessage(ctx context.Context, app string, msg string) {
 	m.Lock.Lock()
 	defer m.Lock.Unlock()
 
-	m.Apps[app] = fmt.Sprintf("%s \n\n- %s", m.Apps[app], msg)
+	m.Apps[app] = fmt.Sprintf("%s \n\n---\n\n%s", m.Apps[app], msg)
 	m.Client.UpdateMessage(ctx, m, m.buildComment(ctx))
 }
 
@@ -78,7 +77,6 @@ func (m *Message) buildComment(ctx context.Context) string {
 	// m.Msg = fmt.Sprintf("%s \n\n---\n\n%s", m.Msg, msg)
 	for app, msg := range m.Apps {
 		fmt.Fprint(&sb, fmt.Sprintf(appFormat, app, msg))
-		log.Info().Msgf(fmt.Sprintf(appFormat, app, msg))
 	}
 	return sb.String()
 }

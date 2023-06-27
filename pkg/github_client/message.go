@@ -2,7 +2,6 @@ package github_client
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -49,12 +48,11 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, prID int, 
 func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg string) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "UpdateMessage")
 	defer span.End()
-	fmt.Println("Updating message")
 
 	log.Info().Msgf("Updating message for PR %d in repo %s", m.CheckID, m.Name)
 
 	repoNameComponents := strings.Split(m.Name, "/")
-	comment, _, err := c.Issues.EditComment(
+	comment, resp, err := c.Issues.EditComment(
 		ctx,
 		repoNameComponents[0],
 		repoNameComponents[1],
@@ -64,7 +62,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg 
 
 	if err != nil {
 		telemetry.SetError(span, err, "Update Pull Request comment")
-		log.Error().Err(err).Msg("could not update message to PR")
+		log.Error().Err(err).Msgf("could not update message to PR, msg: %s, response: %+v", msg, resp)
 		return err
 	}
 

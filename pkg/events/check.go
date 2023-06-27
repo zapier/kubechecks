@@ -418,8 +418,8 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 	if err != nil {
 		telemetry.SetError(span, err, "running checks")
 	}
-
-	ce.vcsNote.AddToAppMessage(ctx, app, renderInfoFooter(time.Since(start), ce.repo.SHA))
+	// TODO: Determine WHY the context gets cancelled after grp.Wait()
+	ce.vcsNote.AddToAppMessage(context.Background(), app, renderInfoFooter(time.Since(start), ce.repo.SHA))
 
 	return err
 }
