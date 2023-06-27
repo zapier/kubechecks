@@ -32,8 +32,8 @@ func AIDiffSummary(ctx context.Context, mrNote *vcs_clients.Message, name string
 	if err != nil {
 		telemetry.SetError(span, err, "OpenAI SummarizeDiff")
 		log.Error().Err(err).Msg("failed to summarize diff")
-		mrNote.AddToMessage(ctx, fmt.Sprintf("failed to summarize diff: %s", err))
+		mrNote.AddToAppMessage(ctx, name, fmt.Sprintf("failed to summarize diff: %s", err))
 		return
 	}
-	mrNote.AddToMessage(ctx, fmt.Sprintf(diffAISummaryCommentFormat, aiSummary))
+	mrNote.AddToAppMessage(ctx, name, fmt.Sprintf(diffAISummaryCommentFormat, aiSummary))
 }

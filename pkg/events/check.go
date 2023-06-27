@@ -52,8 +52,6 @@ const (
 
 Check kubechecks application logs for more information.
 `
-	detailsCommentFormat = `
-<details>` + `%s` + `</details>`
 )
 
 var (
@@ -261,7 +259,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 		return
 	} else {
 		ce.logger.Debug().Msg("No errors found")
-		ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, "No changes")
+		//ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, "No changes")
 	}
 
 	// TODO: Handle this
@@ -432,7 +430,7 @@ func (ce *CheckEvent) createNote(ctx context.Context) *vcs_clients.Message {
 	defer span.End()
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "# Kubechecks Summaries:\n")
+	fmt.Fprintf(&sb, "# Kubechecks Report:\n")
 	ce.logger.Info().Msgf("Creating note")
 
 	return ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, sb.String())

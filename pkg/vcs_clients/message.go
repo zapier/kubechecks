@@ -6,7 +6,19 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
+)
+
+const (
+	appFormat = `<details><summary>
+
+## ArgoCD Application Checks:` + "`%s`" +
+		`
+</summary>
+%s 
+</details>
+`
 )
 
 // Message type that allows concurrent updates
@@ -36,19 +48,13 @@ func (m *Message) AddToMessage(ctx context.Context, msg string) {
 }
 
 func (m *Message) AddNewApp(ctx context.Context, app string) {
-	fmt.Println("Adding new app")
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "AddNewApp")
 	defer span.End()
 	m.Lock.Lock()
 	defer m.Lock.Unlock()
-	fmt.Println("Lock acquired")
 
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "## ArgoCD Application Checks: `%s` \n", app)
-	fmt.Println("Adding to message")
-	m.Apps[app] = sb.String()
+	m.Apps[app] = ""
 
-	fmt.Println("Attempting to update message")
 	m.Client.UpdateMessage(ctx, m, m.buildComment(ctx))
 }
 
@@ -68,10 +74,11 @@ func (m *Message) buildComment(ctx context.Context) string {
 	defer span.End()
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "# Kubechecks Checks \n")
+	fmt.Fprintf(&sb, "# Kubechecks Report \n")
 	// m.Msg = fmt.Sprintf("%s \n\n---\n\n%s", m.Msg, msg)
-	for _, msg := range m.Apps {
-		fmt.Fprintf(&sb, "\n %s \n", msg)
+	for app, msg := range m.Apps {
+		fmt.Fprint(&sb, fmt.Sprintf(appFormat, app, msg))
+		log.Info().Msgf(fmt.Sprintf(appFormat, app, msg))
 	}
 	return sb.String()
 }
