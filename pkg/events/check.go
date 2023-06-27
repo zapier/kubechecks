@@ -39,7 +39,8 @@ type CheckEvent struct {
 	workerLimits    int
 	affectedAppSets []string
 	// Array of labels from a PR/MR, as strings. Only contains the name of the label
-	Labels []string
+	Labels  []string
+	vcsNote *vcs_clients.Message
 }
 
 const (
@@ -51,6 +52,8 @@ const (
 
 Check kubechecks application logs for more information.
 `
+	detailsCommentFormat = `
+<details>` + `%s` + `</details>`
 )
 
 var (
@@ -218,6 +221,9 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 		ce.workerLimits = len(ce.affectedApps)
 	}
 
+	// We make one comment per run, containing output for all the apps
+	ce.vcsNote = ce.createNote(ctx)
+
 	for w := 0; w <= ce.workerLimits; w++ {
 		go ce.appWorkers(ctx, w, appChannel, errChannel)
 	}
@@ -284,7 +290,8 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 	defer atomic.AddInt32(&inFlight, -1)
 
 	start := time.Now()
-	checkNote := ce.createNote(ctx, app)
+	// Build a new section for this app in the parent comment
+	ce.vcsNote.AddNewApp(ctx, app)
 
 	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", app, ce.TempWorkingDir, dir)
 	manifests, err := argo_client.GetManifestsLocal(ctx, app, ce.TempWorkingDir, dir)
@@ -292,7 +299,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 	formattedManifests := argo_client.FormatManifestsYAML(manifests)
 	if err != nil {
 		ce.logger.Error().Err(err).Msg("Unable to get manifests")
-		checkNote.AddToMessage(ctx, fmt.Sprintf("Unable to get manifests for application: \n\n ```\n%s\n```", ce.cleanupGetManifestsError(err)))
+		ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf("Unable to get manifests for application: \n\n ```\n%s\n```", ce.cleanupGetManifestsError(err)))
 		return nil
 	}
 	ce.logger.Trace().Msgf("Manifests:\n%+v\n", formattedManifests)
@@ -312,19 +319,19 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				checkNote.AddToMessage(ctx, fmt.Sprintf(errorCommentFormat, taskDescription, r))
+				ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
 			}
 		}()
 
 		s, err := validate.ArgoCdAppValidate(ctx, app, k8sVersion, formattedManifests)
 		if err != nil {
 			telemetry.SetError(span, err, taskDescription)
-			checkNote.AddToMessage(ctx, fmt.Sprintf(errorCommentFormat, taskDescription, err))
+			ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
 			return fmt.Errorf("argo Validate: %s", err)
 		}
 
 		if s != "" {
-			checkNote.AddToMessage(ctx, s)
+			ce.vcsNote.AddToAppMessage(ctx, app, s)
 		}
 		return nil
 
@@ -335,20 +342,20 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				checkNote.AddToMessage(ctx, fmt.Sprintf(errorCommentFormat, taskDescription, r))
+				ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
 			}
 		}()
 
 		s, rawDiff, err := diff.GetDiff(ctx, app, manifests)
 		if err != nil {
 			telemetry.SetError(span, err, taskDescription)
-			checkNote.AddToMessage(ctx, fmt.Sprintf(errorCommentFormat, taskDescription, err))
+			ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
 			return fmt.Errorf("argo Diff: %s", err)
 		}
 
 		if s != "" {
-			checkNote.AddToMessage(ctx, s)
-			diff.AIDiffSummary(ctx, checkNote, app, manifests, rawDiff)
+			ce.vcsNote.AddToAppMessage(ctx, app, s)
+			diff.AIDiffSummary(ctx, ce.vcsNote, app, manifests, rawDiff)
 		}
 
 		return nil
@@ -359,26 +366,26 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				checkNote.AddToMessage(ctx, fmt.Sprintf(errorCommentFormat, taskDescription, r))
+				ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
 			}
 		}()
 
 		argoApp, err := argo_client.GetArgoClient().GetApplicationByName(ctx, app)
 		if err != nil {
 			telemetry.SetError(span, err, taskDescription)
-			checkNote.AddToMessage(ctx, fmt.Sprintf("Could not retrieve Argo App details. %v", err))
+			ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf("Could not retrieve Argo App details. %v", err))
 			return fmt.Errorf("could not retrieve ArgoCD App data: %v", err)
 		}
 
 		s, err := conftest.Conftest(ctx, argoApp, ce.TempWorkingDir)
 		if err != nil {
 			telemetry.SetError(span, err, taskDescription)
-			checkNote.AddToMessage(ctx, fmt.Sprintf(errorCommentFormat, taskDescription, err))
+			ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
 			return fmt.Errorf("confTest: %s", err)
 		}
 
 		if s != "" {
-			checkNote.AddToMessage(ctx, s)
+			ce.vcsNote.AddToAppMessage(ctx, app, s)
 		}
 		return nil
 	})
@@ -388,19 +395,19 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				checkNote.AddToMessage(ctx, fmt.Sprintf(errorCommentFormat, taskDescription, r))
+				ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
 			}
 		}()
 
 		s, err := kubepug.CheckApp(ctx, app, k8sVersion, formattedManifests)
 		if err != nil {
 			telemetry.SetError(span, err, taskDescription)
-			checkNote.AddToMessage(ctx, fmt.Sprintf(errorCommentFormat, taskDescription, err))
+			ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
 			return fmt.Errorf("kubePug: %s", err)
 		}
 
 		if s != "" {
-			checkNote.AddToMessage(ctx, s)
+			ce.vcsNote.AddToAppMessage(ctx, app, s)
 		}
 		return nil
 
@@ -411,20 +418,31 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 		telemetry.SetError(span, err, "running checks")
 	}
 
-	checkNote.AddToMessage(ctx, renderInfoFooter(time.Since(start), ce.repo.SHA))
+	ce.vcsNote.AddToAppMessage(ctx, app, renderInfoFooter(time.Since(start), ce.repo.SHA))
 
 	return err
 }
 
 // Creates a generic Note struct that we can write into across all worker threads
-func (ce *CheckEvent) createNote(ctx context.Context, app string) *vcs_clients.Message {
-	ctx, span := otel.Tracer("gitlab").Start(ctx, "createNote")
+func (ce *CheckEvent) createNote(ctx context.Context) *vcs_clients.Message {
+	ctx, span := otel.Tracer("check").Start(ctx, "createNote")
+	defer span.End()
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# Kubechecks Summaries:\n")
+
+	return ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, sb.String())
+}
+
+// Creates a new collapsible section in the Note struct for specified app
+func (ce *CheckEvent) createAppSection(ctx context.Context, app string) string {
+	ctx, span := otel.Tracer("check").Start(ctx, "createAppSection")
 	defer span.End()
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## ArgoCD Application Checks: `%s` \n", app)
 
-	return ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, sb.String())
+	return sb.String()
 }
 
 // cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.
