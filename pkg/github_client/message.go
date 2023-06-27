@@ -2,6 +2,7 @@ package github_client
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -41,12 +42,16 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, prID int, 
 		NoteID:  int(*comment.ID),
 		Msg:     msg,
 		Client:  c,
+		Apps:    make(map[string]string),
 	}
 }
 
 func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg string) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "UpdateMessage")
 	defer span.End()
+	fmt.Println("Updating message")
+
+	log.Info().Msgf("Updating message for PR %d in repo %s", m.CheckID, m.Name)
 
 	repoNameComponents := strings.Split(m.Name, "/")
 	comment, _, err := c.Issues.EditComment(
@@ -77,7 +82,7 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, prID 
 	defer span.End()
 
 	repoNameComponents := strings.Split(projectName, "/")
-	log.Debug().Msgf("Posting message to PR %d in repo %s", prID, projectName)
+	log.Debug().Msgf("Pruning messages from PR %d in repo %s", prID, projectName)
 	issueComments, _, err := c.Issues.ListComments(ctx, repoNameComponents[0], repoNameComponents[1], prID, nil)
 
 	if err != nil {

@@ -257,8 +257,10 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	if resultError {
 		// TODO: Commit status
 		// ce.CommitStatus(ctx, gitlab.Success)
+		ce.logger.Error().Msg("Errors found")
 		return
 	} else {
+		ce.logger.Debug().Msg("No errors found")
 		ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, "No changes")
 	}
 
@@ -290,6 +292,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 	defer atomic.AddInt32(&inFlight, -1)
 
 	start := time.Now()
+	ce.logger.Info().Str("app", app).Msg("Adding new app")
 	// Build a new section for this app in the parent comment
 	ce.vcsNote.AddNewApp(ctx, app)
 
@@ -430,6 +433,7 @@ func (ce *CheckEvent) createNote(ctx context.Context) *vcs_clients.Message {
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Kubechecks Summaries:\n")
+	ce.logger.Info().Msgf("Creating note")
 
 	return ce.client.PostMessage(ctx, ce.repo.OwnerName, ce.repo.CheckID, sb.String())
 }

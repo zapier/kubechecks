@@ -35,6 +35,23 @@ func (m *Message) AddToMessage(ctx context.Context, msg string) {
 
 }
 
+func (m *Message) AddNewApp(ctx context.Context, app string) {
+	fmt.Println("Adding new app")
+	_, span := otel.Tracer("Kubechecks").Start(ctx, "AddNewApp")
+	defer span.End()
+	m.Lock.Lock()
+	defer m.Lock.Unlock()
+	fmt.Println("Lock acquired")
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "## ArgoCD Application Checks: `%s` \n", app)
+	fmt.Println("Adding to message")
+	m.Apps[app] = sb.String()
+
+	fmt.Println("Attempting to update message")
+	m.Client.UpdateMessage(ctx, m, m.buildComment(ctx))
+}
+
 func (m *Message) AddToAppMessage(ctx context.Context, app string, msg string) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "AddToAppMessage")
 	defer span.End()
@@ -45,28 +62,16 @@ func (m *Message) AddToAppMessage(ctx context.Context, app string, msg string) {
 	m.Client.UpdateMessage(ctx, m, m.buildComment(ctx))
 }
 
-func (m *Message) AddNewApp(ctx context.Context, app string) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "AddNewApp")
-	defer span.End()
-	m.Lock.Lock()
-	defer m.Lock.Unlock()
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "## ArgoCD Application Checks: `%s` \n", app)
-	m.Apps[app] = fmt.Sprintf("%s \n\n- %s", m.Msg, sb.String())
-	m.Client.UpdateMessage(ctx, m, m.buildComment(ctx))
-}
-
 // Iterate the map of all apps in this message, building a final comment from their current state
 func (m *Message) buildComment(ctx context.Context) string {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "buildComment")
 	defer span.End()
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "## ArgoCD Application Checks \n")
-	for app, msg := range m.Apps {
-		fmt.Fprintf(&sb, "### %s \n", app)
-		fmt.Fprintf(&sb, "%s \n", msg)
+	fmt.Fprintf(&sb, "# Kubechecks Checks \n")
+	// m.Msg = fmt.Sprintf("%s \n\n---\n\n%s", m.Msg, msg)
+	for _, msg := range m.Apps {
+		fmt.Fprintf(&sb, "\n %s \n", msg)
 	}
 	return sb.String()
 }
