@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/google/go-github/github"
@@ -136,7 +137,8 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status string) error {
 	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status).Msg("setting Github commit status")
-	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repo.OwnerName, repo.Name, repo.SHA, &github.RepoStatus{
+	repoNameComponents := strings.Split(repo.OwnerName, "/")
+	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repoNameComponents[0], repoNameComponents[1], repo.SHA, &github.RepoStatus{
 		State:       &status,
 		Description: stateToDesc(status),
 		ID:          github.Int64(int64(repo.CheckID)),
