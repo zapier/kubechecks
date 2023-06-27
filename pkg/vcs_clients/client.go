@@ -20,4 +20,6 @@ type Client interface {
 	ParseHook(*http.Request, []byte) (interface{}, error)
 	// Handle valid events
 	CreateRepo(context.Context, interface{}) (*repo.Repo, error)
+	// Set status for a specific commit on the remote VCS
+	CommitStatus(context.Context, *repo.Repo, string) error
 }

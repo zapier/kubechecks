@@ -133,3 +133,33 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		Email:         email,
 	}
 }
+
+func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status string) error {
+	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status).Msg("setting Github commit status")
+	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repo.OwnerName, repo.Name, repo.SHA, &github.RepoStatus{
+		State:       &status,
+		Description: stateToDesc(status),
+		ID:          github.Int64(int64(repo.CheckID)),
+		Context:     github.String("kubechecks"),
+	})
+	if err != nil {
+		log.Err(err).Msg("could not set Github commit status")
+		return err
+	}
+	log.Debug().Interface("status", repoStatus).Msg("Github commit status set")
+	return nil
+}
+
+func stateToDesc(state string) *string {
+	switch state {
+	case "pending":
+		return github.String("pending...")
+	case "running":
+		return github.String("in progress...")
+	case "failure":
+		return github.String("failed.")
+	case "success":
+		return github.String("succeeded.")
+	}
+	return github.String("unknown")
+}
