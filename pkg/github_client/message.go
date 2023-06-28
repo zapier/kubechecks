@@ -95,7 +95,7 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, prID 
 	}
 
 	for _, comment := range issueComments {
-		if *comment.User.Login == githubTokenUser {
+		if comment.GetUser().GetLogin() == githubTokenUser {
 			c.Issues.DeleteComment(ctx, repoNameComponents[0], repoNameComponents[1], *comment.ID)
 		}
 	}
