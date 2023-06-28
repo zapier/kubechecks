@@ -9,13 +9,13 @@ import (
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state string) error {
 	desc, gitlabState := stateToDescAndValue(state)
-	var pipelineID = 0
+	var pipelineID = c.GetLastPipelinesForCommit(repo.Name, repo.SHA).ID
 	status := &gitlab.SetCommitStatusOptions{
 		Name:        gitlab.String("kubechecks"),
 		Context:     gitlab.String("kubechecks"),
 		Description: desc,
 		State:       gitlabState,
-		PipelineID:  &pipelineID, // TODO: Get pipeline ID
+		PipelineID:  &pipelineID,
 	}
 	_, err := c.setCommitStatus(repo.Name, repo.SHA, status)
 	if err != nil {
