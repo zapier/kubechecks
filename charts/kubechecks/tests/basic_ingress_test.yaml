@@ -1,0 +1,27 @@
+suite: basics
+
+templates: [ingress.yaml]
+
+values: [basics.min-values.yaml]
+
+tests:
+  - it: should render
+    asserts:
+      - isKind: 
+          of: Ingress
+      - equal:
+          path: spec.rules[0]
+          value:
+            host: kubechecks.local
+            http:
+              paths:
+                - backend:
+                    serviceName: RELEASE-NAME-kubechecks
+                    servicePort: 8080
+                  path:
+                    - /hooks
+      - equal:
+          path: metadata.annotations
+          value:
+            kubernetes.io/ingress.class: an-ingress-class
+

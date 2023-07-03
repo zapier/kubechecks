@@ -1,0 +1,24 @@
+name: helm ci
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/on_pull_request_helm.yaml'
+      - 'Earthfile'
+      - 'charts/**'
+
+env:
+  EARTHLY_TOOL_VERSION: 0.7
+  GOLANG_TOOL_VERSION: 1.19.3
+  
+jobs:
+  ci-helm:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: wistia/parse-tool-versions@v1.0
+
+      - uses: earthly/actions-setup@v1
+        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
+
+      - run: earthly +ci-helm

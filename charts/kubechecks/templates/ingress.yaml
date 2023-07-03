@@ -1,0 +1,34 @@
+{{- $servicePort := .Values.service.port -}}
+{{- $serviceName := include "kubechecks.fullname" . -}}
+{{- if .Values.ingress.create }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kubechecks.fullname" . }}
+  annotations:
+{{ toYaml .Values.ingress.annotations | indent 4 }}
+  labels:
+{{ include "kubechecks.labels" . | indent 4 }}
+{{- if .Values.ingress.labels }}
+{{ toYaml .Values.ingress.labels | indent 4 }}
+{{- end }}
+spec:
+  rules:
+  {{- range $host, $paths := .Values.ingress.hosts }}
+  - host: {{ $host }}
+    http:
+      paths:
+      {{- range $paths }}
+      - path: {{ . }}
+        backend:
+          serviceName: {{ $serviceName }}
+          servicePort: {{ $servicePort }}
+      {{- end -}}
+  {{- end -}}
+  {{- if .Values.ingress.tls }}
+  tls:
+{{ toYaml .Values.ingress.tls | indent 4 }}
+  {{- end -}}
+{{- end -}}
+

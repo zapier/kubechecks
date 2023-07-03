@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: httpdump
+spec:
+  generators:
+    - list:
+        elements:
+          - name: a
+            url:  https://kubernetes.default.svc
+          - name: b
+            url:  https://kubernetes.default.svc
+  template:
+    metadata:
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+      name: "in-cluster-{{ name }}-httpdump"
+      namespace: argocd
+      labels:
+        argocd.argoproj.io/application-set-name: "httpdump"
+    spec:
+      destination:
+        namespace: "httpdump-{{ name }}"
+        server: '{{ url }}'
+      project: default
+      source:
+        repoURL: ${REPO_URL}
+        targetRevision: HEAD
+        path: 'apps/httpdump/overlays/{{ name }}/'
+      syncPolicy:
+        automated:
+          prune: true
+        syncOptions:
+          - CreateNamespace=true

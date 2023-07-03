@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubechecks.name" . }}
+  labels:
+{{ include "kubechecks.labels" . | indent 4 }}
+data:
+{{- range $index, $element := .Values.deployment.env }}
+  {{ $index | quote }}: {{ $element | quote }}
+{{- end }}
+---

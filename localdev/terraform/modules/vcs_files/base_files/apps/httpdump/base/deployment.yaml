@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpdump
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpdump
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: httpdump
+        version: v1
+    spec:
+      serviceAccountName: httpdump
+      containers:
+        - image: docker.io/daime/http-dump
+          imagePullPolicy: IfNotPresent
+          name: httpdump
+          ports:
+            - containerPort: 8080

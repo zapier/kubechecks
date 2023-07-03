@@ -1,0 +1,4 @@
+tilt 0.32.0
+golang 1.19
+kustomize 4.5.7
+earthly 0.7.4

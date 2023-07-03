@@ -1,0 +1,27 @@
+.idea/**
+
+arghh
+.env
+
+# localdev temporary files
+localdev/**/*.db
+localdev/**/*.lock
+localdev/Dockerfile-*
+localdev/**/localdev.auto.tfvars
+# localdev/ngrok.url
+# .ngrok.env
+# localdev/manifests/tfbuddy.env
+localdev/terraform/terraform.auto.tfvars
+localdev/terraform/**/parent.auto.tfvars
+build/
+
+**/.terraform/
+
+ngrok.url
+
+tilt_config.json
+.vscode
+localdev/terraform/gitlab/project.url
+*.tgz
+*.DS_Store
+kubechecks

@@ -1,0 +1,29 @@
+deployment:
+  annotations:
+    reloader.stakater.com/auto: "true" 
+  env:
+    KUBECHECKS_LOG_LEVEL: debug
+    KUBECHECKS_ENABLE_WEBHOOK_CONTROLLER: false
+    KUBECHECKS_ARGOCD_API_INSECURE: true
+    KUBECHECKS_WEBHOOK_URL_PREFIX: 'kubechecks'
+    KUBECHECKS_ARGOCD_API_PATH_PREFIX : '/argocd'
+    KUBECHECKS_NAMESPACE: 'kubechecks'
+    KUBECHECKS_FALLBACK_K8S_VERSION: "1.22.0"
+    KUBECHECKS_SHOW_DEBUG_INFO: "true"
+    KUBECHECKS_OTEL_COLLECTOR_PORT: "4317"
+    KUBECHECKS_OTEL_ENABLED: "false"
+
+  image:
+    repository: ""
+    pullPolicy: Always
+    name: "kubechecks-server"
+    tag: ""
+
+secrets:
+  create: true
+  env:
+    KUBECHECKS_ARGOCD_API_TOKEN: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJrdWJlY2hlY2tzOmFwaUtleSIsIm5iZiI6MTY3ODg1Mjc3NywiaWF0IjoxNjc4ODUyNzc3LCJqdGkiOiJrdWJlY2hlY2tzLXRpbHQifQ.58-noxH2GO_8J3gfSiKJdLdniBx4j8wbCqzzGxcwxGU'
+
+
+reloader:
+  enabled: true

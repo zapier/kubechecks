@@ -1,0 +1,9 @@
+deployment:
+  env:
+    KUBECHECKS_ARGOCD_API_INSECURE: "false"
+    KUBECHECKS_TEST_VALUE: "Hello"
+
+ingress:
+  create: true
+  annotations:
+    kubernetes.io/ingress.class: an-ingress-class

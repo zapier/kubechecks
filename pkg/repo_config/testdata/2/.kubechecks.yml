@@ -1,0 +1,12 @@
+applications:
+  - name: prod-k8s-01-httpbin
+    cluster: prod-k8s-01
+    path: k8s/prod-k8s-01/
+    additionalPaths:
+      - k8s/env/prod/
+
+applicationSets:
+  - name: httpdump
+    paths:
+    - apps/httpdump/base
+    - apps/httpdump/overlays/in-cluster

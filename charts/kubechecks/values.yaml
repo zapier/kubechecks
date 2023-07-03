@@ -1,0 +1,120 @@
+deployment:
+  annotations: {}
+    # reloader.stakater.com/auto: "true"
+
+  # Default values for kubechecks.
+  resources:
+    limits:
+      memory: 512Mi
+    requests:
+      memory: 256Mi
+      cpu: 200m
+
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/zapier
+    pullPolicy: Always
+    name: "kubechecks-server"
+    tag: ""  # Defaults to the .Chart.AppVersion
+
+  imagePullSecrets: []
+
+  nodeSelector: {}
+
+  tolerations: []
+
+  affinity: {}
+
+  podSecurityContext: {}
+  # fsGroup: 2000
+
+  securityContext: {}
+    # capabilities:
+    #   drop:
+    #   - ALL
+    # readOnlyRootFilesystem: true
+    # runAsNonRoot: true
+    # runAsUser: 1000
+
+  env:
+    # KUBECHECKS_ARGOCD_API_INSECURE: "false"
+    # KUBECHECKS_ARGOCD_API_PATH_PREFIX: /
+    # KUBECHECKS_ARGOCD_WEBHOOK_URL: https://argocd.<domain.com>/api/webhook
+    # KUBECHECKS_FALLBACK_K8S_VERSION: "1.22.0"
+    # KUBECHECKS_LOG_LEVEL: debug
+    # KUBECHECKS_NAMESPACE: kubechecks
+    # KUBECHECKS_WEBHOOK_URL_BASE: https://kubechecks.<domain.com>.
+    # KUBECHECKS_WEBHOOK_URL_PREFIX: kubechecks
+    # KUBECHECKS_ARGOCD_API_SERVER_ADDR: argocd.<domain.com>
+    # ARGOCD_EXEC_TIMEOUT: 600s
+    # KUBECHECKS_OTEL_COLLECTOR_PORT: "4317"
+    # KUBECHECKS_OTEL_ENABLED: "true"
+
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+
+  livenessProbe:
+    failureThreshold: 30
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+
+  readinessProbe:
+    failureThreshold: 30
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+
+secrets:
+  create: false
+  name: '{{ include "kubechecks.fullname" . }}'
+  # envs can be used for writing sensitive environment variables
+  # to the secret resource. These should be passed into the
+  # deployment as arguments.
+  env: {}
+  # GITLAB_TOKEN: <token>
+
+
+serviceAccount:
+  # Specifies whether a service account should be created or used
+  create: true
+  enabled: true
+  name: '{{ include "kubechecks.fullname" . }}'
+  annotations: {}
+
+service:
+  create: true
+  type: ClusterIP
+  port: 8080
+  name: http
+
+ingress:
+  create: false
+  # annotations:
+  #   kubernetes.io/ingress.class: nginx
+  #   # See https://cert-manager.readthedocs.io/en/latest/reference/ingress-shim.html#supported-annotations
+  #   kubernetes.io/tls-acme: "true"
+  hosts:
+    kubechecks.local:
+      paths:
+        - "/hooks"
+  # Secrets must be manually created in the namespace
+  # tls:
+  #  - secretName: kubechecks-ingress-tls
+  #    hosts:
+  #    - kubechecks.example.com
+
+
+autoscaling:
+  create: false
+  # minReplicas: 1
+  # maxReplicas: 100
+  # targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+reloader:
+  enabled: false

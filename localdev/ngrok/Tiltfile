@@ -1,0 +1,55 @@
+# /////////////////////////////////////////////////////////////////////////////
+# N G R O K
+# /////////////////////////////////////////////////////////////////////////////
+
+check_cmd='/usr/bin/curl -v http://localhost:4040/api/tunnels | jq --raw-output ".tunnels[0].public_url"'
+
+def get_ngrok_url(cfg):
+    if cfg.get("ngrok_fqdn"):
+        return "https://"+cfg.get("ngrok_fqdn")
+
+    elif config.tilt_subcommand == 'down':
+        local('rm ngrok.url || true')
+        return 'http://xyz.ngrok.io'
+
+    else:
+        url=str(read_file('ngrok.url', "")).rstrip('\n')
+        
+        return url
+
+def deploy_ngrok(cfg):
+    # Deploy envoy proxy that ngrok will tunnel to
+    k8s_yaml(
+        kustomize('./localdev/ngrok/')
+    )
+
+    k8s_resource(
+        objects=['envoy-config:configmap'],
+        labels=["ngrok"],
+        new_name='envoy-config',
+        resource_deps=['k8s:namespace']
+    )
+    k8s_resource(
+        'envoy',
+        labels=["ngrok"],
+        resource_deps=['k8s:namespace', 'envoy-config'],
+        port_forwards=["8000:8080", "9901:9901"],
+    )
+
+    hostnameArg = ""
+    if cfg.get("ngrok_fqdn"):
+        hostnameArg = " --hostname {}".format(cfg.get("ngrok_fqdn"))
+
+    local_resource(
+        "ngrok",
+        serve_cmd="ngrok http localhost:8000 {}".format(hostnameArg),
+        readiness_probe=probe(
+            initial_delay_secs=5,
+            period_secs=10,
+            exec=exec_action(["bash", "-c", 'localdev/ngrok/update-url.sh'])
+        ),
+        labels=["ngrok"],
+        links=["http://localhost:4040"]
+    )
+
+    watch_file('./ngrok.url')
