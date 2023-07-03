@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/google/go-github/github"
@@ -11,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs_clients"
 	"golang.org/x/oauth2"
 )
 
@@ -90,7 +92,7 @@ func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Rep
 			return nil, fmt.Errorf("ignoring Github pull request event due to non commit based action")
 		}
 	default:
-		return nil, fmt.Errorf("Invalid event provided to Github client")
+		return nil, fmt.Errorf("invalid event provided to Github client")
 	}
 }
 
@@ -132,4 +134,21 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		Username:      username,
 		Email:         email,
 	}
+}
+
+func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status vcs_clients.CommitState) error {
+	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.String()).Msg("setting Github commit status")
+	repoNameComponents := strings.Split(repo.OwnerName, "/")
+	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repoNameComponents[0], repoNameComponents[1], repo.SHA, &github.RepoStatus{
+		State:       github.String(status.String()),
+		Description: github.String(status.StateToDesc()),
+		ID:          github.Int64(int64(repo.CheckID)),
+		Context:     github.String("kubechecks"),
+	})
+	if err != nil {
+		log.Err(err).Msg("could not set Github commit status")
+		return err
+	}
+	log.Debug().Interface("status", repoStatus).Msg("Github commit status set")
+	return nil
 }

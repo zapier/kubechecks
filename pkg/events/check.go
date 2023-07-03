@@ -254,14 +254,21 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.logger.Info().Msg("Finished")
 
 	if resultError {
-		// TODO: Commit status
-		// ce.CommitStatus(ctx, gitlab.Success)
+		ce.CommitStatus(ctx, vcs_clients.Failure)
 		ce.logger.Error().Msg("Errors found")
 		return
 	}
 
-	// TODO: Handle this
-	// me.CommitStatus(ctx, gitlab.Success)
+	ce.CommitStatus(ctx, vcs_clients.Success)
+}
+
+// Take one of "success", "failure", "pending" or "error" and pass off to client
+// To set the PR/MR status
+func (ce *CheckEvent) CommitStatus(ctx context.Context, status vcs_clients.CommitState) {
+	_, span := otel.Tracer("Kubechecks").Start(ctx, "CommitStatus")
+	defer span.End()
+
+	ce.client.CommitStatus(ctx, ce.repo, status)
 }
 
 // Process all apps on the provided channel

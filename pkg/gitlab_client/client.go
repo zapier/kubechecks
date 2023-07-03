@@ -332,12 +332,10 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 		switch event.ObjectAttributes.Action {
 		case "update":
 			if event.ObjectAttributes.OldRev != "" && event.ObjectAttributes.OldRev != event.ObjectAttributes.LastCommit.ID {
-				// processing these requests can take a while, and is async to the request so spawn a goroutine and return 200
 				return buildRepoFromEvent(event), nil
 			}
 			log.Trace().Msgf("Skipping update event sha didn't change")
 		case "open", "reopen":
-			// processing these requests can take a while, and is async to the request so spawn a goroutine and return 200
 			return buildRepoFromEvent(event), nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
