@@ -91,7 +91,7 @@ func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Rep
 			return nil, fmt.Errorf("ignoring Github pull request event due to non commit based action")
 		}
 	default:
-		return nil, fmt.Errorf("Invalid event provided to Github client")
+		return nil, fmt.Errorf("invalid event provided to Github client")
 	}
 }
 

@@ -22,12 +22,12 @@ func TestCleanupGetManifestsError(t *testing.T) {
 		},
 		{
 			name:          "strip temp directory",
-			inputErr:      errors.New(fmt.Sprintf("Error: %s/tmpfile.yaml not found", checkEvent.TempWorkingDir)),
+			inputErr:      fmt.Errorf("Error: %s/tmpfile.yaml not found", checkEvent.TempWorkingDir),
 			expectedError: "Error: tmpfile.yaml not found",
 		},
 		{
 			name:          "strip temp directory and helm error",
-			inputErr:      errors.New(fmt.Sprintf("`helm template . --name-template in-cluster-echo-server --namespace echo-server --kube-version 1.25 --values %s/apps/echo-server/in-cluster/values.yaml --values %s/apps/echo-server/in-cluster/notexist.yaml --api-versions admissionregistration.k8s.io/v1 --api-versions admissionregistration.k8s.io/v1/MutatingWebhookConfiguration --api-versions v1/Secret --api-versions v1/Service --api-versions v1/ServiceAccount --include-crds` failed exit status 1: Error: open %s/apps/echo-server/in-cluster/notexist.yaml: no such file or directory", checkEvent.TempWorkingDir, checkEvent.TempWorkingDir, checkEvent.TempWorkingDir)),
+			inputErr:      fmt.Errorf("`helm template . --name-template in-cluster-echo-server --namespace echo-server --kube-version 1.25 --values %s/apps/echo-server/in-cluster/values.yaml --values %s/apps/echo-server/in-cluster/notexist.yaml --api-versions admissionregistration.k8s.io/v1 --api-versions admissionregistration.k8s.io/v1/MutatingWebhookConfiguration --api-versions v1/Secret --api-versions v1/Service --api-versions v1/ServiceAccount --include-crds` failed exit status 1: Error: open %s/apps/echo-server/in-cluster/notexist.yaml: no such file or directory", checkEvent.TempWorkingDir, checkEvent.TempWorkingDir, checkEvent.TempWorkingDir),
 			expectedError: "Helm Error: open apps/echo-server/in-cluster/notexist.yaml: no such file or directory",
 		},
 		{
