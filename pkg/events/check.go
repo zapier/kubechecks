@@ -254,17 +254,17 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.logger.Info().Msg("Finished")
 
 	if resultError {
-		ce.CommitStatus(ctx, "failure")
+		ce.CommitStatus(ctx, vcs_clients.Failure)
 		ce.logger.Error().Msg("Errors found")
 		return
 	}
 
-	ce.CommitStatus(ctx, "success")
+	ce.CommitStatus(ctx, vcs_clients.Success)
 }
 
 // Take one of "success", "failure", "pending" or "error" and pass off to client
 // To set the PR/MR status
-func (ce *CheckEvent) CommitStatus(ctx context.Context, status string) {
+func (ce *CheckEvent) CommitStatus(ctx context.Context, status vcs_clients.CommitState) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CommitStatus")
 	defer span.End()
 
