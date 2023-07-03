@@ -167,7 +167,7 @@ test-helm:
         && kubeconform -v
 
     RUN apk add --no-cache bash git \
-        && helm plugin install --version "${HELM_UNITTEST_VERSION}" https://github.com/quintush/helm-unittest \
+        && helm plugin install --version "${HELM_UNITTEST_VERSION}" https://github.com/helm-unittest/helm-unittest \
         && helm unittest --help
     # actually lint the chart
     WORKDIR /src
