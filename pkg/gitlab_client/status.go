@@ -1,40 +1,41 @@
 package gitlab_client
 
-import "github.com/xanzy/go-gitlab"
+import (
+	"context"
 
-func (c *Client) CommitStatus(state gitlab.BuildStateValue, actionName string, pipelineID *int, projectWithNS string, commitSHA string) error {
+	"github.com/xanzy/go-gitlab"
+	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs_clients"
+)
+
+func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_clients.CommitState) error {
+	var pipelineID = c.GetLastPipelinesForCommit(repo.Name, repo.SHA).ID
 	status := &gitlab.SetCommitStatusOptions{
-		Name:        gitlab.String(actionName),
-		Context:     gitlab.String(actionName),
-		Description: descriptionForState(state),
-		State:       state,
-		PipelineID:  pipelineID,
+		Name:        gitlab.String("kubechecks"),
+		Context:     gitlab.String("kubechecks"),
+		Description: gitlab.String(state.StateToDesc()),
+		State:       convertState(state),
+		PipelineID:  &pipelineID,
 	}
-
-	_, err := c.setCommitStatus(
-		projectWithNS,
-		commitSHA,
-		status,
-	)
+	_, err := c.setCommitStatus(repo.Name, repo.SHA, status)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
-func descriptionForState(state gitlab.BuildStateValue) *string {
+func convertState(state vcs_clients.CommitState) gitlab.BuildStateValue {
 	switch state {
-	case gitlab.Pending:
-		return gitlab.String("pending...")
-	case gitlab.Running:
-		return gitlab.String("in progress...")
-	case gitlab.Failed:
-		return gitlab.String("failed.")
-	case gitlab.Success:
-		return gitlab.String("succeeded.")
+	case vcs_clients.Pending:
+		return gitlab.Pending
+	case vcs_clients.Running:
+		return gitlab.Running
+	case vcs_clients.Failure:
+		return gitlab.Failed
+	case vcs_clients.Success:
+		return gitlab.Success
 	}
-	return gitlab.String("unknown")
+	return gitlab.Failed
 }
 
 func (c *Client) setCommitStatus(projectWithNS string, commitSHA string, status *gitlab.SetCommitStatusOptions) (*gitlab.CommitStatus, error) {

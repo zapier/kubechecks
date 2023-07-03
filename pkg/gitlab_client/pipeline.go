@@ -4,8 +4,8 @@ import (
 	"github.com/xanzy/go-gitlab"
 )
 
-func (c *Client) GetPipelinesForCommit(project int, commitSHA string) ([]*gitlab.PipelineInfo, error) {
-	pipelines, _, err := c.Pipelines.ListProjectPipelines(project, &gitlab.ListProjectPipelinesOptions{
+func (c *Client) GetPipelinesForCommit(projectName string, commitSHA string) ([]*gitlab.PipelineInfo, error) {
+	pipelines, _, err := c.Pipelines.ListProjectPipelines(projectName, &gitlab.ListProjectPipelinesOptions{
 		SHA: gitlab.String(commitSHA),
 	})
 	if err != nil {
@@ -16,8 +16,8 @@ func (c *Client) GetPipelinesForCommit(project int, commitSHA string) ([]*gitlab
 
 }
 
-func (c *Client) GetLastPipelinesForCommit(project int, commitSHA string) *gitlab.PipelineInfo {
-	pipelines, err := c.GetPipelinesForCommit(project, commitSHA)
+func (c *Client) GetLastPipelinesForCommit(projectName string, commitSHA string) *gitlab.PipelineInfo {
+	pipelines, err := c.GetPipelinesForCommit(projectName, commitSHA)
 	if err != nil {
 		return nil
 	}

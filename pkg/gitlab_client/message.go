@@ -18,6 +18,13 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, mergeReque
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
+	// First prune any comments from outdated runs of kubechecks
+	err := c.pruneOldComments(ctx, projectName, mergeRequestID)
+	if err != nil {
+		telemetry.SetError(span, err, "Prune old comments")
+		log.Error().Err(err).Msg("could not prune old comments")
+	}
+
 	n, _, err := c.Notes.CreateMergeRequestNote(
 		projectName, mergeRequestID,
 		&gitlab.CreateMergeRequestNoteOptions{
@@ -35,6 +42,7 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, mergeReque
 		NoteID:  n.ID,
 		Msg:     msg,
 		Client:  c,
+		Apps:    make(map[string]string),
 	}
 }
 
@@ -118,9 +126,10 @@ func extractAppName(input string) string {
 }
 
 func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg string) error {
+	log.Debug().Msgf("Updating message %d for %s", m.NoteID, m.Name)
 
 	n, _, err := c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
-		Body: gitlab.String(m.Msg),
+		Body: gitlab.String(msg),
 	})
 
 	if err != nil {
@@ -130,5 +139,31 @@ func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg 
 
 	// just incase the note ID changes
 	m.NoteID = n.ID
+	return nil
+}
+
+// Iterate over all comments for the Merge Request, deleting any from the authenticated user
+func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID int) error {
+	_, span := otel.Tracer("Kubechecks").Start(ctx, "pruneOldComments")
+	defer span.End()
+
+	notes, _, err := c.Notes.ListMergeRequestNotes(projectName, mrID, nil)
+	if err != nil {
+		telemetry.SetError(span, err, "Prune Old Comments")
+		log.Error().Err(err).Msg("could not fetch notes for merge request")
+		return err
+	}
+
+	for _, note := range notes {
+		if note.Author.Username == gitlabTokenUser {
+			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
+			_, err := c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
+			if err != nil {
+				telemetry.SetError(span, err, "Prune Old Comments")
+				log.Error().Err(err).Msg("could not delete old comment")
+				return err
+			}
+		}
+	}
 	return nil
 }
