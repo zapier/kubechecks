@@ -19,12 +19,16 @@ Other notable projects that use DCO:
 * [GCC](https://gcc.gnu.org/dco.html)
 
 -------------
+
 ## Pull Request Process
+
 1. You are welcome to submit a draft pull request for commentary or review before it is fully completed. Feel free to provide more information on the issue you're addressing or a link to a specific one to add more context.
 2. When time permits `kubechecks`'s core team members will look over your contribution and either merge, or provide comments. It may take some time for us to respond. We kindly ask that you do not target specific team members. We may also reject a PR at this time with comments around why, and if we would reconsider it.
 3. If we have requested changes, you can either make those changes or, if you disagree with the suggested changes, we can discuss it further in the pull request. This may be a multi-step process. It is the contributor's responsibility to address any changes requested. While reviewers are happy to give guidance, it is unsustainable for us to perform the coding work necessary to get a PR into a mergeable state.
 4. Once all outstanding comments and checklist items have been addressed, your contribution will be merged! The core team takes care of updating the change log as required. It may be a bit before we cut a new release so your changes may not be available immediately.
+
 ### PR Checks
+
 The following checks run when a PR is opened:
 
 * Developer Certificate of Origin (DCO): This check is applied against every **commit**. If a single commit is not signed the check will fail. Please checkout our [Contributor Agreement](#contributor-agreement) for more details.
@@ -35,6 +39,7 @@ The following checks run when a PR is opened:
 ## Developer Environment
 
 ### Tools / Accounts
+
 * [Go 1.19](https://go.dev/)
 * [Earthly](https://earthly.dev/)
 * [Ngrok](https://ngrok.com/)
@@ -42,9 +47,9 @@ The following checks run when a PR is opened:
 * [Gitlab](https://gitlab.com) / [Github](https://github.com) token
 * [OpenAI](https://openai.com) toke (Optional)
 * [Kubernetes](https://kubernetes.io/)
-    * [minikube](https://minikube.sigs.k8s.io/docs/)
-    * [kind](https://kind.sigs.k8s.io/)
-    * [Docker Desktop](https://docs.docker.com/desktop/kubernetes/)
+  * [minikube](https://minikube.sigs.k8s.io/docs/)
+  * [kind](https://kind.sigs.k8s.io/)
+  * [Docker Desktop](https://docs.docker.com/desktop/kubernetes/)
 
 Some of the above tools are not necessary if you're developing against an externally accessible kubernetes cluster. We leverage Ngrok for local testing in order to accept webhooks from Gitlab/Github.
 
@@ -53,6 +58,7 @@ Some of the above tools are not necessary if you're developing against an extern
 [Tilt.dev](https://tilt.dev) is used to power the local development environment.
 The `Tiltfile` defines all the resources required to build, run and test `kubechecks`.
 It creates:
+
 * Gitlab / Github repository with test files.
 * Deploys ArgoCD and some demo applications to your kubernetes cluster.
 * Deploys ngrok to provide an external accessible URL for Github/Gitlab to send webhooks to your local dev environment.
@@ -97,7 +103,6 @@ There are currently some circular dependencies in the local dev resources, so al
 Click the Detailed view button at the top, and click the refresh button next to the `Tiltfile` resource to run another cycle.
 
 ![tilt-2](img/tilt-2.png)
-
 
 #### Minikube
 

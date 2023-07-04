@@ -14,14 +14,13 @@ Think of it like `terraform apply` but for Kubernetes; with `kubechecks`, you'll
 ## Why kubechecks?
 
 kubechecks was built out a desire to simplify the amount of separate pipelines required to be run for pull requests at Zapier. We've
-been using it internally for <XYZ>, and we think it's pretty great; and we hope you find it useful, too!
+been using it internally for awhile now, and we think it's pretty great; and we hope you find it useful, too!
 
 Some great features:
 
 - Supports Github and Gitlab.
 - Clear visibility into what new commits will actually change against your live applications
-- Validate your manifests are production-ready via multiple conformance checks
-- (Coming soon) works in Github Action pipelines!
+- Validate your manifests are production-ready via multiple checks automatically
 
 ## Documentation
 

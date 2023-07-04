@@ -50,6 +50,7 @@ deployment:
     # ARGOCD_EXEC_TIMEOUT: 600s
     # KUBECHECKS_OTEL_COLLECTOR_PORT: "4317"
     # KUBECHECKS_OTEL_ENABLED: "true"
+    # KUBECHECKS_VCS_TYPE: "github"
 
   startupProbe:
     failureThreshold: 30
@@ -76,7 +77,7 @@ secrets:
   # to the secret resource. These should be passed into the
   # deployment as arguments.
   env: {}
-  # GITLAB_TOKEN: <token>
+  # KUBECHECKS_VCS_TOKEN: <token>
 
 
 serviceAccount:
