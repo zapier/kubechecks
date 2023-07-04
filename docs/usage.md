@@ -15,6 +15,7 @@
 To get started, add the `kubechecks` repository to Helm:
 
 # TODO TODO TODO TODO Add a URL
+
 ```console
 helm repo add kubechecks <URL HERE> 
 ```
@@ -46,7 +47,7 @@ through the use of enviornment variables defined in your provided `values.yaml`.
 |`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.|`""`|
 |`KUBECHECKS_OTEL_ENABLED`|Enable OpenTelemetry tracing|`false`|
 |`KUBECHECKS_OTEL_COLLECTOR_PORT`|OpenTelemetry collector port \(if OTel is enabled\) |`null`|
-|`KUBECHECKS_OTEL_COLLECTOR_HOST`|The OpenTelemetry collector host|`null`| 
+|`KUBECHECKS_OTEL_COLLECTOR_HOST`|The OpenTelemetry collector host|`null`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`| Set to true to print debug info to the footer of MR comments | `false`|
 |`KUBECHECKS_VCS_TYPE`| Which VCS Client to utilise (one of `gitlab` or `github`) | `gitlab`|
 |`KUBECHECKS_LABEL_FILTER`|If set, the label that must be set on an PR/MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook|`null`|
@@ -58,6 +59,5 @@ The following configuraion is done via Kubernetes Secrets; ensure these are spec
 |`KUBECHECKS_VCS_TOKEN`| VCS API Token for communicating with your VCS provider | `null`|
 |`KUBECHECKS_ARGOCD_API_TOKEN`| ArgoCD API Token for communicating with your ArgoCD installation| `null`|
 |`KUBECHECKS_OPENAI_API_TOKEN`| OpenAI API Token for generating AI diff summaries |`null`|
-
 
 **Note that the prefix `KUBECHECKS_` is required for all environment variables due to the way the application is designed.**
