@@ -23,10 +23,10 @@ helm repo add kubechecks <URL HERE>
 Once installed, simply run:
 
 ```console
-helm install kubechecks -n kubechecks --create-namespace
+helm install kubechecks charts/kubechecks -n kubechecks --create-namespace
 ```
 
-Refer to [configuration](#configuration) for details about the various options available for customising `kubechecks`.
+Refer to [configuration](#configuration) for details about the various options available for customising `kubechecks`. You **must** provide the required secrets in some capacity; refer to the chart for more details
 
 ## Configuration
 
