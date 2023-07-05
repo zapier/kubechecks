@@ -198,7 +198,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 }
 
 func initializeGitSettings() error {
-	token := viper.GetString("gitlab-token")
+	token := viper.GetString("vcs-token")
 	log.Debug().
 		Str("gitUser", gitlabTokenUser).
 		Str("gitEmail", gitlabTokenEmail).

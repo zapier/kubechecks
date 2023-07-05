@@ -213,6 +213,7 @@ k8s_yaml(helm(
   values='./localdev/kubechecks/values.yaml',
   set=['deployment.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg), 'deployment.env.NGROK_URL=' + get_ngrok_url(cfg),
         'deployment.env.KUBECHECKS_ARGOCD_WEBHOOK_URL='+ get_ngrok_url(cfg) +'/argocd/api/webhook',
+        'deployment.env.KUBECHECKS_ENABLE_CONFTEST=true',
         'deployment.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
         'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
         'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
