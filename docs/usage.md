@@ -52,7 +52,7 @@ through the use of enviornment variables defined in your provided `values.yaml`.
 |`KUBECHECKS_VCS_TYPE`| Which VCS Client to utilise (one of `gitlab` or `github`) | `gitlab`|
 |`KUBECHECKS_LABEL_FILTER`|If set, the label that must be set on an PR/MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook|`null`|
 
-The following configuraion is done via Kubernetes Secrets; ensure these are specified under the `secrets` section of `values.yaml` or through your chosen secrets provider before attempting to run `kubechecks`:
+The following configuration is done via Kubernetes Secrets; ensure these are specified under the `secrets` section of `values.yaml` or through your chosen secrets provider before attempting to run `kubechecks`:
 
 |Secret|Description|Default Value|
 |-------|-----------|-------------|
