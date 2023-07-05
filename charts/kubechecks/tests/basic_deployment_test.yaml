@@ -11,7 +11,7 @@ tests:
           of: Deployment
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/zapier/kubechecks-server:1.0.0 # App Version, not chart versions
+          value: ghcr.io/zapier/kubechecks:v1.0.0 # App Version, not chart versions
       - equal:
           path: metadata.labels
           value:
