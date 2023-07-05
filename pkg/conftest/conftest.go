@@ -24,7 +24,7 @@ var gitLabCommentFormat = `
 
 %s
 
-> This check validates resources against Zapier policies.
+> This check validates resources against conftest policies.
 > Currently this is informational only and a warning or error does not block deploy.
 
 </details>

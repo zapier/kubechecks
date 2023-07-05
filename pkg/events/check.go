@@ -367,34 +367,36 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 		return nil
 	})
 
-	grp.Go(func() error {
-		const taskDescription = "validating app against policy"
-		defer func() {
-			if r := recover(); r != nil {
-				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
+	if viper.GetBool("enable-conftest") {
+		grp.Go(func() error {
+			const taskDescription = "validating app against policy"
+			defer func() {
+				if r := recover(); r != nil {
+					telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
+					ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
+				}
+			}()
+
+			argoApp, err := argo_client.GetArgoClient().GetApplicationByName(grpCtx, app)
+			if err != nil {
+				telemetry.SetError(span, err, taskDescription)
+				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf("Could not retrieve Argo App details. %v", err))
+				return fmt.Errorf("could not retrieve ArgoCD App data: %v", err)
 			}
-		}()
 
-		argoApp, err := argo_client.GetArgoClient().GetApplicationByName(grpCtx, app)
-		if err != nil {
-			telemetry.SetError(span, err, taskDescription)
-			ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf("Could not retrieve Argo App details. %v", err))
-			return fmt.Errorf("could not retrieve ArgoCD App data: %v", err)
-		}
+			s, err := conftest.Conftest(grpCtx, argoApp, ce.TempWorkingDir)
+			if err != nil {
+				telemetry.SetError(span, err, taskDescription)
+				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
+				return fmt.Errorf("confTest: %s", err)
+			}
 
-		s, err := conftest.Conftest(grpCtx, argoApp, ce.TempWorkingDir)
-		if err != nil {
-			telemetry.SetError(span, err, taskDescription)
-			ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-			return fmt.Errorf("confTest: %s", err)
-		}
-
-		if s != "" {
-			ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-		}
-		return nil
-	})
+			if s != "" {
+				ce.vcsNote.AddToAppMessage(grpCtx, app, s)
+			}
+			return nil
+		})
+	}
 
 	grp.Go(func() error {
 		const taskDescription = "running pre-upgrade check"

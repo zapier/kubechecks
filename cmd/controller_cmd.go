@@ -66,6 +66,7 @@ func init() {
 	flags := controllerCmd.Flags()
 	flags.String("fallback-k8s-version", "1.23.0", "Fallback target Kubernetes version for schema / upgrade checks (KUBECHECKS_FALLBACK_K8S_VERSION).")
 	flags.Bool("show-debug-info", false, "Set to true to print debug info to the footer of MR comments (KUBECHECKS_SHOW_DEBUG_INFO).")
+	flags.Bool("enable-conftest", false, "Set to true to enable conftest policy checking of manifests (KUBECHECKS_SHOW_DEBUG_INFO).")
 	flags.String("label-filter", "", "(Optional) If set, The label that must be set on an MR (as \"kubechecks:<value>\") for kubechecks to process the merge request webhook (KUBECHECKS_LABEL_FILTER).")
 	flags.String("openai-api-token", "", "OpenAI API Token (KUBECHECKS_OPENAI_API_TOKEN).")
 	flags.String("webhook-url-base", "", "The URL where KubeChecks receives webhooks from Gitlab")
@@ -73,6 +74,7 @@ func init() {
 	flags.String("webhook-secret", "", "Optional secret key for validating the source of incoming webhooks.")
 	flags.String("vcs-type", "gitlab", "The type of VCS provider (gitlab|github).")
 	// Map viper to cobra flags so we can get these parameters from Environment variables if set.
+	viper.BindPFlag("enable-conftest", flags.Lookup("enable-conftest"))
 	viper.BindPFlag("fallback-k8s-version", flags.Lookup("fallback-k8s-version"))
 	viper.BindPFlag("show-debug-info", flags.Lookup("show-debug-info"))
 	viper.BindPFlag("label-filter", flags.Lookup("label-filter"))
