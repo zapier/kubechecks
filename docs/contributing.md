@@ -45,7 +45,7 @@ The following checks run when a PR is opened:
 * [Ngrok](https://ngrok.com/)
 * [Tilt](https://tilt.dev/)
 * [Gitlab](https://gitlab.com) / [Github](https://github.com) token
-* [OpenAI](https://openai.com) toke (Optional)
+* [OpenAI](https://openai.com) token (Optional)
 * [Kubernetes](https://kubernetes.io/)
   * [minikube](https://minikube.sigs.k8s.io/docs/)
   * [kind](https://kind.sigs.k8s.io/)
