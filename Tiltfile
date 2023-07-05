@@ -1,5 +1,6 @@
 load('ext://configmap', 'configmap_from_dict')
 load('ext://dotenv', 'dotenv')
+load('ext://helm_remote', 'helm_remote')
 load('ext://tests/golang', 'test_go')
 load('ext://list_port_forwards', 'display_port_forwards')
 load('ext://namespace', 'namespace_yaml')
@@ -239,6 +240,14 @@ k8s_resource(
     new_name='kubechecks-rbac',
     labels=["kubechecks"],
     resource_deps=['k8s:namespace']
+)
+
+helm_remote(
+    'reloader',
+    repo_url='https://stakater.github.io/stakater-charts',
+    release_name='reloader',
+    namespace='kubechecks',
+    version='1.0.26'
 )
 
 # /////////////////////////////////////////////////////////////////////////////

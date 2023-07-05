@@ -6,8 +6,3 @@ appVersion: "1.0.0"
 type: application
 maintainers:
   - name: zapier
-dependencies:
-  - name: reloader
-    version: 1.0.26
-    repository: https://stakater.github.io/stakater-charts
-    condition: reloader.enabled
