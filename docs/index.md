@@ -9,7 +9,7 @@ This is where `kubechecks` enters the picture. `kubechecks` is a handy tool that
 managed via ArgoCD and changes made in your PR/MRs; letting you know _before_ you merge that branch what will change. On top of
 that, `kubechecks` runs handy linting reports from [`kubepug`](https://github.com/rikatz/kubepug), [`kubeconform`](https://github.com/yannh/kubeconform), and [`conftest`](https://www.conftest.dev/) to build an even better picture of those changes.
 
-Think of it like `terraform apply` but for Kubernetes; with `kubechecks`, you'll have greater confidence than ever before in your changes.
+Think of it like `terraform plan` but for Kubernetes; with `kubechecks`, you'll have greater confidence than ever before in your changes.
 
 ## Why kubechecks?
 
