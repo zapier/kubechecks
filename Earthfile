@@ -150,7 +150,7 @@ lint-golang:
 test-helm:
     ARG CHART_TESTING_VERSION="3.7.1"
     ARG HELM_VERSION="3.8.1"
-    ARG HELM_UNITTEST_VERSION="0.2.8"
+    ARG HELM_UNITTEST_VERSION="0.3.3"
     ARG KUBECONFORM_VERSION="0.5.0"
     FROM quay.io/helmpack/chart-testing:v${CHART_TESTING_VERSION}
 
@@ -167,7 +167,7 @@ test-helm:
         && kubeconform -v
 
     RUN apk add --no-cache bash git \
-        && helm plugin install --version "${HELM_UNITTEST_VERSION}" https://github.com/quintush/helm-unittest \
+        && helm plugin install --version "${HELM_UNITTEST_VERSION}" https://github.com/helm-unittest/helm-unittest \
         && helm unittest --help
     # actually lint the chart
     WORKDIR /src
