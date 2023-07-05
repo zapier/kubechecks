@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -79,16 +78,12 @@ func (h *VCSHookHandler) AttachHandlers(grp *echo.Group, path string) {
 
 func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	ctx := context.Background()
-
-	if h.hookSecretKey != "" {
-		if err := h.client.VerifyHook(h.hookSecretKey, c); err != nil {
-			return c.String(http.StatusUnauthorized, "Unauthorized")
-		}
-	}
-
-	payload, err := io.ReadAll(c.Request().Body)
+	log.Debug().Msg("Received hook request")
+	// Always verify, even if no secret (no op if no secret)
+	payload, err := h.client.VerifyHook(c.Request(), h.hookSecretKey)
 	if err != nil {
-		return err
+		log.Err(err).Msg("Failed to verify hook")
+		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 
 	eventRequest, err := h.client.ParseHook(c.Request(), payload)

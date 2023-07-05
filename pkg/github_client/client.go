@@ -3,12 +3,12 @@ package github_client
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/google/go-github/github"
-	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zapier/kubechecks/pkg/repo"
@@ -62,16 +62,15 @@ func createGithubClient() *Client {
 	return &Client{c}
 }
 
-func (c *Client) VerifyHook(secret string, p echo.Context) error {
+func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// Github provides the SHA256 of the secret + payload body, so we extract the body and compare
+	// We have to split it like this as the ValidatePayload method consumes the request
 	if secret != "" {
-		_, err := github.ValidatePayload(p.Request(), []byte(secret))
-		if err != nil {
-			return p.String(http.StatusUnauthorized, "Unauthorized")
-		}
+		return github.ValidatePayload(r, []byte(secret))
+	} else {
+		// No secret provided, so we just grab the body
+		return io.ReadAll(r.Body)
 	}
-
-	return nil // Success
 }
 
 func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error) {

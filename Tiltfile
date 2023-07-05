@@ -79,6 +79,8 @@ if cfg.get('enable_repo', True):
       env={
         'GITLAB_TOKEN': os.getenv('GITLAB_TOKEN'),
         'TF_VAR_ngrok_url': get_ngrok_url(cfg),
+        'TF_VAR_kubechecks_gitlab_hook_secret_key': os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else "",
+
       },
       deps=[
         './localdev/terraform/*.tf',
@@ -102,6 +104,7 @@ if cfg.get('enable_repo', True):
       env={
         'GITHUB_TOKEN': os.getenv('GITHUB_TOKEN'),
         'TF_VAR_ngrok_url': get_ngrok_url(cfg),
+        'TF_VAR_kubechecks_github_hook_secret_key': os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else "",
       },
       deps=[
         './localdev/terraform/*.tf',
@@ -211,8 +214,7 @@ k8s_yaml(helm(
         'deployment.env.KUBECHECKS_ARGOCD_WEBHOOK_URL='+ get_ngrok_url(cfg) +'/argocd/api/webhook',
         'deployment.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
         'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
-        'secrets.env.KUBECHECKS_GITHUB_HOOK_SECRET_KEY=' + (os.getenv('KUBECHECKS_HOOK_SECRET') if os.getenv('KUBECHECKS_HOOK_SECRET') != None else ""),
-        'secrets.env.KUBECHECKS_GITLAB_HOOK_SECRET_KEY=' + (os.getenv('KUBECHECKS_HOOK_SECRET') if os.getenv('KUBECHECKS_HOOK_SECRET') != None else ""),
+        'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
         'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),],
 ))
 
