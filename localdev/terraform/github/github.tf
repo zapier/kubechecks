@@ -42,7 +42,7 @@ resource "github_repository_webhook" "kubechecks" {
   configuration {
     url          = "${var.ngrok_url}/${var.kubecheck_webhook_prefix}/github/project"
     content_type = "json"
-    secret       = var.kubechecks_github_hook_secret_key
+    secret       = var.kubechecks_github_hook_secret_key != "" ? var.kubechecks_github_hook_secret_key : null
     insecure_ssl = false
   }
 

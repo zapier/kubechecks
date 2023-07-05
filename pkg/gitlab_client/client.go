@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -13,7 +14,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/xanzy/go-gitlab"
@@ -310,13 +310,15 @@ func walk(s string, d fs.DirEntry, err error) error {
 }
 
 // Each client has a different way of verifying their payloads; return an err if this isnt valid
-func (c *Client) VerifyHook(secret string, p echo.Context) error {
-	if secret != p.Request().Header.Get(GitlabTokenHeader) {
-		return fmt.Errorf("unable to verify payload")
+func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
+	// If we have a secret, and the secret doesn't match, return an error
+	if secret != "" && secret != r.Header.Get(GitlabTokenHeader) {
+		return nil, fmt.Errorf("invalid secret")
 	}
 
-	return nil
+	// Else, download the request body for processing and return it
 
+	return io.ReadAll(r.Body)
 }
 
 // Each client has a different way of discerning their webhook events; return an err if this isnt valid

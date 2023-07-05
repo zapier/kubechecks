@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
 	"github.com/zapier/kubechecks/pkg/repo"
 )
 
@@ -54,8 +53,8 @@ type Client interface {
 	PostMessage(context.Context, string, int, string) *Message
 	// Update message with new content
 	UpdateMessage(context.Context, *Message, string) error
-	// Validate webhook secret (if applicable)
-	VerifyHook(string, echo.Context) error
+	// Validate webhook secret and return the body; must be called even if no secret
+	VerifyHook(*http.Request, string) ([]byte, error)
 	// Parse webook payload for valid events
 	ParseHook(*http.Request, []byte) (interface{}, error)
 	// Handle valid events

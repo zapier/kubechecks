@@ -12,7 +12,7 @@ resource "gitlab_project_hook" "kubechecks_localdev_url" {
   merge_requests_events = true
   push_events           = false
   note_events           = false
-  token                 = var.kubechecks_gitlab_hook_secret_key
+  token                 = var.kubechecks_gitlab_hook_secret_key != "" ? var.kubechecks_gitlab_hook_secret_key : null
 }
 
 resource "local_file" "gitlab_project" {
