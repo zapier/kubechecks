@@ -8,4 +8,3 @@ data:
 {{- range $index, $element := .Values.deployment.env }}
   {{ $index | quote }}: {{ $element | quote }}
 {{- end }}
----

@@ -94,7 +94,7 @@ service:
   name: http
 
 ingress:
-  create: false
+  create: true
   # annotations:
   #   kubernetes.io/ingress.class: nginx
   #   # See https://cert-manager.readthedocs.io/en/latest/reference/ingress-shim.html#supported-annotations
@@ -102,7 +102,9 @@ ingress:
   hosts:
     kubechecks.local:
       paths:
-        - "/hooks"
+        - path: "/hooks"
+          pathType: Prefix
+
   # Secrets must be manually created in the namespace
   # tls:
   #  - secretName: kubechecks-ingress-tls
