@@ -94,7 +94,8 @@ service:
   name: http
 
 ingress:
-  create: true
+  create: false
+  className: ""
   # annotations:
   #   kubernetes.io/ingress.class: nginx
   #   # See https://cert-manager.readthedocs.io/en/latest/reference/ingress-shim.html#supported-annotations
