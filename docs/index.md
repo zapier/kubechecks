@@ -1,4 +1,4 @@
-# kubechecks - Kubernetes Manifest Linter
+# kubechecks - Fearless Kubernetes App Updates
 
 ## Check your Kubernetes manifests before it hits the cluster
 
