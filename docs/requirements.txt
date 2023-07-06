@@ -1,1 +1,2 @@
 mkdocs>=1.4.2; python_version >= "3.7"
+mkdocs-material>=9.1.17
