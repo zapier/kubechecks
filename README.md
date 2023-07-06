@@ -1,4 +1,4 @@
-# kubechecks
+# kubechecks - Fearless Kubernetes App Updates
 
 `kubechecks` allows users of Github and Gitlab to see exactly what their changes will affect on their current ArgoCD deployments, as well as automatically run various conformance test suites prior to merge.
 
