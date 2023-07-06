@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 
@@ -71,9 +70,10 @@ func NewVCSHookHandler(secret string) *VCSHookHandler {
 		labelFilter:   labelFilter,
 	}
 }
-func (h *VCSHookHandler) AttachHandlers(grp *echo.Group, path string) {
-	log.Info().Str("path", GetServer().HooksPrefix()).Msg("setting up VCS hook handler")
-	grp.POST(path, h.groupHandler)
+func (h *VCSHookHandler) AttachHandlers(grp *echo.Group) {
+	log.Info().Str("path", GetServer().HooksPrefix()).Msg("setting up hook handler")
+	grp.POST(ProjectHookPath, h.groupHandler)
+	log.Info().Str("path", GetServer().HooksPrefix()).Str("projectPath", ProjectHookPath).Msg("hook handler setup complete")
 }
 
 func (h *VCSHookHandler) groupHandler(c echo.Context) error {
@@ -123,11 +123,13 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	)
 	defer span.End()
 
-	cEvent := events.NewCheckEvent(repo, h.client)
-	if !h.passesLabelFilter(cEvent) {
+	if !h.passesLabelFilter(repo) {
 		log.Warn().Str("label-filter", h.labelFilter).Msg("ignoring event, did not have matching label")
 		return
 	}
+
+	// If we've gotten here, we can now begin running checks (or trying to)
+	cEvent := events.NewCheckEvent(repo, h.client)
 
 	err := cEvent.CreateTempDir()
 	if err != nil {
@@ -174,10 +176,10 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 // and matches the handler's labelFilter. Returns true if there's a matching label or no
 // "kubechecks:" labels are found, and false if a "kubechecks:" label is found but none match
 // the labelFilter.
-func (h *VCSHookHandler) passesLabelFilter(checkEvent *events.CheckEvent) bool {
+func (h *VCSHookHandler) passesLabelFilter(repo *repo.Repo) bool {
 	foundKubechecksLabel := false
 
-	for _, label := range checkEvent.Labels {
+	for _, label := range repo.Labels {
 		log.Debug().Str("check_label", label).Msg("checking label for match")
 		// Check if label starts with "kubechecks:"
 		if strings.HasPrefix(label, "kubechecks:") {
@@ -203,20 +205,4 @@ func (h *VCSHookHandler) passesLabelFilter(checkEvent *events.CheckEvent) bool {
 	}
 
 	return true
-}
-
-const (
-	// kept for backwards compatibility for now
-	ProjectAppHookPath       = "/gitlab/project/:applicationName"
-	GitlabTokenHeader        = "X-Gitlab-Token"
-	maxNoValidChangeAttempts = 10
-)
-
-func KubeChecksWebhookUrl(kubechecksBaseUrl, kubechecksUrlPrefix string) string {
-	url, err := url.JoinPath(kubechecksBaseUrl, GetServer().HooksPrefix(), ProjectHookPath)
-	if err != nil {
-		log.Fatal().Err(err).Msg(":whatintarnation:")
-	}
-	log.Debug().Str("url", url).Msg("generated Gitlab kubechecks webhook url")
-	return url
 }

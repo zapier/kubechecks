@@ -121,6 +121,11 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		email = ""
 	}
 
+	var labels []string
+	for _, label := range event.PullRequest.Labels {
+		labels = append(labels, label.GetName())
+	}
+
 	return &repo.Repo{
 		BaseRef:       *event.PullRequest.Base.Ref,
 		HeadRef:       *event.PullRequest.Head.Ref,
@@ -132,6 +137,7 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		SHA:           *event.PullRequest.Head.SHA,
 		Username:      username,
 		Email:         email,
+		Labels:        labels,
 	}
 }
 

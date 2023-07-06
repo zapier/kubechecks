@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"github.com/ziflex/lecho/v3"
 )
 
@@ -53,7 +51,7 @@ func (s *Server) Start() {
 	hooksGroup := e.Group(s.HooksPrefix())
 
 	ghHooks := NewVCSHookHandler(s.cfg.WebhookSecret)
-	ghHooks.AttachHandlers(hooksGroup, fmt.Sprintf("/%s/project", viper.GetString("vcs-type")))
+	ghHooks.AttachHandlers(hooksGroup)
 
 	if err := e.Start(":8080"); err != nil {
 		log.Fatal().Err(err).Msg("could not start hooks server")

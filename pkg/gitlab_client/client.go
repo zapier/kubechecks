@@ -351,7 +351,12 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 }
 
 func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
-	fmt.Printf("%+v\n", event)
+	// Convert all labels from this MR to a string array of label names
+	var labels []string
+	for _, label := range event.Labels {
+		labels = append(labels, label.Name)
+	}
+
 	return &repo.Repo{
 		BaseRef:       event.ObjectAttributes.TargetBranch,
 		HeadRef:       event.ObjectAttributes.SourceBranch,
@@ -363,5 +368,6 @@ func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
 		SHA:           event.ObjectAttributes.LastCommit.ID,
 		Username:      gitlabTokenUser,
 		Email:         gitlabTokenEmail,
+		Labels:        labels,
 	}
 }
