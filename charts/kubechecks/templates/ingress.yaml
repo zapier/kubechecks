@@ -19,11 +19,16 @@ spec:
   - host: {{ $host }}
     http:
       paths:
-      {{- range $paths }}
-      - path: {{ . }}
+      {{- range $path := $paths }}
+      {{- range $path }}
+      - path: {{ .path }}
+        pathType: {{ .pathType }}
         backend:
-          serviceName: {{ $serviceName }}
-          servicePort: {{ $servicePort }}
+          service:
+            name: {{ $serviceName }}
+            port:
+              number: {{ $servicePort }}
+      {{- end -}}
       {{- end -}}
   {{- end -}}
   {{- if .Values.ingress.tls }}

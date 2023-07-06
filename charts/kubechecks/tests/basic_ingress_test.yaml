@@ -16,10 +16,12 @@ tests:
             http:
               paths:
                 - backend:
-                    serviceName: RELEASE-NAME-kubechecks
-                    servicePort: 8080
-                  path:
-                    - /hooks
+                    service:
+                      name: RELEASE-NAME-kubechecks
+                      port:
+                        number: 8080
+                  path: /hooks
+                  pathType: Prefix
       - equal:
           path: metadata.annotations
           value:
