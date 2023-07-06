@@ -12,6 +12,7 @@ deployment:
     KUBECHECKS_SHOW_DEBUG_INFO: "true"
     KUBECHECKS_OTEL_COLLECTOR_PORT: "4317"
     KUBECHECKS_OTEL_ENABLED: "false"
+    KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
 
   image:
     repository: ""

@@ -38,9 +38,7 @@ type CheckEvent struct {
 	affectedApps    map[string]string
 	workerLimits    int
 	affectedAppSets []string
-	// Array of labels from a PR/MR, as strings. Only contains the name of the label
-	Labels  []string
-	vcsNote *vcs_clients.Message
+	vcsNote         *vcs_clients.Message
 }
 
 const (
@@ -68,6 +66,7 @@ func NewCheckEvent(repo *repo.Repo, client vcs_clients.Client) *CheckEvent {
 		client: client,
 		repo:   repo,
 	}
+
 	ce.logger = log.Logger.With().Str("repo", repo.Name).Int("event_id", repo.CheckID).Logger()
 	return ce
 }
