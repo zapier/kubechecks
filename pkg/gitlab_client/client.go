@@ -11,7 +11,11 @@ import (
 	"github.com/spf13/viper"
 	"github.com/xanzy/go-gitlab"
 	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs_clients"
 )
+
+// compile time checking that the type complies with interface
+var _ vcs_clients.Client = (*Client)(nil)
 
 var gitlabClient *Client
 var gitlabTokenUser string
@@ -91,7 +95,7 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 			return nil, true, nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
-			return nil, false, fmt.Errorf("unhandled action %s", event.ObjectAttributes.Action)
+			return nil, true, nil
 		}
 	default:
 		log.Trace().Msgf("Unhandled Event: %T", event)

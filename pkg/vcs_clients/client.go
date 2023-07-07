@@ -58,7 +58,7 @@ type Client interface {
 	// Parse webook payload for valid events
 	ParseHook(*http.Request, []byte) (interface{}, error)
 	// Handle valid events
-	CreateRepo(context.Context, interface{}) (*repo.Repo, error)
+	CreateRepo(context.Context, interface{}) (*repo.Repo, bool, error)
 	// Set status for a specific commit on the remote VCS
 	CommitStatus(context.Context, *repo.Repo, CommitState) error
 }
