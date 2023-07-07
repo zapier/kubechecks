@@ -16,6 +16,9 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// compile time checking that the type complies with interface
+var _ vcs_clients.Client = (*Client)(nil)
+
 var githubClient *Client
 var githubTokenUser string
 var once sync.Once // used to ensure we don't reauth this
@@ -79,19 +82,19 @@ func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error)
 
 // Creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
 // Has already occured previously, so we expect a valid event type for the Github client in the payload arg
-func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Repo, error) {
+func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Repo, bool, error) {
 	switch p := payload.(type) {
 	case *github.PullRequestEvent:
 		switch p.GetAction() {
 		case "opened", "synchronize", "reopened":
 			log.Info().Str("action", p.GetAction()).Msg("handling Github open, sync event from PR")
-			return buildRepoFromEvent(p), nil
+			return buildRepoFromEvent(p), false, nil
 		default:
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
-			return nil, fmt.Errorf("ignoring Github pull request event due to non commit based action")
+			return nil, true, nil
 		}
 	default:
-		return nil, fmt.Errorf("invalid event provided to Github client")
+		return nil, false, fmt.Errorf("invalid event provided to Github client")
 	}
 }
 
