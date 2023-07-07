@@ -49,7 +49,7 @@ func (s CommitState) StateToDesc() string {
 }
 
 // Sentinel errors for use in client implementations
-var ErrInvalidType = errors.New("Invalid event type")
+var ErrInvalidType = errors.New("invalid event type")
 
 // Clients need to implement this interface to allow CheckEvents to talk to their respective PR etc
 type Client interface {
