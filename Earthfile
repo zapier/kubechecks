@@ -14,10 +14,10 @@ ci-helm:
     BUILD +test-helm
 
 build:
-    BUILD +build-docker
+    BUILD --platform=linux/amd64 --platform=linux/arm64 +build-docker
 
 release:
-    BUILD +release-docker
+    BUILD --platform=linux/amd64 --platform=linux/arm64 +release-docker
     BUILD +release-helm
 
 go-deps:
