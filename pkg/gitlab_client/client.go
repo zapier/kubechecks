@@ -24,12 +24,6 @@ type Client struct {
 	*gitlab.Client
 }
 
-type Repo struct {
-	mr      *gitlab.MergeEvent
-	repoDir string
-	remote  string
-}
-
 func GetGitlabClient() (*Client, string) {
 	once.Do(func() {
 		gitlabClient = createGitlabClient()
