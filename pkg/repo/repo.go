@@ -231,7 +231,7 @@ func InitializeGitSettings(user string, email string) error {
 		return err
 	}
 
-	cmd = exec.Command("echo", fmt.Sprintf("https://%s:%s@gitlab.com", email, viper.GetString("vcs-token")))
+	cmd = exec.Command("echo", fmt.Sprintf("https://%s:%s@%s.com", user, viper.GetString("vcs-token"), viper.GetString("vcs-type")))
 	homedir, err := os.UserHomeDir()
 	if err != nil {
 		if err != nil {
@@ -258,5 +258,9 @@ func InitializeGitSettings(user string, email string) error {
 		log.Error().Err(err).Msg("unable to set git credential usage")
 		return err
 	}
+	log.Debug().Msg("git credentials set")
+	cmd = exec.Command("git", "config", "--list")
+	err = cmd.Run()
+
 	return nil
 }
