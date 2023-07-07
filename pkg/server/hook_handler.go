@@ -97,6 +97,11 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	// We try to build a generic Repo from this data, to construct our CheckEvent
 	repo, err := h.client.CreateRepo(ctx, eventRequest)
 	if err != nil {
+		switch err {
+		case vcs_clients.ErrInvalidType:
+			log.Debug().Msg("Ignoring event, not a merge request")
+			return c.String(http.StatusOK, "Skipped")
+		}
 		// TODO: do something ELSE with the error
 		log.Error().Err(err).Msg("Failed to create a repository locally")
 		return echo.ErrBadRequest
