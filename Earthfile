@@ -179,6 +179,7 @@ test-helm:
 release-helm:
     ARG CHART_RELEASER_VERSION="1.6.0"
     ARG HELM_VERSION="3.8.1"
+    ARG token=""
     FROM quay.io/helmpack/chart-releaser:v${CHART_RELEASER_VERSION}
 
     RUN FILE=helm.tgz \
