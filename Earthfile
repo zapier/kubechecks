@@ -18,6 +18,7 @@ build:
 
 release:
     BUILD +release-docker
+    BUILD +release-helm
 
 go-deps:
     ARG GOLANG_VERSION="1.19.3"
@@ -176,7 +177,7 @@ test-helm:
     RUN ct --config ./.github/ct.yaml lint ./charts
 
 release-helm:
-    ARG CHART_RELEASER_VERSION="1.4.1"
+    ARG CHART_RELEASER_VERSION="1.6.0"
     ARG HELM_VERSION="3.8.1"
     FROM quay.io/helmpack/chart-releaser:v${CHART_RELEASER_VERSION}
 
