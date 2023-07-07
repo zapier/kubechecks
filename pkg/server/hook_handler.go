@@ -100,7 +100,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 		switch err {
 		case vcs_clients.ErrInvalidType:
 			log.Debug().Msg("Ignoring event, not a merge request")
-			return c.String(http.StatusOK, "Skipped")
+			return c.String(http.StatusAccepted, "Skipped")
 		default:
 			// TODO: do something ELSE with the error
 			log.Error().Err(err).Msg("Failed to create a repository locally")
