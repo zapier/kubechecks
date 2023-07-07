@@ -143,6 +143,7 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 		log.Error().Err(err).Msg("unable to create temp dir")
 	}
 	defer cEvent.Cleanup(ctx)
+
 	err = cEvent.InitializeGit(ctx)
 	if err != nil {
 		telemetry.SetError(span, err, "Initialize Git")
@@ -153,6 +154,7 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	err = cEvent.CloneRepoLocal(ctx)
 	if err != nil {
 		// TODO: Cancel event if gitlab etc
+		telemetry.SetError(span, err, "Clone Repo Local")
 		log.Error().Err(err).Msg("unable to clone repo locally")
 		return
 	}
