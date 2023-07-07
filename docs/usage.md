@@ -14,10 +14,10 @@
 
 To get started, add the `kubechecks` repository to Helm:
 
-# TODO TODO TODO TODO Add a URL
+# Add kubechecks helm chart repo
 
 ```console
-helm repo add kubechecks <URL HERE> 
+helm repo add kubechecks https://zapier.github.io/kubechecks/
 ```
 
 Once installed, simply run:
@@ -30,8 +30,9 @@ Refer to [configuration](#configuration) for details about the various options a
 
 ## Configuration
 
-`kubechecks` can be configured to meet your specific set up
-through the use of enviornment variables defined in your provided `values.yaml`. The full list of supported environment variables is described below:
+`kubechecks` can be configured to meet your specific set up through the use of enviornment variables defined in your provided `values.yaml`.
+
+The full list of supported environment variables is described below:
 
 |Env Var|Description|Default Value|
 |-------|-----------|-------------|
