@@ -76,26 +76,28 @@ func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error)
 
 // Takes a valid gitlab webhook event request, and determines if we should process it
 // Returns a generic Repo with all info kubechecks needs on success, err if not
-func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*repo.Repo, error) {
+func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*repo.Repo, bool, error) {
 	switch event := eventRequest.(type) {
 	case *gitlab.MergeEvent:
 		switch event.ObjectAttributes.Action {
 		case "update":
 			if event.ObjectAttributes.OldRev != "" && event.ObjectAttributes.OldRev != event.ObjectAttributes.LastCommit.ID {
-				return buildRepoFromEvent(event), nil
+				return buildRepoFromEvent(event), false, nil
 			}
 			log.Trace().Msgf("Skipping update event sha didn't change")
 		case "open", "reopen":
-			return buildRepoFromEvent(event), nil
+			return buildRepoFromEvent(event), false, nil
+		case "close":
+			return nil, true, nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
-			return nil, fmt.Errorf("unhandled action %s", event.ObjectAttributes.Action)
+			return nil, false, fmt.Errorf("unhandled action %s", event.ObjectAttributes.Action)
 		}
 	default:
 		log.Trace().Msgf("Unhandled Event: %T", event)
-		return nil, fmt.Errorf("unhandled Event %T", event)
+		return nil, false, fmt.Errorf("unhandled Event %T", event)
 	}
-	return nil, fmt.Errorf("unhandled Event %T", eventRequest)
+	return nil, false, fmt.Errorf("unhandled Event %T", eventRequest)
 }
 
 func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
