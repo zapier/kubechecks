@@ -95,21 +95,16 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 
 	// At this point, our client has validated the secret, and parsed a valid event.
 	// We try to build a generic Repo from this data, to construct our CheckEvent
-	repo, skip, err := h.client.CreateRepo(ctx, eventRequest)
+	repo, err := h.client.CreateRepo(ctx, eventRequest)
 	if err != nil {
 		// TODO: do something ELSE with the error
 		log.Error().Err(err).Msg("Failed to create a repository locally")
 		return echo.ErrBadRequest
 	}
 
-	if skip {
-		log.Info().Msg("skipping event")
-		return c.String(http.StatusOK, "Skipped")
-	}
-
 	// We now have a generic repo with all the info we need to start processing an event. Hand off to the event processor
 	go h.processCheckEvent(ctx, repo)
-	return c.String(http.StatusAccepted, "Accepted")
+	return nil
 }
 
 // Takes a constructed Repo, and attempts to run the Kubechecks processing suite against it.

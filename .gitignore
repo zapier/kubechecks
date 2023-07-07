@@ -25,4 +25,3 @@ localdev/terraform/gitlab/project.url
 *.tgz
 *.DS_Store
 kubechecks
-localdev/terraform/github/project.url
