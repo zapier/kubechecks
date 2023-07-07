@@ -2,6 +2,7 @@ package vcs_clients
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/zapier/kubechecks/pkg/repo"
@@ -46,6 +47,9 @@ func (s CommitState) StateToDesc() string {
 	}
 	return "unknown"
 }
+
+// Sentinel errors for use in client implementations
+var ErrInvalidType = errors.New("Invalid event type")
 
 // Clients need to implement this interface to allow CheckEvents to talk to their respective PR etc
 type Client interface {

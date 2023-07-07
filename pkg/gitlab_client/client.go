@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/xanzy/go-gitlab"
 	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs_clients"
 )
 
 var gitlabClient *Client
@@ -89,13 +90,13 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 			return buildRepoFromEvent(event), nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
-			return nil, fmt.Errorf("unhandled action %s", event.ObjectAttributes.Action)
+			return nil, vcs_clients.ErrInvalidType
 		}
 	default:
 		log.Trace().Msgf("Unhandled Event: %T", event)
-		return nil, fmt.Errorf("unhandled Event %T", event)
+		return nil, vcs_clients.ErrInvalidType
 	}
-	return nil, fmt.Errorf("unhandled Event %T", eventRequest)
+	return nil, vcs_clients.ErrInvalidType
 }
 
 func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
