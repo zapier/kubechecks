@@ -100,7 +100,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 		switch err {
 		case vcs_clients.ErrInvalidType:
 			log.Debug().Msg("Ignoring event, not a merge request")
-			return c.String(http.StatusAccepted, "Skipped")
+			return c.String(http.StatusOK, "Skipped")
 		default:
 			// TODO: do something ELSE with the error
 			log.Error().Err(err).Msg("Failed to create a repository locally")
@@ -110,7 +110,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 
 	// We now have a generic repo with all the info we need to start processing an event. Hand off to the event processor
 	go h.processCheckEvent(ctx, repo)
-	return nil
+	return c.String(http.StatusAccepted, "Accepted")
 }
 
 // Takes a constructed Repo, and attempts to run the Kubechecks processing suite against it.
