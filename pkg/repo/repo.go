@@ -259,8 +259,6 @@ func InitializeGitSettings(user string, email string) error {
 		return err
 	}
 	log.Debug().Msg("git credentials set")
-	cmd = exec.Command("git", "config", "--list")
-	err = cmd.Run()
 
 	return nil
 }
