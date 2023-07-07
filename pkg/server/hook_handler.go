@@ -106,7 +106,6 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 			log.Error().Err(err).Msg("Failed to create a repository locally")
 			return echo.ErrBadRequest
 		}
-
 	}
 
 	// We now have a generic repo with all the info we need to start processing an event. Hand off to the event processor
