@@ -6,6 +6,10 @@ values: [basics.min-values.yaml]
 
 tests:
   - it: should render
+    chart:
+      version: 999.9.9
+    release:
+      name: kubechecks
     asserts:
       - isKind: 
           of: Ingress
@@ -17,7 +21,7 @@ tests:
               paths:
                 - backend:
                     service:
-                      name: RELEASE-NAME-kubechecks
+                      name: kubechecks
                       port:
                         number: 8080
                   path: /hooks

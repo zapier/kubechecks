@@ -6,6 +6,11 @@ values: [basics.min-values.yaml]
 
 tests:
   - it: should render
+    chart:
+      appVersion: 1.0.0
+      version: 0.1.0
+    release:
+      name: kubechecks
     asserts:
       - isKind:
           of: ConfigMap
@@ -17,7 +22,7 @@ tests:
       - equal:
           path: metadata.labels
           value:
-            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/instance: kubechecks
             app.kubernetes.io/managed-by: Helm
             app.kubernetes.io/name: kubechecks
             app.kubernetes.io/version: 1.0.0
