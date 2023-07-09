@@ -1,6 +1,8 @@
 resource "gitlab_project" "kubechecks_test_project" {
   name             = local.random_pet
   visibility_level = "public"
+
+  only_allow_merge_if_pipeline_succeeds = true
 }
 
 # Add a hook to the project
