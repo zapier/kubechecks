@@ -8,11 +8,11 @@ deployment:
     KUBECHECKS_WEBHOOK_URL_PREFIX: 'kubechecks'
     KUBECHECKS_ARGOCD_API_PATH_PREFIX : '/argocd'
     KUBECHECKS_NAMESPACE: 'kubechecks'
-    KUBECHECKS_FALLBACK_K8S_VERSION: "1.22.0"
+    KUBECHECKS_FALLBACK_K8S_VERSION: "1.25.0"
     KUBECHECKS_SHOW_DEBUG_INFO: "true"
     KUBECHECKS_OTEL_COLLECTOR_PORT: "4317"
     KUBECHECKS_OTEL_ENABLED: "false"
-    KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
+    # KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
 
   image:
     repository: ""

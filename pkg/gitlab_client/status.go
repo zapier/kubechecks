@@ -3,22 +3,32 @@ package gitlab_client
 import (
 	"context"
 
+	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
 	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/vcs_clients"
 )
 
+const GitlabCommitStatusContext = "kubechecks"
+
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_clients.CommitState) error {
-	var pipelineID = c.GetLastPipelinesForCommit(repo.Name, repo.SHA).ID
 	status := &gitlab.SetCommitStatusOptions{
-		Name:        gitlab.String("kubechecks"),
-		Context:     gitlab.String("kubechecks"),
+		Name:        gitlab.String(GitlabCommitStatusContext),
+		Context:     gitlab.String(GitlabCommitStatusContext),
 		Description: gitlab.String(state.StateToDesc()),
 		State:       convertState(state),
-		PipelineID:  &pipelineID,
 	}
-	_, err := c.setCommitStatus(repo.Name, repo.SHA, status)
+	// get pipelineStatus so we can attach new status to existing pipeline (if it exists)
+	pipelineStatus := c.GetLastPipelinesForCommit(repo.OwnerName, repo.SHA)
+	if pipelineStatus != nil {
+		log.Trace().Int("pipeline_id", pipelineStatus.ID).Msg("pipeline status")
+		status.PipelineID = &pipelineStatus.ID
+	}
+
+	log.Debug().Str("project", repo.OwnerName).Str("commit_sha", repo.SHA).Msg("gitlab client: updating commit status")
+	_, err := c.setCommitStatus(repo.OwnerName, repo.SHA, status)
 	if err != nil {
+		log.Error().Err(err).Str("project", repo.OwnerName).Msg("gitlab client: could not set commit status")
 		return err
 	}
 	return nil
