@@ -14,7 +14,7 @@ import (
 
 const GitlabCommitStatusContext = "kubechecks"
 
-var nilPipelineStatus = errors.New("nil pipeline status")
+var errNoPipelineStatus = errors.New("nil pipeline status")
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_clients.CommitState) error {
 	status := &gitlab.SetCommitStatusOptions{
@@ -31,7 +31,7 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_cl
 		log.Debug().Msg("getting pipeline status")
 		pipelineStatus = c.GetLastPipelinesForCommit(repo.OwnerName, repo.SHA)
 		if pipelineStatus == nil {
-			return nilPipelineStatus
+			return errNoPipelineStatus
 		}
 		return nil
 	}
