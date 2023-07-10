@@ -1,9 +1,7 @@
-![logo-short](https://github.com/zapier/kubechecks/assets/33305772/ccd12f4c-ae2a-4733-9b86-01ab80f80968)
+![logo-transparent](https://github.com/zapier/kubechecks/assets/33305772/ea7947eb-b7db-4e08-b047-cf16ab22a1d3)
 # kubechecks - Fearless Kubernetes App Updates
 
 [![Documentation Status](https://readthedocs.org/projects/kubechecks/badge/?version=latest)](https://kubechecks.readthedocs.io/en/latest/?badge=latest)
-
-
 
 `kubechecks` allows users of Github and Gitlab to see exactly what their changes will affect on their current ArgoCD deployments, as well as automatically run various conformance test suites prior to merge.
 
@@ -35,6 +33,14 @@ The [contributing](https://kubechecks.readthedocs.io/en/stable/contributing/) ha
 
 To learn more about `kubechecks` [go to the complete documentation](https://kubechecks.readthedocs.io/).
 
+## Contributors
+- [mplatcher](https://github.com/mplachter)
+- [sl1pm4t](https://github.com/sl1pm4t)
+- [polyrain](https://github.com/polyrain)
+- [jhouser](https://github.com/jhouser)
+- [davidwin93](https://github.com/davidwin93)
+- [sontek](https://github.com/sontek)
+- [MeNsaaH](https://github.com/MeNsaaH)
 ---
 
 Made by SRE Team @ ![zapier](https://zapier-media.s3.amazonaws.com/zapier/images/logo60orange.png)
