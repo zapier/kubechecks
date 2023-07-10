@@ -15,7 +15,7 @@ env:
   EARTHLY_TOOL_VERSION: 0.7
   GOLANG_TOOL_VERSION: 1.19.3
 jobs:
-  build:
+  build-test-release:
     runs-on: ubuntu-22.04
     steps:
       - name: Set up QEMU
@@ -36,27 +36,9 @@ jobs:
       - uses: earthly/actions-setup@v1
         with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
+      - run: earthly +ci-golang --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}
+
       - run: earthly +build --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} --GIT_TAG=mr --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}
-
-  release-test:
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Set up QEMU
-        id: qemu
-        uses: docker/setup-qemu-action@v1
-        with:
-          image: tonistiigi/binfmt:latest
-          platforms: all
-      - uses: actions/checkout@v3
-
-      - name: extract git sha
-        run: echo "GIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-
-      # Reads in .tools-versions and spits out env variables
-      - uses: wistia/parse-tool-versions@v1.0
-
-      - uses: earthly/actions-setup@v1
-        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
       # intentionally avoiding --push, this is just
       # to test the command
