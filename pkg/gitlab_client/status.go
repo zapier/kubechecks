@@ -14,14 +14,7 @@ import (
 
 const GitlabCommitStatusContext = "kubechecks"
 
-var expBackOff *backoff.ExponentialBackOff
 var nilPipelineStatus = errors.New("nil pipeline status")
-
-func init() {
-	expBackOff = backoff.NewExponentialBackOff()
-	expBackOff.MaxInterval = 10 * time.Second
-	expBackOff.MaxElapsedTime = 30 * time.Second
-}
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_clients.CommitState) error {
 	status := &gitlab.SetCommitStatusOptions{
@@ -35,13 +28,14 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_cl
 	// another service is also setting it.
 	var pipelineStatus *gitlab.PipelineInfo
 	getStatusFn := func() error {
+		log.Debug().Msg("getting pipeline status")
 		pipelineStatus = c.GetLastPipelinesForCommit(repo.OwnerName, repo.SHA)
 		if pipelineStatus == nil {
 			return nilPipelineStatus
 		}
 		return nil
 	}
-	err := backoff.Retry(getStatusFn, expBackOff)
+	err := backoff.Retry(getStatusFn, configureBackOff())
 	if err != nil {
 		log.Warn().Msg("could not retrieve pipeline status after multiple attempts")
 	}
@@ -76,4 +70,15 @@ func convertState(state vcs_clients.CommitState) gitlab.BuildStateValue {
 func (c *Client) setCommitStatus(projectWithNS string, commitSHA string, status *gitlab.SetCommitStatusOptions) (*gitlab.CommitStatus, error) {
 	commitStatus, _, err := c.Commits.SetCommitStatus(projectWithNS, commitSHA, status)
 	return commitStatus, err
+}
+
+// configureBackOff returns a backoff configuration to use to retry requests
+func configureBackOff() *backoff.ExponentialBackOff {
+
+	// Lets setup backoff logic to retry this request for 30 seconds
+	expBackOff := backoff.NewExponentialBackOff()
+	expBackOff.MaxInterval = 10 * time.Second
+	expBackOff.MaxElapsedTime = 30 * time.Second
+
+	return expBackOff
 }
