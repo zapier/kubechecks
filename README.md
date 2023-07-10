@@ -1,6 +1,8 @@
+![logo-short](https://github.com/zapier/kubechecks/assets/33305772/ccd12f4c-ae2a-4733-9b86-01ab80f80968)
 # kubechecks - Fearless Kubernetes App Updates
 
 [![Documentation Status](https://readthedocs.org/projects/kubechecks/badge/?version=latest)](https://kubechecks.readthedocs.io/en/latest/?badge=latest)
+
 
 
 `kubechecks` allows users of Github and Gitlab to see exactly what their changes will affect on their current ArgoCD deployments, as well as automatically run various conformance test suites prior to merge.
