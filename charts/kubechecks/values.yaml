@@ -1,3 +1,6 @@
+# Labels to apply to all resources created by this Helm chart
+commonLabels: {}
+
 deployment:
   annotations: {}
     # reloader.stakater.com/auto: "true"
