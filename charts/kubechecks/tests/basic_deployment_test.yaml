@@ -109,4 +109,13 @@ tests:
             successThreshold: 1
             timeoutSeconds: 5
 
+  - it: should allow configuration of labels
+    set:
+      commonLabels:
+        team: "test"
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: "test"
+
 
