@@ -76,7 +76,7 @@ require k8s.io/apiserver v0.24.2 // indirect
 require go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.31.0 // indirect
 
 require (
-	github.com/cenkalti/backoff/v4 v4.2.0
+	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/creasty/defaults v1.7.0
 	github.com/go-logr/zerologr v1.2.3
 	github.com/google/go-github v17.0.0+incompatible
