@@ -2,6 +2,7 @@ package github_client
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -111,6 +112,51 @@ func (c *Client) getUserDetails() (string, string, error) {
 
 	return *user.Login, *user.Email, nil
 
+}
+
+func (c *Client) GetPullRequestAsRepo(ctx context.Context, repoName string, prID int) (*repo.Repo, error) {
+
+	// Split the repo name into owner and repo name
+	split := strings.Split(repoName, "/")
+	if len(split) != 2 {
+		log.Error().Msg("invalid repo name provided to Github client")
+		return nil, errors.New("invalid repo name provided to Github client")
+	}
+
+	pr, _, err := c.PullRequests.Get(ctx, split[0], split[1], prID)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildRepoFromPR(pr), nil
+}
+
+func buildRepoFromPR(pr *github.PullRequest) *repo.Repo {
+	username, email, err := githubClient.getUserDetails()
+	if err != nil {
+		log.Fatal().Err(err).Msg("could not load Github user details")
+		username = ""
+		email = ""
+	}
+
+	var labels []string
+	for _, label := range pr.Labels {
+		labels = append(labels, label.GetName())
+	}
+
+	return &repo.Repo{
+		BaseRef:       pr.GetBase().GetSHA(),
+		HeadRef:       pr.GetHead().GetSHA(),
+		DefaultBranch: pr.GetBase().GetRef(),
+		CloneURL:      pr.GetHead().GetRepo().GetCloneURL(),
+		OwnerName:     pr.GetHead().GetRepo().GetFullName(),
+		Name:          pr.GetHead().GetRepo().GetName(),
+		CheckID:       pr.GetNumber(),
+		SHA:           pr.GetHead().GetSHA(),
+		Username:      username,
+		Email:         email,
+		Labels:        labels,
+	}
 }
 
 func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {

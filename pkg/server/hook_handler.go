@@ -109,13 +109,13 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	}
 
 	// We now have a generic repo with all the info we need to start processing an event. Hand off to the event processor
-	go h.processCheckEvent(ctx, repo)
+	go ProcessCheckEvent(ctx, repo, h.labelFilter, h.client)
 	return c.String(http.StatusAccepted, "Accepted")
 }
 
 // Takes a constructed Repo, and attempts to run the Kubechecks processing suite against it.
 // If the Repo is not yet populated, this will fail.
-func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo) {
+func ProcessCheckEvent(ctx context.Context, repo *repo.Repo, labelFilter string, client vcs_clients.Client) {
 	var span trace.Span
 	ctx, span = otel.Tracer("Kubechecks").Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
@@ -129,13 +129,13 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	)
 	defer span.End()
 
-	if !h.passesLabelFilter(repo) {
-		log.Warn().Str("label-filter", h.labelFilter).Msg("ignoring event, did not have matching label")
+	if !PassesLabelFilter(repo, labelFilter) {
+		log.Warn().Str("label-filter", labelFilter).Msg("ignoring event, did not have matching label")
 		return
 	}
 
 	// If we've gotten here, we can now begin running checks (or trying to)
-	cEvent := events.NewCheckEvent(repo, h.client)
+	cEvent := events.NewCheckEvent(repo, client)
 
 	err := cEvent.CreateTempDir()
 	if err != nil {
@@ -190,7 +190,7 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 // and matches the handler's labelFilter. Returns true if there's a matching label or no
 // "kubechecks:" labels are found, and false if a "kubechecks:" label is found but none match
 // the labelFilter.
-func (h *VCSHookHandler) passesLabelFilter(repo *repo.Repo) bool {
+func PassesLabelFilter(repo *repo.Repo, labelFilter string) bool {
 	foundKubechecksLabel := false
 
 	for _, label := range repo.Labels {
@@ -201,7 +201,7 @@ func (h *VCSHookHandler) passesLabelFilter(repo *repo.Repo) bool {
 
 			// Get the remaining string after "kubechecks:"
 			remainingString := strings.TrimPrefix(label, "kubechecks:")
-			if remainingString == h.labelFilter {
+			if remainingString == labelFilter {
 				log.Debug().Str("mr_label", label).Msg("label is match for our filter")
 				return true
 			}
@@ -214,7 +214,7 @@ func (h *VCSHookHandler) passesLabelFilter(repo *repo.Repo) bool {
 	}
 
 	// Return false if we have a label filter, but it did not match any labels on the event
-	if h.labelFilter != "" {
+	if labelFilter != "" {
 		return false
 	}
 

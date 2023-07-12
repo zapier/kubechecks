@@ -99,6 +99,41 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 	return nil, vcs_clients.ErrInvalidType
 }
 
+func (c *Client) GetPullRequestAsRepo(ctx context.Context, projectName string, mrID int) (*repo.Repo, error) {
+	mr, _, err := c.MergeRequests.GetMergeRequest(projectName, mrID, &gitlab.GetMergeRequestsOptions{})
+
+	if err != nil {
+		panic("Failed to get a MR!")
+	}
+	project, _, err := c.Projects.GetProject(projectName, &gitlab.GetProjectOptions{})
+	if err != nil {
+		panic("Failed to get a Project!")
+	}
+
+	return buildRepoFromRequest(mr, project), nil
+}
+
+func buildRepoFromRequest(request *gitlab.MergeRequest, project *gitlab.Project) *repo.Repo {
+	var labels []string
+	for _, label := range request.Labels {
+		labels = append(labels, label)
+	}
+
+	return &repo.Repo{
+		BaseRef:       request.TargetBranch,
+		HeadRef:       request.SourceBranch,
+		DefaultBranch: project.DefaultBranch,
+		OwnerName:     project.PathWithNamespace,
+		CloneURL:      project.HTTPURLToRepo,
+		Name:          project.Name,
+		CheckID:       request.IID,
+		SHA:           request.DiffRefs.HeadSha,
+		Username:      gitlabTokenUser,
+		Email:         gitlabTokenEmail,
+		Labels:        labels,
+	}
+}
+
 func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
 	// Convert all labels from this MR to a string array of label names
 	var labels []string

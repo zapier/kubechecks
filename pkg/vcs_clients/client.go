@@ -65,4 +65,6 @@ type Client interface {
 	CreateRepo(context.Context, interface{}) (*repo.Repo, error)
 	// Set status for a specific commit on the remote VCS
 	CommitStatus(context.Context, *repo.Repo, CommitState) error
+	// Get a single Merge/Pull request and return a Repo representation
+	GetPullRequestAsRepo(context.Context, string, int) (*repo.Repo, error)
 }
