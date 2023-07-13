@@ -22,13 +22,13 @@ func NewConfigMatcher(cfg *repo_config.Config) *ConfigMatcher {
 	return &ConfigMatcher{cfg: cfg, argoClient: argoClient}
 }
 
-func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (map[string]string, []string, error) {
+func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
 	appList := make(map[string]string)
 	var appSetList []string
 
 	triggeredApps, triggeredAppsets, err := b.triggeredApps(ctx, changeList)
 	if err != nil {
-		return appList, appSetList, err
+		return AffectedItems{}, err
 	}
 
 	for _, app := range triggeredApps {
@@ -39,7 +39,7 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (
 		appSetList = append(appSetList, appset.Name)
 	}
 
-	return appList, appSetList, nil
+	return AffectedItems{appList, appSetList}, nil
 }
 
 func (b *ConfigMatcher) triggeredApps(ctx context.Context, modifiedFiles []string) ([]*repo_config.ArgoCdApplicationConfig, []*repo_config.ArgocdApplicationSetConfig, error) {

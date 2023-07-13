@@ -28,7 +28,7 @@ func NewBestEffortMatcher(repoName string, repoFileList []string) *BestEffort {
 	}
 }
 
-func (b *BestEffort) AffectedApps(ctx context.Context, changeList []string) (map[string]string, []string, error) {
+func (b *BestEffort) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
 	appList := make(map[string]string)
 
 	for _, file := range changeList {
@@ -86,7 +86,7 @@ func (b *BestEffort) AffectedApps(ctx context.Context, changeList []string) (map
 		}
 	}
 
-	return appList, []string{}, nil
+	return AffectedItems{appList, []string{}}, nil
 }
 
 func isHelmClusterAppFile(file string) bool {
@@ -109,9 +109,9 @@ func isKustomizeApp(file string) bool {
 
 func isKustomizeBaseComponentsChange(file string) bool {
 	return strings.Contains(file, "base/") ||
-		strings.Contains(file, "bases/") ||
-		strings.Contains(file, "components/") ||
-		strings.Contains(file, "resources/")
+			strings.Contains(file, "bases/") ||
+			strings.Contains(file, "components/") ||
+			strings.Contains(file, "resources/")
 }
 
 func overlaysDir(file string) string {

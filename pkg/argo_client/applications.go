@@ -8,6 +8,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/pkg/errors"
 	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
 )
@@ -69,7 +70,7 @@ func (argo *ArgoClient) GetKubernetesVersionByApplicationName(ctx context.Contex
 	return version, nil
 }
 
-// GetApplicationsByLabel takes a context and a labelselector, then queries the Argo Application client to retrieve the Applications with the specified label.
+// GetApplicationsByLabels takes a context and a labelselector, then queries the Argo Application client to retrieve the Applications with the specified label.
 // It returns the found ApplicationList and any error encountered during the process.
 // If successful, the Application client connection is closed before returning.
 func (argo *ArgoClient) GetApplicationsByLabels(ctx context.Context, labels string) (*v1alpha1.ApplicationList, error) {
@@ -93,4 +94,19 @@ func (argo *ArgoClient) GetApplicationsByLabels(ctx context.Context, labels stri
 func (argo *ArgoClient) GetApplicationsByAppset(ctx context.Context, name string) (*v1alpha1.ApplicationList, error) {
 	appsetLabelSelector := "argocd.argoproj.io/application-set-name=" + name
 	return argo.GetApplicationsByLabels(ctx, appsetLabelSelector)
+}
+
+func (argo *ArgoClient) GetApplications(ctx context.Context) (*v1alpha1.ApplicationList, error) {
+	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetApplications")
+	defer span.End()
+
+	closer, appClient := argo.GetApplicationClient()
+	defer closer.Close()
+
+	resp, err := appClient.List(ctx, new(application.ApplicationQuery))
+	if err != nil {
+		telemetry.SetError(span, err, "Argo List All Applications error")
+		return nil, errors.Wrap(err, "failed to applications")
+	}
+	return resp, nil
 }

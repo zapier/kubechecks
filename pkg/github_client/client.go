@@ -8,8 +8,10 @@ import (
 	"sync"
 
 	"github.com/google/go-github/github"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/vcs_clients"
 	"golang.org/x/oauth2"
@@ -22,6 +24,8 @@ var once sync.Once // used to ensure we don't reauth this
 type Client struct {
 	*github.Client
 }
+
+var _ vcs_clients.Client = new(Client)
 
 func GetGithubClient() (*Client, string) {
 	once.Do(func() {
@@ -36,7 +40,7 @@ func getTokenUser() string {
 	user, _, err := githubClient.Users.Get(context.Background(), "")
 	if err != nil {
 		if err != nil {
-			log.Fatal().Err(err).Msg("could not create Github token user")
+			log.Fatal().Err(err).Msg("could not get Github user")
 		}
 	}
 	return *user.Name
@@ -155,5 +159,55 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status vcs_c
 		return err
 	}
 	log.Debug().Interface("status", repoStatus).Msg("Github commit status set")
+	return nil
+}
+
+func parseRepo(cloneUrl string) (string, string) {
+	if strings.HasPrefix(cloneUrl, "git@") {
+		// parse ssh string
+		parts := strings.Split(cloneUrl, ":")
+		parts = strings.Split(parts[1], "/")
+		owner := parts[0]
+		repo := strings.TrimSuffix(parts[1], ".git")
+		return owner, repo
+	}
+
+	panic(cloneUrl)
+}
+
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (vcs_clients.WebHookConfig, error) {
+	owner, repo := parseRepo(repoName)
+	items, _, err := c.Repositories.ListHooks(ctx, owner, repo, nil)
+	if err != nil {
+		return vcs_clients.WebHookConfig{}, errors.Wrap(err, "failed to list hooks")
+	}
+
+	for _, item := range items {
+		if item.URL != nil && *item.URL == webhookUrl {
+			return vcs_clients.WebHookConfig{}, nil
+		}
+	}
+
+	return vcs_clients.WebHookConfig{}, vcs_clients.ErrHookNotFound
+}
+
+func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {
+	owner, repo := parseRepo(repoName)
+	_, _, err := c.Repositories.CreateHook(ctx, owner, repo, &github.Hook{
+		Active: pkg.Pointer(true),
+		Config: map[string]interface{}{
+			"content_type": "json",
+			"insecure_ssl": "0",
+			"url":          webhookUrl,
+		},
+		Events: []string{
+			"pull_request",
+		},
+		Name: pkg.Pointer("web"),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to create hook")
+	}
+
 	return nil
 }

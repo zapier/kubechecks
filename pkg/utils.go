@@ -52,3 +52,7 @@ func FailedEmoji() string {
 func FailedString() string {
 	return " Failed" + FailedEmoji()
 }
+
+func Pointer[T interface{}](item T) *T {
+	return &item
+}

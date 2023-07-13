@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/xanzy/go-gitlab"
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/vcs_clients"
 )
@@ -24,6 +26,8 @@ const GitlabTokenHeader = "X-Gitlab-Token"
 type Client struct {
 	*gitlab.Client
 }
+
+var _ vcs_clients.Client = new(Client)
 
 func GetGitlabClient() (*Client, string) {
 	once.Do(func() {
@@ -70,12 +74,12 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	return io.ReadAll(r.Body)
 }
 
-// Each client has a different way of discerning their webhook events; return an err if this isnt valid
+// ParseHook parses and validates a webhook event; return an err if this isn't valid
 func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error) {
 	return gitlab.ParseHook(gitlab.HookEventType(r), payload)
 }
 
-// Takes a valid gitlab webhook event request, and determines if we should process it
+// CreateRepo takes a valid gitlab webhook event request, and determines if we should process it
 // Returns a generic Repo with all info kubechecks needs on success, err if not
 func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*repo.Repo, error) {
 	switch event := eventRequest.(type) {
@@ -97,6 +101,40 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 		return nil, vcs_clients.ErrInvalidType
 	}
 	return nil, vcs_clients.ErrInvalidType
+}
+
+func parseRepoName(repoName string) interface{} {
+	panic("not implemented")
+}
+
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (vcs_clients.WebHookConfig, error) {
+	pid := parseRepoName(repoName)
+	webhooks, _, err := c.Client.Projects.ListProjectHooks(pid, nil)
+	if err != nil {
+		return vcs_clients.WebHookConfig{}, errors.Wrap(err, "failed to list project webhooks")
+	}
+
+	for _, hook := range webhooks {
+		if hook.URL == webhookUrl {
+			return vcs_clients.WebHookConfig{}, nil
+		}
+	}
+
+	return vcs_clients.WebHookConfig{}, vcs_clients.ErrHookNotFound
+}
+
+func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {
+	pid := parseRepoName(repoName)
+	_, _, err := c.Client.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
+		URL:                 pkg.Pointer(webhookUrl),
+		MergeRequestsEvents: pkg.Pointer(true),
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "failed to list project webhooks")
+	}
+
+	return nil
 }
 
 func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {

@@ -136,10 +136,10 @@ func TestBestEffortMatcher(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			matcher := NewBestEffortMatcher(tt.args.repoName, testRepoFiles)
-			got, _, err := matcher.AffectedApps(context.TODO(), tt.args.fileList)
+			got, err := matcher.AffectedApps(context.TODO(), tt.args.fileList)
 			assert.NoError(t, err)
 
-			if !reflect.DeepEqual(got, tt.want) {
+			if !reflect.DeepEqual(got.AppNameToPathMap, tt.want) {
 				t.Errorf("GenerateListOfAffectedApps() = %v, want %v", got, tt.want)
 			}
 		})
