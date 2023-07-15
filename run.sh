@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-ARGOCD_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmdvY2QiLCJzdWIiOiJhZG1pbjphcGlLZXkiLCJleHAiOjE2ODkzNzQyNjUsIm5iZiI6MTY4OTI4Nzg2NSwiaWF0IjoxNjg5Mjg3ODY1LCJqdGkiOiJrdWJlY2hlY2tzLXRlc3RpbmcifQ.RvdOi0J88aG0mUUxDZBnk9DY_UD_zXyiHBcMt7dB2dE"
+ARGOCD_TOKEN="eyJhbGciOiJIU..........zXyiHBcMt7dB2dE"
 GITHUB_TOKEN="ghp_xyz......1hJ"
 
 go run ./main.go \
