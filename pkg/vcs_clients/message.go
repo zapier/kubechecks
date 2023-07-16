@@ -3,22 +3,27 @@ package vcs_clients
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 
+	"github.com/zapier/kubechecks/pkg"
 	"go.opentelemetry.io/otel"
 )
 
 const (
 	appFormat = `<details><summary>
 
-## ArgoCD Application Checks:` + "`%s`" +
+## ArgoCD Application Checks:` + "`%s` %s" +
 		`
 </summary>
 %s 
 </details>
 `
 )
+
+// Used to test messages quickly if we have to update internal emoji
+var summaryEmojiRegex = regexp.MustCompile(pkg.FailedEmoji() + "|" + pkg.WarningEmoji())
 
 // Message type that allows concurrent updates
 // Has a reference to the owner/repo (ie zapier/kubechecks),
@@ -73,10 +78,17 @@ func (m *Message) buildComment(ctx context.Context) string {
 	defer span.End()
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "# Kubechecks Report \n")
+	fmt.Fprintf(&sb, "# Kubechecks Report\n")
 	// m.Msg = fmt.Sprintf("%s \n\n---\n\n%s", m.Msg, msg)
 	for app, msg := range m.Apps {
-		fmt.Fprintf(&sb, appFormat, app, msg)
+		appEmoji := pkg.PassEmoji()
+
+		// Test the message for failures, since we'll be showing this at the top
+		if summaryEmojiRegex.MatchString(msg) {
+			appEmoji = pkg.FailedEmoji()
+		}
+
+		fmt.Fprintf(&sb, appFormat, app, appEmoji, msg)
 	}
 	return sb.String()
 }
