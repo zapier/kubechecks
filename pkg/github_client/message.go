@@ -84,7 +84,10 @@ func (c *Client) pruneOldComments(ctx context.Context, repo *repo.Repo, comments
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), githubTokenUser) {
-			c.Issues.DeleteComment(ctx, repo.Owner, repo.Name, *comment.ID)
+			_, err := c.Issues.DeleteComment(ctx, repo.Owner, repo.Name, *comment.ID)
+			if err != nil {
+				return fmt.Errorf("Failed to delete comment: %w", err)
+			}
 		}
 	}
 
