@@ -118,20 +118,28 @@ func parseRepoName(url string) string {
 	return strings.Join([]string{gitURL.GetOwnerName(), gitURL.GetRepoName()}, "/")
 }
 
-func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (vcs_clients.WebHookConfig, error) {
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
 	pid := parseRepoName(repoName)
 	webhooks, _, err := c.Client.Projects.ListProjectHooks(pid, nil)
 	if err != nil {
-		return vcs_clients.WebHookConfig{}, errors.Wrap(err, "failed to list project webhooks")
+		return nil, errors.Wrap(err, "failed to list project webhooks")
 	}
 
 	for _, hook := range webhooks {
 		if hook.URL == webhookUrl {
-			return vcs_clients.WebHookConfig{}, nil
+			events := []string{}
+			// TODO: translate GL specific event names to VCS agnostic
+			if hook.MergeRequestsEvents {
+				events = append(events, string(gitlab.MergeRequestEventTargetType))
+			}
+			return &vcs_clients.WebHookConfig{
+				Url:    hook.URL,
+				Events: events,
+			}, nil
 		}
 	}
 
-	return vcs_clients.WebHookConfig{}, vcs_clients.ErrHookNotFound
+	return nil, vcs_clients.ErrHookNotFound
 }
 
 func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {

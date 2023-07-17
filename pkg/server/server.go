@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -106,14 +105,16 @@ func (s *Server) ensureWebhooks() error {
 	log.Info().Str("webhookUrl", fullUrl).Msg("webhook URL for this kubechecks instance")
 
 	for repo := range s.cfg.VcsToArgoMap.VcsRepos {
-		_, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
+		wh, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
 		if err != nil && err != vcs_clients.ErrHookNotFound {
 			log.Error().Err(err).Msgf("failed to get hook for %s:", repo)
 			continue
 		}
 
-		if err = vcsClient.CreateHook(ctx, repo, fullUrl, s.cfg.WebhookSecret); err != nil {
-			log.Info().Err(err).Msgf("failed to create hook for %s:", repo)
+		if wh == nil {
+			if err = vcsClient.CreateHook(ctx, repo, fullUrl, s.cfg.WebhookSecret); err != nil {
+				log.Info().Err(err).Msgf("failed to create hook for %s:", repo)
+			}
 		}
 	}
 

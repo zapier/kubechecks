@@ -179,20 +179,23 @@ func parseRepo(cloneUrl string) (string, string) {
 	panic(cloneUrl)
 }
 
-func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (vcs_clients.WebHookConfig, error) {
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
 	owner, repo := parseRepo(repoName)
 	items, _, err := c.Repositories.ListHooks(ctx, owner, repo, nil)
 	if err != nil {
-		return vcs_clients.WebHookConfig{}, errors.Wrap(err, "failed to list hooks")
+		return nil, errors.Wrap(err, "failed to list hooks")
 	}
 
 	for _, item := range items {
 		if item.URL != nil && *item.URL == webhookUrl {
-			return vcs_clients.WebHookConfig{}, nil
+			return &vcs_clients.WebHookConfig{
+				Url:    item.GetURL(),
+				Events: item.Events, // TODO: translate GH specific event names to VCS agnostic
+			}, nil
 		}
 	}
 
-	return vcs_clients.WebHookConfig{}, vcs_clients.ErrHookNotFound
+	return nil, vcs_clients.ErrHookNotFound
 }
 
 func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {

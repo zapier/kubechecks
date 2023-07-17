@@ -55,6 +55,9 @@ var (
 )
 
 type WebHookConfig struct {
+	Url       string
+	SecretKey string
+	Events    []string
 }
 
 // Client represents a VCS client
@@ -72,7 +75,7 @@ type Client interface {
 	// CommitStatus sets a status for a specific commit on the remote VCS
 	CommitStatus(context.Context, *repo.Repo, CommitState) error
 	// GetHookByUrl gets a webhook by url
-	GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (WebHookConfig, error)
+	GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*WebHookConfig, error)
 	// CreateHook creates a webhook that points at kubechecks
 	CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error
 	// GetName returns the VCS client name (e.g. "github" or "gitlab")
