@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/heptiolabs/healthcheck"
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
@@ -104,7 +103,7 @@ func (s *Server) ensureWebhooks() error {
 	}
 	log.Info().Str("webhookUrl", fullUrl).Msg("webhook URL for this kubechecks instance")
 
-	for repo := range s.cfg.VcsToArgoMap.VcsRepos {
+	for _, repo := range s.cfg.GetVcsRepos() {
 		wh, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
 		if err != nil && err != vcs_clients.ErrHookNotFound {
 			log.Error().Err(err).Msgf("failed to get hook for %s:", repo)
@@ -129,9 +128,7 @@ func (s *Server) buildVcsToArgoMap() error {
 
 	ctx := context.TODO()
 
-	result := pkg.VcsToArgoMap{
-		VcsRepos: make(map[string][]v1alpha1.Application),
-	}
+	result := pkg.NewVcsToArgoMap()
 
 	argoClient := argo_client.GetArgoClient()
 	apps, err := argoClient.GetApplications(ctx)
@@ -144,9 +141,7 @@ func (s *Server) buildVcsToArgoMap() error {
 			continue
 		}
 
-		appsForRepo := result.VcsRepos[app.Spec.Source.RepoURL]
-		appsForRepo = append(appsForRepo, app)
-		result.VcsRepos[app.Spec.Source.RepoURL] = appsForRepo
+		result.AddApp(app.Spec.Source.RepoURL, app.Spec.Source.Path, app.Name)
 	}
 
 	s.cfg.VcsToArgoMap = result

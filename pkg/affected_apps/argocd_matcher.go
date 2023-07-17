@@ -4,28 +4,29 @@ import (
 	"context"
 	"strings"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
 )
 
 type ArgocdMatcher struct {
-	repoApps []v1alpha1.Application
+	//       map[AppPath]AppName
+	repoApps map[string]string
 }
 
 func NewArgocdMatcher(vcsToArgoMap pkg.VcsToArgoMap, repo *repo.Repo) *ArgocdMatcher {
-	repoApps := vcsToArgoMap.GetRepo(repo.CloneURL)
+	repoApps := vcsToArgoMap.GetAppsInRepo(repo.CloneURL)
 	return &ArgocdMatcher{
 		repoApps: repoApps,
 	}
 }
 
-func (a ArgocdMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
+func (a *ArgocdMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
 	appsMap := make(map[string]string)
 	for _, changePath := range changeList {
-		for _, app := range a.repoApps {
-			if strings.HasPrefix(changePath, app.Spec.Source.Path) {
-				appsMap[changePath] = app.Name
+		for path, name := range a.repoApps {
+			if strings.HasPrefix(changePath, path) {
+				appsMap[changePath] = name
+				break
 			}
 		}
 	}
