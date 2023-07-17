@@ -3,8 +3,10 @@ package gitlab_client
 import (
 	"context"
 	"fmt"
+	giturl "github.com/kubescape/go-git-url"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -103,8 +105,13 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 	return nil, vcs_clients.ErrInvalidType
 }
 
-func parseRepoName(repoName string) interface{} {
-	panic("not implemented")
+func parseRepoName(url string) string {
+	gitURL, err := giturl.NewGitURL(url)
+	if err != nil {
+		log.Error().Err(err).Str("url", url).Msg("could not parse GitLab URL")
+	}
+
+	return strings.Join([]string{gitURL.GetOwnerName(), gitURL.GetRepoName()}, "/")
 }
 
 func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (vcs_clients.WebHookConfig, error) {
