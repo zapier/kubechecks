@@ -34,24 +34,6 @@ resource "local_file" "github_project" {
   ]
 }
 
-
-// Set up a webhook for kubechecks to use 
-resource "github_repository_webhook" "kubechecks" {
-  repository = github_repository.kubechecks.name
-
-  configuration {
-    url          = "${var.ngrok_url}/${var.kubecheck_webhook_prefix}/github/project"
-    content_type = "json"
-    secret       = var.kubechecks_github_hook_secret_key != "" ? var.kubechecks_github_hook_secret_key : null
-    insecure_ssl = false
-  }
-
-  active = true
-
-  // We only listen for PR events, so limit the scope
-  events = ["pull_request"]
-}
-
 resource "github_repository_file" "base_files" {
   for_each = module.vcs_files.base_files
 

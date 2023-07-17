@@ -5,18 +5,6 @@ resource "gitlab_project" "kubechecks_test_project" {
   only_allow_merge_if_pipeline_succeeds = true
 }
 
-# Add a hook to the project
-resource "gitlab_project_hook" "kubechecks_localdev_url" {
-  count = length(var.ngrok_url) > 0 ? 1 : 0
-
-  project               = gitlab_project.kubechecks_test_project.id
-  url                   = "${var.ngrok_url}/${var.kubecheck_webhook_prefix}/gitlab/project"
-  merge_requests_events = true
-  push_events           = false
-  note_events           = false
-  token                 = var.kubechecks_gitlab_hook_secret_key != "" ? var.kubechecks_gitlab_hook_secret_key : null
-}
-
 resource "local_file" "gitlab_project" {
   filename = "project.url"
   content  = gitlab_project.kubechecks_test_project.http_url_to_repo
