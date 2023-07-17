@@ -75,4 +75,6 @@ type Client interface {
 	GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (WebHookConfig, error)
 	// CreateHook creates a webhook that points at kubechecks
 	CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error
+	// GetName returns the VCS client name (e.g. "github" or "gitlab")
+	GetName() string
 }

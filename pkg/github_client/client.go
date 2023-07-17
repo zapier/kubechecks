@@ -65,6 +65,10 @@ func createGithubClient() *Client {
 	return &Client{c}
 }
 
+func (c *Client) GetName() string {
+	return "github"
+}
+
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// Github provides the SHA256 of the secret + payload body, so we extract the body and compare
 	// We have to split it like this as the ValidatePayload method consumes the request

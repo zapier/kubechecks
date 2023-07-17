@@ -64,6 +64,10 @@ func (c *Client) getTokenUser() (string, string) {
 	return user.Username, user.Email
 }
 
+func (c *Client) GetName() string {
+	return "gitlab"
+}
+
 // Each client has a different way of verifying their payloads; return an err if this isnt valid
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// If we have a secret, and the secret doesn't match, return an error

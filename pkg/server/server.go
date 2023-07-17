@@ -98,7 +98,7 @@ func (s *Server) ensureWebhooks() error {
 	ctx := context.TODO()
 	vcsClient, _ := GetVCSClient()
 
-	fullUrl, err := url.JoinPath(urlBase, s.hooksPrefix())
+	fullUrl, err := url.JoinPath(urlBase, s.hooksPrefix(), vcsClient.GetName(), "project")
 	if err != nil {
 		log.Warn().Str("urlBase", urlBase).Msg("failed to create a webhook url")
 		return errors.Wrap(err, "failed to create a webhook url")
