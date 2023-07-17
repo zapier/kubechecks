@@ -93,27 +93,27 @@ func (s *Server) ensureWebhooks() error {
 		return errors.New("must define 'webhook-url-base' to create webhooks")
 	}
 
-	fmt.Println("ensuring all webhooks are created correctly")
+	log.Info().Msg("ensuring all webhooks are created correctly")
 
 	ctx := context.TODO()
 	vcsClient, _ := GetVCSClient()
 
 	fullUrl, err := url.JoinPath(urlBase, s.hooksPrefix())
 	if err != nil {
+		log.Warn().Str("urlBase", urlBase).Msg("failed to create a webhook url")
 		return errors.Wrap(err, "failed to create a webhook url")
 	}
+	log.Info().Str("webhookUrl", fullUrl).Msg("webhook URL for this kubechecks instance")
 
 	for repo := range s.cfg.VcsToArgoMap.VcsRepos {
 		_, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
 		if err != nil && err != vcs_clients.ErrHookNotFound {
-			println(fmt.Sprintf("failed to get hook for %s:", repo))
-			println(err)
+			log.Error().Err(err).Msgf("failed to get hook for %s:", repo)
 			continue
 		}
 
 		if err = vcsClient.CreateHook(ctx, repo, fullUrl, s.cfg.WebhookSecret); err != nil {
-			println(fmt.Sprintf("failed to create hook for %s:", repo))
-			println(err.Error())
+			log.Info().Err(err).Msgf("failed to create hook for %s:", repo)
 		}
 	}
 
@@ -121,6 +121,7 @@ func (s *Server) ensureWebhooks() error {
 }
 
 func (s *Server) buildVcsToArgoMap() error {
+	log.Debug().Msg("building VCS to Application Map")
 	if !viper.GetBool("monitor-all-applications") {
 		return nil
 	}
