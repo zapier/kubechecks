@@ -211,7 +211,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 
 	if len(ce.affectedApps) <= 0 && len(ce.affectedAppSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		ce.client.PostMessage(ctx, ce.repo.FullName, ce.repo.CheckID, "No changes")
+		ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "No changes")
 		return
 	}
 
@@ -444,7 +444,7 @@ func (ce *CheckEvent) createNote(ctx context.Context) *vcs_clients.Message {
 	fmt.Fprintf(&sb, "# Kubechecks Report:\n")
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.client.PostMessage(ctx, ce.repo.FullName, ce.repo.CheckID, sb.String())
+	return ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, sb.String())
 }
 
 // cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.

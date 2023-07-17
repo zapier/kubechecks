@@ -16,16 +16,15 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-func (c *Client) PostMessage(ctx context.Context, projectName string, prID int, msg string) *vcs_clients.Message {
+func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, prID int, msg string) *vcs_clients.Message {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
-	repoNameComponents := strings.Split(projectName, "/")
-	log.Debug().Msgf("Posting message to PR %d in repo %s", prID, projectName)
+	log.Debug().Msgf("Posting message to PR %d in repo %s", prID, repo.FullName)
 	comment, _, err := c.Issues.CreateComment(
 		ctx,
-		repoNameComponents[0],
-		repoNameComponents[1],
+		repo.Owner,
+		repo.Name,
 		prID,
 		&github.IssueComment{Body: &msg},
 	)
@@ -37,7 +36,7 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, prID int, 
 
 	return &vcs_clients.Message{
 		Lock:    sync.Mutex{},
-		Name:    projectName,
+		Name:    repo.FullName,
 		CheckID: prID,
 		NoteID:  int(*comment.ID),
 		Msg:     msg,
@@ -86,7 +85,7 @@ func (c *Client) pruneOldComments(ctx context.Context, repo *repo.Repo, comments
 		if strings.EqualFold(comment.GetUser().GetLogin(), githubTokenUser) {
 			_, err := c.Issues.DeleteComment(ctx, repo.Owner, repo.Name, *comment.ID)
 			if err != nil {
-				return fmt.Errorf("Failed to delete comment: %w", err)
+				return fmt.Errorf("failed to delete comment: %w", err)
 			}
 		}
 	}

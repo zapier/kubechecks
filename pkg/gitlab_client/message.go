@@ -15,12 +15,12 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-func (c *Client) PostMessage(ctx context.Context, projectName string, mergeRequestID int, msg string) *vcs_clients.Message {
+func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, mergeRequestID int, msg string) *vcs_clients.Message {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
 	n, _, err := c.Notes.CreateMergeRequestNote(
-		projectName, mergeRequestID,
+		repo.FullName, mergeRequestID,
 		&gitlab.CreateMergeRequestNoteOptions{
 			Body: gitlab.String(msg),
 		})
@@ -31,7 +31,7 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, mergeReque
 
 	return &vcs_clients.Message{
 		Lock:    sync.Mutex{},
-		Name:    projectName,
+		Name:    repo.FullName,
 		CheckID: mergeRequestID,
 		NoteID:  n.ID,
 		Msg:     msg,
