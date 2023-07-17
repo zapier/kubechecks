@@ -31,7 +31,7 @@ type Repo struct {
 	Owner         string   // Owner of the repo (in Gitlab this is the namespace)
 	CheckID       int      // MR/PR id that generated this Repo
 	SHA           string   // SHA of the MR/PRs head
-	OwnerName     string   // Owner/Name combined (ie zapier/kubechecks)
+	FullName      string   // Owner/Name combined (ie zapier/kubechecks)
 	Username      string   // Username of auth'd client
 	Email         string   // Email of auth'd client
 	Labels        []string // Labels associated with the MR/PR

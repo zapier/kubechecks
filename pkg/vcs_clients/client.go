@@ -65,4 +65,6 @@ type Client interface {
 	CreateRepo(context.Context, interface{}) (*repo.Repo, error)
 	// Set status for a specific commit on the remote VCS
 	CommitStatus(context.Context, *repo.Repo, CommitState) error
+	// Tidy outdated comments either by hiding or deleting them
+	TidyOutdatedComments(context.Context, *repo.Repo) error
 }

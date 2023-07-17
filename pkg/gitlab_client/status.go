@@ -29,7 +29,7 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_cl
 	var pipelineStatus *gitlab.PipelineInfo
 	getStatusFn := func() error {
 		log.Debug().Msg("getting pipeline status")
-		pipelineStatus = c.GetLastPipelinesForCommit(repo.OwnerName, repo.SHA)
+		pipelineStatus = c.GetLastPipelinesForCommit(repo.FullName, repo.SHA)
 		if pipelineStatus == nil {
 			return errNoPipelineStatus
 		}
@@ -44,10 +44,10 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_cl
 		status.PipelineID = &pipelineStatus.ID
 	}
 
-	log.Debug().Str("project", repo.OwnerName).Str("commit_sha", repo.SHA).Msg("gitlab client: updating commit status")
-	_, err = c.setCommitStatus(repo.OwnerName, repo.SHA, status)
+	log.Debug().Str("project", repo.FullName).Str("commit_sha", repo.SHA).Msg("gitlab client: updating commit status")
+	_, err = c.setCommitStatus(repo.FullName, repo.SHA, status)
 	if err != nil {
-		log.Error().Err(err).Str("project", repo.OwnerName).Msg("gitlab client: could not set commit status")
+		log.Error().Err(err).Str("project", repo.FullName).Msg("gitlab client: could not set commit status")
 		return err
 	}
 	return nil

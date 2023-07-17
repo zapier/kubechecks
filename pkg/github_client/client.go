@@ -7,8 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v53/github"
 	"github.com/rs/zerolog/log"
+	"github.com/shurcooL/githubv4"
 	"github.com/spf13/viper"
 	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/vcs_clients"
@@ -20,6 +21,7 @@ var githubTokenUser string
 var once sync.Once // used to ensure we don't reauth this
 
 type Client struct {
+	v4Client *githubv4.Client
 	*github.Client
 }
 
@@ -39,7 +41,7 @@ func getTokenUser() string {
 			log.Fatal().Err(err).Msg("could not create Github token user")
 		}
 	}
-	return *user.Name
+	return *user.Login
 }
 
 // Create a new github client using the auth token provided. We
@@ -58,7 +60,10 @@ func createGithubClient() *Client {
 	tc := oauth2.NewClient(ctx, ts)
 	c := github.NewClient(tc) // If this has failed, we'll catch it on first call
 
-	return &Client{c}
+	// Use the client from shurcooL's githubv4 library for queries.
+	v4Client := githubv4.NewClient(tc)
+
+	return &Client{Client: c, v4Client: v4Client}
 }
 
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
@@ -131,7 +136,8 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		HeadRef:       *event.PullRequest.Head.Ref,
 		DefaultBranch: *event.Repo.DefaultBranch,
 		CloneURL:      *event.Repo.CloneURL,
-		OwnerName:     event.Repo.GetFullName(),
+		FullName:      event.Repo.GetFullName(),
+		Owner:         *event.Repo.Owner.Login,
 		Name:          event.Repo.GetName(),
 		CheckID:       int(*event.PullRequest.Number),
 		SHA:           *event.PullRequest.Head.SHA,
@@ -143,7 +149,7 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status vcs_clients.CommitState) error {
 	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.String()).Msg("setting Github commit status")
-	repoNameComponents := strings.Split(repo.OwnerName, "/")
+	repoNameComponents := strings.Split(repo.FullName, "/")
 	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repoNameComponents[0], repoNameComponents[1], repo.SHA, &github.RepoStatus{
 		State:       github.String(status.String()),
 		Description: github.String(status.StateToDesc()),
