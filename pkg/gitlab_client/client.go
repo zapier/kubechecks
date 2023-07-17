@@ -147,10 +147,11 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 	_, _, err := c.Client.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
 		URL:                 pkg.Pointer(webhookUrl),
 		MergeRequestsEvents: pkg.Pointer(true),
+		Token:               pkg.Pointer(webhookSecret),
 	})
 
 	if err != nil {
-		return errors.Wrap(err, "failed to list project webhooks")
+		return errors.Wrap(err, "failed to create project webhook")
 	}
 
 	return nil
