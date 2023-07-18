@@ -86,7 +86,7 @@ tests:
             periodSeconds: 5
       - equal:
           path: spec.template.spec.containers[0].livenessProbe
-          value: 
+          value:
             failureThreshold: 200
             httpGet:
               path: /live

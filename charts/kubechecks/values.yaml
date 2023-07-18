@@ -16,9 +16,8 @@ deployment:
   replicaCount: 1
 
   image:
-    repository: ghcr.io/zapier
     pullPolicy: Always
-    name: "kubechecks"
+    name: "ghcr.io/zapier/kubechecks"
     tag: ""  # Defaults to the .Chart.AppVersion
 
   imagePullSecrets: []

@@ -28,7 +28,7 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.deployment.image }}
-          image: "{{ if .repository }}{{ .repository }}/{{ end }}{{ .name }}:v{{ coalesce .tag $.Chart.AppVersion }}"
+          image: "{{ .name }}:{{ coalesce .tag (printf "v%s" $.Chart.AppVersion) }}"
           imagePullPolicy: {{ .pullPolicy }}
           {{- end }}
           envFrom:
