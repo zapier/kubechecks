@@ -54,7 +54,7 @@ deployment:
     # KUBECHECKS_OTEL_COLLECTOR_PORT: "4317"
     # KUBECHECKS_OTEL_ENABLED: "true"
     # KUBECHECKS_VCS_TYPE: "github"
-    # KUBECHECKS_HIDE_OUTDATED_COMMENTS_MODE: "hide" # other options delete
+    # KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "hide" # other options delete
 
   startupProbe:
     failureThreshold: 30
