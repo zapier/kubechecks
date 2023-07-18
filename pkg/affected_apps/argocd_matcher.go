@@ -34,7 +34,7 @@ func (a *ArgocdMatcher) AffectedApps(ctx context.Context, changeList []string) (
 			log.Debug().Msgf("- app path: %s", path)
 			if strings.HasPrefix(changePath, path) {
 				log.Debug().Msg("match!")
-				appsMap[changePath] = name
+				appsMap[name] = path
 				appsSet[name] = struct{}{}
 				break
 			}

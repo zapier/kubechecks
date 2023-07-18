@@ -89,8 +89,8 @@ func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error)
 	return github.ParseWebHook(github.WebHookType(r), payload)
 }
 
-// Creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
-// Has already occured previously, so we expect a valid event type for the Github client in the payload arg
+// CreateRepo creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
+// Has already occured previously, so we expect a valid event type for the GitHub client in the payload arg
 func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Repo, error) {
 	switch p := payload.(type) {
 	case *github.PullRequestEvent:
