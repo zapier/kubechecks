@@ -51,6 +51,9 @@ test-golang:
 build-binary:
     FROM +go-deps
 
+    ARG GOOS=linux
+    ARG GOARCH=amd64
+    ARG VARIANT
     ARG --required GIT_TAG
     ARG --required GIT_COMMIT
 
@@ -61,6 +64,7 @@ build-binary:
 
 build-docker:
     FROM ubuntu
+    ARG TARGETVARIANT
 
     ARG --required GIT_TAG
     ARG --required GIT_COMMIT
@@ -91,6 +95,7 @@ build-docker:
 
 release-docker:
     FROM ubuntu
+    ARG TARGETVARIANT
 
     ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
     ARG --required GIT_TAG
@@ -112,12 +117,12 @@ release-docker:
 
     COPY ./policy ./policy
     COPY ./schemas ./schemas
-    COPY (+build-binary/kubechecks) .
+    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
 
-    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
+    SAVE IMAGE --push $CI_REGISTRY_IMAGE:latest
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_COMMIT
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_TAG
 
@@ -174,6 +179,7 @@ test-helm:
 release-helm:
     ARG CHART_RELEASER_VERSION="1.6.0"
     ARG HELM_VERSION="3.8.1"
+    ARG token=""
     FROM quay.io/helmpack/chart-releaser:v${CHART_RELEASER_VERSION}
 
     RUN FILE=helm.tgz \
