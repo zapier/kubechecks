@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -47,14 +49,20 @@ func (argo *ArgoClient) GetKubernetesVersionByApplicationName(ctx context.Contex
 	}
 
 	// Get destination cluster
-	destCluster := app.Spec.Destination.Server
+	// Some app specs have a Name defined, some have a Server defined, some have both, take a valid one and use it
+	log.Debug().Msgf("for appname %s, server dest says: %s and name dest says: %s", appName, app.Spec.Destination.Server, app.Spec.Destination.Name)
+	var clusterRequest *cluster.ClusterQuery
+	if app.Spec.Destination.Server != "" {
+		clusterRequest = &cluster.ClusterQuery{Server: app.Spec.Destination.Server}
+	} else {
+		clusterRequest = &cluster.ClusterQuery{Name: app.Spec.Destination.Name}
+	}
 
 	// Get cluster client
 	clusterCloser, clusterClient := argo.GetClusterClient()
 	defer clusterCloser.Close()
 
 	// Get cluster
-	clusterRequest := &cluster.ClusterQuery{Server: destCluster}
 	clusterResponse, err := clusterClient.Get(ctx, clusterRequest)
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Cluster error")

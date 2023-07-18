@@ -168,7 +168,7 @@ func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
 		BaseRef:       event.ObjectAttributes.TargetBranch,
 		HeadRef:       event.ObjectAttributes.SourceBranch,
 		DefaultBranch: event.Project.DefaultBranch,
-		OwnerName:     event.Project.PathWithNamespace,
+		FullName:      event.Project.PathWithNamespace,
 		CloneURL:      event.Project.GitHTTPURL,
 		Name:          event.Project.Name,
 		CheckID:       event.ObjectAttributes.IID,

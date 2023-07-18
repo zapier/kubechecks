@@ -3,30 +3,24 @@ package gitlab_client
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"github.com/xanzy/go-gitlab"
+	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/vcs_clients"
 	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
 )
 
-func (c *Client) PostMessage(ctx context.Context, projectName string, mergeRequestID int, msg string) *vcs_clients.Message {
+func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, mergeRequestID int, msg string) *vcs_clients.Message {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
-	// First prune any comments from outdated runs of kubechecks
-	err := c.pruneOldComments(ctx, projectName, mergeRequestID)
-	if err != nil {
-		telemetry.SetError(span, err, "Prune old comments")
-		log.Error().Err(err).Msg("could not prune old comments")
-	}
-
 	n, _, err := c.Notes.CreateMergeRequestNote(
-		projectName, mergeRequestID,
+		repo.FullName, mergeRequestID,
 		&gitlab.CreateMergeRequestNoteOptions{
 			Body: gitlab.String(msg),
 		})
@@ -37,7 +31,7 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, mergeReque
 
 	return &vcs_clients.Message{
 		Lock:    sync.Mutex{},
-		Name:    projectName,
+		Name:    repo.FullName,
 		CheckID: mergeRequestID,
 		NoteID:  n.ID,
 		Msg:     msg,
@@ -46,83 +40,44 @@ func (c *Client) PostMessage(ctx context.Context, projectName string, mergeReque
 	}
 }
 
-func (c *Client) CollapseExistingCheckCommentsInMergeRequest(ctx context.Context, projectId int, mergeRequestID int, lastCommitSHA string) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "CollapseExistingCheckCommentsInMergeRequest")
+func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
+	_, span := otel.Tracer("Kubechecks").Start(ctx, "HideOutdatedMessages")
 	defer span.End()
 
-	u, _, err := c.Users.CurrentUser()
-	if err != nil {
-		telemetry.SetError(span, err, "Collapse Existing Merge Request Check Notes")
-		log.Error().Err(err).Int("projectId", projectId).Int("mr", mergeRequestID).Msg("could not fetch current user for Gitlab client")
-	}
-
-	// list merge request notes
-	notes, _, err := c.Notes.ListMergeRequestNotes(projectId, mergeRequestID, &gitlab.ListMergeRequestNotesOptions{
-		ListOptions: gitlab.ListOptions{
-			Page:    1,
-			PerPage: 100,
-		},
-	})
-	if err != nil {
-		telemetry.SetError(span, err, "Collapse Existing Merge Request Check Notes")
-		log.Error().Err(err).Int("projectId", projectId).Int("mr", mergeRequestID).Msg("could not fetch notes for merge request")
-	}
+	log.Debug().Msg("hiding outdated comments")
 
 	// loop through notes and collapse any that are from the current user
 	for _, note := range notes {
-		if note.Author.ID != u.ID {
+
+		// Do not try to hide the note if
+		// note user is not the gitlabTokenUser
+		// note is an internal system note such as notes on commit messages
+		// note is already hidden
+		if note.Author.Username != gitlabTokenUser || note.System || strings.Contains(note.Body, "<summary><i>OUTDATED: Kubechecks Report</i></summary>") {
 			continue
 		}
 
-		if strings.Contains(note.Body, fmt.Sprintf("<small>_Done. CommitSHA: %s_<small>\n", lastCommitSHA)) {
-			continue
-		}
-
-		if !strings.Contains(note.Body, "<summary><i>OUTDATED: ArgoCD Application Checks: <code>") { // Check if the comment is already marked as outdated
-			// collapse note Body
-			appName := extractAppName(note.Body)
-			if appName == "" {
-				log.Debug().Int("projectId", projectId).Int("mr", mergeRequestID).Msgf("Could not extract app name from comment %d", note.ID)
-				continue
-			}
-
-			log.Debug().Int("projectId", projectId).Int("mr", mergeRequestID).Msgf("Updating comment %d for %s app", note.ID, appName)
-			newBody := fmt.Sprintf(`
+		newBody := fmt.Sprintf(`
 <details>
-	<summary><i>OUTDATED: ArgoCD Application Checks: <code>`+appName+`</code> </i> </summary>
+	<summary><i>OUTDATED: Kubechecks Report</i></summary>
 	
 %s
 </details>
 			`, note.Body)
 
-			log.Debug().Int("projectId", projectId).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
+		log.Debug().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
 
-			_, _, err = c.Notes.UpdateMergeRequestNote(projectId, mergeRequestID, note.ID, &gitlab.UpdateMergeRequestNoteOptions{
-				Body: &newBody,
-			})
-			if err != nil {
-				telemetry.SetError(span, err, "Collapse Existing Merge Request Check Note")
-				log.Error().Int("projectId", projectId).Int("mr", mergeRequestID).Err(err).Msgf("could not collapse note %d for merge request", note.ID)
-				continue
-			}
+		_, _, err := c.Notes.UpdateMergeRequestNote(projectName, mergeRequestID, note.ID, &gitlab.UpdateMergeRequestNoteOptions{
+			Body: &newBody,
+		})
+
+		if err != nil {
+			telemetry.SetError(span, err, "Hide Existing Merge Request Check Note")
+			return fmt.Errorf("could not hide note %d for merge request: %w", note.ID, err)
 		}
+
 	}
-}
-
-func extractAppName(input string) string {
-	pattern := "## ArgoCD Application Checks: `([a-zA-Z0-9-_]+)` \n"
-	// Compile the regex pattern
-	regex := regexp.MustCompile(pattern)
-
-	// Find the first match in the input string
-	matches := regex.FindStringSubmatch(input)
-
-	// Ensure a match is found and extract the application name
-	if len(matches) == 2 {
-		return matches[1]
-	}
-
-	return ""
+	return nil
 }
 
 func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg string) error {
@@ -143,16 +98,11 @@ func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg 
 }
 
 // Iterate over all comments for the Merge Request, deleting any from the authenticated user
-func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID int) error {
+func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID int, notes []*gitlab.Note) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "pruneOldComments")
 	defer span.End()
 
-	notes, _, err := c.Notes.ListMergeRequestNotes(projectName, mrID, nil)
-	if err != nil {
-		telemetry.SetError(span, err, "Prune Old Comments")
-		log.Error().Err(err).Msg("could not fetch notes for merge request")
-		return err
-	}
+	log.Debug().Msg("deleting outdated comments")
 
 	for _, note := range notes {
 		if note.Author.Username == gitlabTokenUser {
@@ -160,10 +110,46 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 			_, err := c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
 			if err != nil {
 				telemetry.SetError(span, err, "Prune Old Comments")
-				log.Error().Err(err).Msg("could not delete old comment")
-				return err
+				return fmt.Errorf("could not delete old comment: %w", err)
 			}
 		}
 	}
 	return nil
+}
+
+func (c *Client) TidyOutdatedComments(ctx context.Context, repo *repo.Repo) error {
+	_, span := otel.Tracer("Kubechecks").Start(ctx, "TidyOutdatedMessages")
+	defer span.End()
+
+	log.Debug().Msg("Tidying outdated comments")
+
+	var allNotes []*gitlab.Note
+	nextPage := 0
+
+	for {
+		// list merge request notes
+		notes, resp, err := c.Notes.ListMergeRequestNotes(repo.FullName, repo.CheckID, &gitlab.ListMergeRequestNotesOptions{
+			Sort:    gitlab.String("asc"),
+			OrderBy: gitlab.String("created_at"),
+			ListOptions: gitlab.ListOptions{
+				Page: nextPage,
+			},
+		})
+
+		if err != nil {
+			telemetry.SetError(span, err, "Tidy Outdated Comments")
+			return fmt.Errorf("could not fetch notes for merge request: %w", err)
+		}
+		allNotes = append(allNotes, notes...)
+		if resp.NextPage == 0 {
+			break
+		}
+		nextPage = resp.NextPage
+	}
+
+	if strings.ToLower(viper.GetString("tidy-outdated-comments-mode")) == "delete" {
+		return c.pruneOldComments(ctx, repo.FullName, repo.CheckID, allNotes)
+	}
+	return c.hideOutdatedMessages(ctx, repo.FullName, repo.CheckID, allNotes)
+
 }

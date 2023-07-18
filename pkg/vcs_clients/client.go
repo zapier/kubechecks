@@ -63,7 +63,7 @@ type WebHookConfig struct {
 // Client represents a VCS client
 type Client interface {
 	// PostMessage takes in project name in form "owner/repo" (ie zapier/kubechecks), the PR/MR id, and the actual message
-	PostMessage(context.Context, string, int, string) *Message
+	PostMessage(context.Context, *repo.Repo, int, string) *Message
 	// UpdateMessage update a message with new content
 	UpdateMessage(context.Context, *Message, string) error
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
@@ -80,4 +80,6 @@ type Client interface {
 	CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error
 	// GetName returns the VCS client name (e.g. "github" or "gitlab")
 	GetName() string
+	// Tidy outdated comments either by hiding or deleting them
+	TidyOutdatedComments(context.Context, *repo.Repo) error
 }
