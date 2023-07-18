@@ -57,7 +57,7 @@ func init() {
 	flags.String("otel-collector-host", "", "The OpenTelemetry collector host (KUBECHECKS_OTEL_COLLECTOR_HOST).")
 	flags.Bool("otel-enabled", false, "Enable OpenTelemetry (KUBECHECKS_OTEL_ENABLED).")
 
-	flags.StringP("tidy-outdated-comments-mode", "", "hide", "Sets the mode to use when tidying outdated comments. Defaults to hide. Other options are delete, hide (KUBECHECKS_HIDE_OUTDATED_COMMENTS_MODE).")
+	flags.StringP("tidy-outdated-comments-mode", "", "hide", "Sets the mode to use when tidying outdated comments. Defaults to hide. Other options are delete, hide (KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE).")
 
 	viper.BindPFlags(flags)
 
