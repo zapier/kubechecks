@@ -14,10 +14,10 @@ ci-helm:
     BUILD +test-helm
 
 build:
-    BUILD --platform=linux/amd64 --platform=linux/arm64 +build-docker
+    BUILD --platform=linux/amd64 +build-docker
 
 release:
-    BUILD --platform=linux/amd64 --platform=linux/arm64 +release-docker
+    BUILD --platform=linux/amd64 +release-docker
     BUILD +release-helm
 
 go-deps:
@@ -51,20 +51,16 @@ test-golang:
 build-binary:
     FROM +go-deps
 
-    ARG GOOS=linux
-    ARG GOARCH=amd64
-    ARG VARIANT
     ARG --required GIT_TAG
     ARG --required GIT_COMMIT
 
     WORKDIR /src
     COPY . /src
-    RUN GOARM=${VARIANT#v} go build -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit=$GIT_COMMIT -X github.com/zapier/kubechecks/pkg.GitTag=$GIT_TAG" -o kubechecks
+    RUN go build -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit=$GIT_COMMIT -X github.com/zapier/kubechecks/pkg.GitTag=$GIT_TAG" -o kubechecks
     SAVE ARTIFACT kubechecks
 
 build-docker:
     FROM ubuntu
-    ARG TARGETVARIANT
 
     ARG --required GIT_TAG
     ARG --required GIT_COMMIT
@@ -74,19 +70,19 @@ build-docker:
 
     WORKDIR /tmp
     RUN curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" -o install_kustomize.sh && \
-        chmod 700 install_kustomize.sh && \ 
+        chmod 700 install_kustomize.sh && \
         ./install_kustomize.sh 4.5.7 /usr/local/bin
     RUN curl -fsSL  "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" -o get-helm-3.sh && \
-        chmod 700 get-helm-3.sh && \ 
+        chmod 700 get-helm-3.sh && \
         ./get-helm-3.sh -v v3.10.0
-    
+
     RUN mkdir /app
 
     WORKDIR /app
 
     COPY ./policy ./policy
     COPY ./schemas ./schemas
-    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
+    COPY (+build-binary/kubechecks) .
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
@@ -95,7 +91,6 @@ build-docker:
 
 release-docker:
     FROM ubuntu
-    ARG TARGETVARIANT
 
     ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
     ARG --required GIT_TAG
@@ -105,10 +100,10 @@ release-docker:
 
     WORKDIR /tmp
     RUN curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" -o install_kustomize.sh && \
-        chmod 700 install_kustomize.sh && \ 
+        chmod 700 install_kustomize.sh && \
         ./install_kustomize.sh 4.5.7 /usr/local/bin
     RUN curl -fsSL  "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" -o get-helm-3.sh && \
-        chmod 700 get-helm-3.sh && \ 
+        chmod 700 get-helm-3.sh && \
         ./get-helm-3.sh -v v3.10.0
 
     RUN mkdir /app
@@ -117,7 +112,7 @@ release-docker:
 
     COPY ./policy ./policy
     COPY ./schemas ./schemas
-    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
+    COPY (+build-binary/kubechecks) .
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
