@@ -308,13 +308,14 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 
 	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", app, ce.TempWorkingDir, dir)
 	manifests, err := argo_client.GetManifestsLocal(ctx, app, ce.TempWorkingDir, dir)
-	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
-	formattedManifests := argo_client.FormatManifestsYAML(manifests)
 	if err != nil {
-		ce.logger.Error().Err(err).Msg("Unable to get manifests")
+		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", app, dir)
 		ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf("Unable to get manifests for application: \n\n ```\n%s\n```", ce.cleanupGetManifestsError(err)))
 		return nil
 	}
+
+	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
+	formattedManifests := argo_client.FormatManifestsYAML(manifests)
 	ce.logger.Trace().Msgf("Manifests:\n%+v\n", formattedManifests)
 
 	k8sVersion, err := argo_client.GetArgoClient().GetKubernetesVersionByApplicationName(ctx, app)
