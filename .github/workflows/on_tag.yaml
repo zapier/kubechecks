@@ -12,6 +12,11 @@ env:
 jobs:
   release:
     runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+      packages: write
+
     steps:
       - name: Set up QEMU
         id: qemu
