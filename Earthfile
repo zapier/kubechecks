@@ -198,6 +198,7 @@ release-helm:
     RUN git config --global user.name "Open Source at Zapier"
     RUN git fetch --prune --unshallow | true
 
+    ARG repo_owner=""
     ARG token=""
-    RUN --push cr --config .github/cr.yaml upload --token $token --skip-existing
-    RUN --push cr --config .github/cr.yaml index --token $token --push
+    RUN --push cr --config .github/cr.yaml upload --owner $repo_owner --token $token --skip-existing
+    RUN --push cr --config .github/cr.yaml index --owner $repo_owner --token $token --push
