@@ -10,11 +10,34 @@ env:
   GOLANG_TOOL_VERSION: 1.19.3
 
 jobs:
-  release:
+  release-chart:
     runs-on: ubuntu-22.04
 
     permissions:
       contents: write
+
+    steps:
+      - name: checkout the source code
+        uses: actions/checkout@v3
+
+      - uses: wistia/parse-tool-versions@v1.0
+
+      - uses: earthly/actions-setup@v1
+        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
+
+      - name: Build and release the helm chart
+        run: |
+          earthly \
+            --push \
+            +release-helm \
+            --repo_owner ${{ github.repository_owner }} \
+            --token ${{ secrets.GITHUB_TOKEN }}
+
+  release-arm64:
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
       packages: write
 
     steps:
@@ -50,9 +73,47 @@ jobs:
         run: |
           earthly \
             --push \
+            --platform linux/arm64 \
             +release \
             --GIT_TAG=${{ env.GIT_RELEASE_TAG }} \
             --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
-            --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks \
-            --repo_owner ${{ github.repository_owner }} \
-            --token ${{ secrets.GITHUB_TOKEN }}
+            --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks
+
+  release-amd64:
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: checkout the source code
+        uses: actions/checkout@v3
+
+      - uses: wistia/parse-tool-versions@v1.0
+
+      - uses: earthly/actions-setup@v1
+        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
+
+      - name: extract tag and sha
+        run: |
+          echo "GIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "GIT_RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+          echo "GIT_REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: login to registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the Docker image
+        run: |
+          earthly \
+            --push \
+            --platform linux/amd64 \
+            +release \
+            --GIT_TAG=${{ env.GIT_RELEASE_TAG }} \
+            --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
+            --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks

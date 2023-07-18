@@ -14,10 +14,10 @@ ci-helm:
     BUILD +test-helm
 
 build:
-    BUILD --platform=linux/amd64 +build-docker
+    BUILD --platform=linux/amd64 --platform=linux/arm64 +build-docker
 
 release:
-    BUILD --platform=linux/amd64 +release-docker
+    BUILD --platform=linux/amd64 --platform=linux/arm64 +release-docker
     BUILD +release-helm
 
 go-deps:
@@ -56,7 +56,7 @@ build-binary:
 
     WORKDIR /src
     COPY . /src
-    RUN go build -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit=$GIT_COMMIT -X github.com/zapier/kubechecks/pkg.GitTag=$GIT_TAG" -o kubechecks
+    RUN GOARM=${VARIANT#v} go build -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit=$GIT_COMMIT -X github.com/zapier/kubechecks/pkg.GitTag=$GIT_TAG" -o kubechecks
     SAVE ARTIFACT kubechecks
 
 build-docker:
@@ -82,7 +82,7 @@ build-docker:
 
     COPY ./policy ./policy
     COPY ./schemas ./schemas
-    COPY (+build-binary/kubechecks) .
+    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
@@ -117,7 +117,7 @@ release-docker:
 
     CMD ["./kubechecks", "controller"]
 
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:latest
+    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_COMMIT
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_TAG
 
