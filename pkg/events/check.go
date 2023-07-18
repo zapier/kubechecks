@@ -164,10 +164,13 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) (map[strin
 	var matcher affected_apps.Matcher
 	cfg, _ := repo_config.LoadRepoConfig(ce.TempWorkingDir)
 	if cfg != nil {
+		log.Debug().Msg("using the config matcher")
 		matcher = affected_apps.NewConfigMatcher(cfg)
 	} else if viper.GetBool("monitor-all-applications") {
+		log.Debug().Msg("using an argocd matcher")
 		matcher = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo)
 	} else {
+		log.Debug().Msg("using best effort matcher")
 		ce.repoFiles, err = ce.repo.GetListOfRepoFiles()
 		if err != nil {
 			telemetry.SetError(span, err, "Get List of Repo Files")
