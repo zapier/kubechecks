@@ -54,7 +54,7 @@ var ErrInvalidType = errors.New("invalid event type")
 // Clients need to implement this interface to allow CheckEvents to talk to their respective PR etc
 type Client interface {
 	// Take in project name in form "owner/repo" (ie zapier/kubechecks), the PR/MR id, and the actual message
-	PostMessage(context.Context, string, int, string) *Message
+	PostMessage(context.Context, *repo.Repo, int, string) *Message
 	// Update message with new content
 	UpdateMessage(context.Context, *Message, string) error
 	// Validate webhook secret and return the body; must be called even if no secret
@@ -65,4 +65,6 @@ type Client interface {
 	CreateRepo(context.Context, interface{}) (*repo.Repo, error)
 	// Set status for a specific commit on the remote VCS
 	CommitStatus(context.Context, *repo.Repo, CommitState) error
+	// Tidy outdated comments either by hiding or deleting them
+	TidyOutdatedComments(context.Context, *repo.Repo) error
 }
