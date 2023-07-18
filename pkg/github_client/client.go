@@ -205,6 +205,7 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 		Config: map[string]interface{}{
 			"content_type": "json",
 			"insecure_ssl": "0",
+			"secret":       webhookSecret,
 			"url":          webhookUrl,
 		},
 		Events: []string{
