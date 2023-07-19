@@ -6,8 +6,42 @@ on:
     types: [published]
 
 jobs:
-  release:
+  release-helm:
     runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: checkout the source code
+        uses: actions/checkout@v3
+
+      - uses: wistia/parse-tool-versions@v1.0
+
+      - uses: earthly/actions-setup@v1
+        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
+
+      - name: Build and push the Docker image
+        run: |
+          earthly \
+            --push \
+            +release-helm \
+              --repo_owner ${{ github.repository_owner }} \
+              --token ${{ secrets.GITHUB_TOKEN }}
+
+  release-docker:
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        platform:
+          - { earthly: linux/arm64, suffix: linux-arm64 }
+          - { earthly: linux/amd64, suffix: linux-amd64 }
+
     steps:
       - name: Set up QEMU
         id: qemu
@@ -28,7 +62,6 @@ jobs:
         run: |
           echo "GIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "GIT_RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-          echo "GIT_REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
       - name: login to registry
         uses: docker/login-action@v1
@@ -40,10 +73,37 @@ jobs:
       - name: Build and push the Docker image
         run: |
           earthly \
+            --platform ${{ matrix.platform.earthly }} \
             --push \
-            +release \
-            --GIT_TAG=${{ env.GIT_RELEASE_TAG }} \
-            --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
-            --CI_REGISTRY_IMAGE=ghcr.io/zapier/kubechecks \
-            --repo_owner ${{ github.repository_owner }} \
-            --token ${{ secrets.GITHUB_TOKEN }}
+            +docker \
+              --GIT_TAG=${{ env.GIT_RELEASE_TAG }}-${{ matrix.platform.suffix }} \
+              --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
+              --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks
+
+  release-multiarch:
+    runs-on: ubuntu-22.04
+
+    needs:
+      - release-docker
+
+    permissions:
+      packages: write
+
+    steps:
+      - name: extract tag and sha
+        run: |
+          echo "GIT_RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+
+      - name: login to registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: int128/docker-manifest-create-action@v1
+        with:
+          tags: ghcr.io/${{ github.repository_owner }}/kubechecks:${{ env.GIT_RELEASE_TAG }}
+          suffixes: |
+            -linux-amd64
+            -linux-arm64
