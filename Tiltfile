@@ -49,10 +49,8 @@ deploy_ngrok(cfg)
 # /////////////////////////////////////////////////////////////////////////////
 
 # Load ArgoCD Tiltfile
-load('./localdev/argocd/Tiltfile', 'deploy_argo', 'cleanup_argo_apps')
+load('./localdev/argocd/Tiltfile', 'deploy_argo')
 deploy_argo()
-if config.tilt_subcommand == 'down':
-    cleanup_argo_apps(k8s_context, k8s_namespace)
 
 #load('./localdev/reloader/Tiltfile', 'deploy_reloader')
 #deploy_reloader()
@@ -220,60 +218,10 @@ helm_remote(
     version='1.0.26'
 )
 
-# /////////////////////////////////////////////////////////////////////////////
-# Test Apps
-# /////////////////////////////////////////////////////////////////////////////
-# Load the terraform url we output, default to gitlab if cant find a vcs-type variable
-vcsPath = "./localdev/terraform/{}/project.url".format(cfg.get('vcs-type', 'gitlab'))
-print("Path to url: " + vcsPath)
-projectUrl=str(read_file(vcsPath, "")).strip('\n')
-print("Remote Project URL: " + projectUrl)
+load("localdev/test_apps/Tiltfile", "install_test_apps")
+install_test_apps(cfg)
 
-if projectUrl != "":
-  for app in ["echo-server", "httpbin"]:
-    print("Creating Test App: " + app)
-    # apply the test Application manifests to the test namespace
-    # update the source repo URL with our test gitlab project
-    apply_cmd = """
-    envsubst < {}.yaml | kubectl -n {} apply -f - 1>&2
-    kubectl --namespace={} get application in-cluster-{} -oyaml 
-    """
-    k8s_custom_deploy (
-        '{}-application'.format(app) ,
-        apply_cmd.format(app, k8s_namespace, k8s_namespace, app),
-        'kubectl -n {} delete application in-cluster-{} --wait || true'.format(k8s_namespace, app),
-        [
-            'localdev/test_apps/{}.yaml'.format(app),
-        ] ,
-        apply_dir = 'localdev/test_apps/',
-        apply_env = {
-            "REPO_URL": projectUrl,
-        } ,
-        delete_dir = 'localdev/test_apps/',
-        delete_env = {},
-    )
-
-  for appset in ["httpdump"]:
-    print("Creating Test Appsets: " + app)
-    # apply the test Application manifests to the test namespace
-    # update the source repo URL with our test gitlab project
-    apply_cmd = """
-    envsubst < {}.yaml | kubectl -n {} apply -f - 1>&2
-    kubectl get applicationset {} -oyaml --namespace={}
-    """
-    k8s_custom_deploy (
-        '{}-applicationset'.format(appset) ,
-        apply_cmd.format(appset, k8s_namespace, appset, k8s_namespace),
-        'kubectl -n {} delete applicationset {} --wait || true'.format(k8s_namespace, appset),
-        [
-            'localdev/test_appsets/{}.yaml'.format(appset),
-        ] ,
-        apply_dir = 'localdev/test_appsets/',
-        apply_env = {
-            "REPO_URL": projectUrl,
-        } ,
-        delete_dir = 'localdev/test_appsets/',
-        delete_env = {},
-    )
+load("localdev/test_appsets/Tiltfile", "install_test_appsets")
+install_test_appsets(cfg)
 
 display_port_forwards()

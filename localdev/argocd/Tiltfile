@@ -1,8 +1,20 @@
 def deploy_argo():
     k8s_yaml(kustomize('./localdev/argocd/'))
+
+    k8s_resource(
+        objects=[
+            'applications.argoproj.io:customresourcedefinition',
+            'applicationsets.argoproj.io:customresourcedefinition',
+            'appprojects.argoproj.io:customresourcedefinition',
+        ],
+        new_name='argocd-crds',
+        labels=["argocd"],
+        resource_deps=['k8s:namespace']
+    )
+
     k8s_resource(
         'argocd-server',
-        resource_deps=['k8s:namespace'],
+        resource_deps=['k8s:namespace', 'argocd-crds'],
         labels=["argocd"],
         port_forwards="8081:8080",
         links=[
@@ -17,11 +29,9 @@ def deploy_argo():
     #k8s_resource('argocd-notifications-controller', labels=['argocd'])
     k8s_resource('argocd-redis', labels=['argocd'], resource_deps=['k8s:namespace'])
     k8s_resource('argocd-repo-server', labels=['argocd'], resource_deps=['k8s:namespace'])
+
     k8s_resource(
         objects=[
-            'applications.argoproj.io:customresourcedefinition',
-            'applicationsets.argoproj.io:customresourcedefinition',
-            'appprojects.argoproj.io:customresourcedefinition',
             'argocd-application-controller:serviceaccount',
             'argocd-applicationset-controller:serviceaccount',
             #'argocd-notifications-controller:serviceaccount',
@@ -62,6 +72,3 @@ def deploy_argo():
         labels=["argocd"],
         resource_deps=['k8s:namespace']
     )
-
-def cleanup_argo_apps(ctx, ns):
-    local("kubectl --context {} delete applications.argoproj.io --all -n {}".format(ctx, ns))
