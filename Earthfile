@@ -12,12 +12,13 @@ ci-golang:
 
 ci-helm:
     BUILD +test-helm
+    BUILD +release-helm
 
 build:
-    BUILD --platform=linux/amd64 --platform=linux/arm64 +build-docker
+    BUILD --platform=linux/amd64 --platform=linux/arm64 +docker
 
 release:
-    BUILD --platform=linux/amd64 --platform=linux/arm64 +release-docker
+    BUILD --platform=linux/amd64 --platform=linux/arm64 +docker
     BUILD +release-helm
 
 go-deps:
@@ -62,38 +63,7 @@ build-binary:
     RUN GOARM=${VARIANT#v} go build -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit=$GIT_COMMIT -X github.com/zapier/kubechecks/pkg.GitTag=$GIT_TAG" -o kubechecks
     SAVE ARTIFACT kubechecks
 
-build-docker:
-    FROM ubuntu
-    ARG TARGETVARIANT
-
-    ARG --required GIT_TAG
-    ARG --required GIT_COMMIT
-    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
-
-    RUN apt update && apt install -y ca-certificates curl git
-
-    WORKDIR /tmp
-    RUN curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" -o install_kustomize.sh && \
-        chmod 700 install_kustomize.sh && \
-        ./install_kustomize.sh 4.5.7 /usr/local/bin
-    RUN curl -fsSL  "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" -o get-helm-3.sh && \
-        chmod 700 get-helm-3.sh && \
-        ./get-helm-3.sh -v v3.10.0
-
-    RUN mkdir /app
-
-    WORKDIR /app
-
-    COPY ./policy ./policy
-    COPY ./schemas ./schemas
-    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
-    RUN ./kubechecks help
-
-    CMD ["./kubechecks", "controller"]
-
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_COMMIT
-
-release-docker:
+docker:
     FROM ubuntu
     ARG TARGETVARIANT
 

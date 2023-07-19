@@ -42,8 +42,8 @@ jobs:
           earthly \
             --push \
             +release \
-            --GIT_TAG=${{ env.GIT_RELEASE_TAG }} \
-            --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
-            --CI_REGISTRY_IMAGE=ghcr.io/zapier/kubechecks \
-            --repo_owner ${{ github.repository_owner }} \
-            --token ${{ secrets.GITHUB_TOKEN }}
+              --GIT_TAG=${{ env.GIT_RELEASE_TAG }} \
+              --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
+              --CI_REGISTRY_IMAGE=ghcr.io/zapier/kubechecks \
+              --repo_owner ${{ github.repository_owner }} \
+              --token ${{ secrets.GITHUB_TOKEN }}
