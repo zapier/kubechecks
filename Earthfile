@@ -67,10 +67,6 @@ docker:
     FROM ubuntu
     ARG TARGETVARIANT
 
-    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
-    ARG --required GIT_TAG
-    ARG --required GIT_COMMIT
-
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
@@ -91,6 +87,10 @@ docker:
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
+
+    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
+    ARG --required GIT_TAG
+    ARG --required GIT_COMMIT
 
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:latest
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_COMMIT
