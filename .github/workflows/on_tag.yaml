@@ -66,14 +66,14 @@ jobs:
             --platform ${{ matrix.platform.earthly }} \
             --push \
             +docker \
-              --GIT_TAG=${{ env.GIT_RELEASE_TAG }}-{{ matrix.platform.suffix }} \
+              --GIT_TAG=${{ env.GIT_RELEASE_TAG }}-${{ matrix.platform.suffix }} \
               --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
               --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks
 
   release-multiarch:
     runs-on: ubuntu-22.04
     needs:
-      - release
+      - release-docker
     steps:
       - name: extract tag and sha
         run: |

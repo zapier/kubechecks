@@ -64,16 +64,30 @@ build-binary:
     SAVE ARTIFACT kubechecks
 
 docker:
-    FROM ubuntu
+    FROM ubuntu:20.04
     ARG TARGETVARIANT
 
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
-    RUN curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" -o install_kustomize.sh && \
+    RUN \
+        curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+            --output install_kustomize.sh && \
         chmod 700 install_kustomize.sh && \
         ./install_kustomize.sh 4.5.7 /usr/local/bin
-    RUN curl -fsSL  "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" -o get-helm-3.sh && \
+    RUN \
+        curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" \
+            --output get-helm-3.sh && \
         chmod 700 get-helm-3.sh && \
         ./get-helm-3.sh -v v3.10.0
 
