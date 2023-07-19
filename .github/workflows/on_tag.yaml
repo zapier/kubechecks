@@ -8,6 +8,10 @@ on:
 jobs:
   release-helm:
     runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+
     steps:
       - name: checkout the source code
         uses: actions/checkout@v3
@@ -27,11 +31,17 @@ jobs:
 
   release-docker:
     runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
+      packages: write
+
     strategy:
       matrix:
         platform:
           - { earthly: linux/arm64, suffix: linux-arm64 }
           - { earthly: linux/amd64, suffix: linux-amd64 }
+
     steps:
       - name: Set up QEMU
         id: qemu
@@ -72,8 +82,13 @@ jobs:
 
   release-multiarch:
     runs-on: ubuntu-22.04
+
     needs:
       - release-docker
+
+    permissions:
+      packages: write
+
     steps:
       - name: extract tag and sha
         run: |
