@@ -1,5 +1,6 @@
 load('ext://configmap', 'configmap_from_dict')
 load('ext://dotenv', 'dotenv')
+load('ext://earthly', 'earthly_build', 'earthly_build_with_restart')
 load('ext://helm_remote', 'helm_remote')
 load('ext://tests/golang', 'test_go')
 load('ext://list_port_forwards', 'display_port_forwards')
@@ -126,66 +127,34 @@ if cfg.get('enable_repo', True):
 # /////////////////////////////////////////////////////////////////////////////
 
 test_go(
-  'go-test', '.', '.',
+  'go-test', '.',
   recursive=True,
   timeout='30s',
   extra_args=['-v'],
   labels=["kubechecks"],
-  ignore=[
-    'localdev/*',
+  deps=[
+    "cmd",
+    "pkg",
+    "telemetry",
+    "main.go",
+    "go.mod",
   ],
 )
 
 arch="arm64" if str(local("uname -m")).strip('\n') == "arm64" else "amd64"
-build_cmd = """
-CGO_ENABLED=0 GOOS=linux GOARCH={} go build -gcflags="all=-N -l" \
-   -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit={}" \
-  -o build/kubechecks ./
-"""
-local_resource(
-  'go-build',
-  build_cmd.format(arch, "dev"),
-  deps=[
-    './main.go',
-    './go.mod',
-    './go.sum',
-    './cmd',
-    './internal',
-    './pkg',
-    './controller',
-  ],
-  labels=["kubechecks"],
-  resource_deps = ['go-test']
+
+earthly_build(
+    context='.',
+    target="+build-docker-debug",
+    ref='kubechecks',
+    image_arg='CI_REGISTRY_IMAGE',
+    ignore='./dist',
+    # entrypoint='$GOPATH/bin/dlv --listen=:2345 --api-version=2 --headless=true --accept-multiclient exec --continue /app/kubechecks controller',
+    extra_args=[
+        '--GOARCH={}'.format(arch),
+    ]
 )
 
-if cfg.get("live_debug"):
-  docker_build_with_restart(
-    'kubechecks-server',
-    '.',
-    dockerfile='localdev/Dockerfile.dlv',
-    entrypoint='$GOPATH/bin/dlv --listen=:2345 --api-version=2 --headless=true --accept-multiclient exec --continue /app/kubechecks controller',
-    ignore=['./Dockerfile', '.git'],
-    only=[
-      './build',
-      './policy',
-      './schemas'
-    ],
-    live_update=[
-        sync('./build/kubechecks', '/app/kubechecks'),
-    ]
-  )
-
-else:
-  docker_build(
-    'kubechecks-server',
-    '.',
-    dockerfile='localdev/Dockerfile',
-    only=[
-      './build',
-      './policy',
-      './schemas'
-    ]
-  )
 
 cmd_button('loc:go mod tidy',
   argv=['go', 'mod', 'tidy'],
