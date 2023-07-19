@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/events"
 	"github.com/zapier/kubechecks/pkg/github_client"
 	"github.com/zapier/kubechecks/pkg/gitlab_client"
@@ -22,9 +23,9 @@ import (
 )
 
 type VCSHookHandler struct {
-	client        vcs_clients.Client
-	tokenUser     string
-	hookSecretKey string
+	client    vcs_clients.Client
+	tokenUser string
+	cfg       *pkg.ServerConfig
 	// labelFilter is a string specifying the required label name to filter merge events by; if empty, all merge events will pass the filter.
 	labelFilter string
 }
@@ -59,28 +60,28 @@ func createVCSClient() (vcs_clients.Client, string) {
 
 }
 
-func NewVCSHookHandler(secret string) *VCSHookHandler {
+func NewVCSHookHandler(cfg *pkg.ServerConfig) *VCSHookHandler {
 	client, tokenUser := GetVCSClient()
 	labelFilter := viper.GetString("label-filter")
 
 	return &VCSHookHandler{
-		client:        client,
-		tokenUser:     tokenUser,
-		hookSecretKey: secret,
-		labelFilter:   labelFilter,
+		client:      client,
+		tokenUser:   tokenUser,
+		cfg:         cfg,
+		labelFilter: labelFilter,
 	}
 }
 func (h *VCSHookHandler) AttachHandlers(grp *echo.Group) {
-	log.Info().Str("path", GetServer().HooksPrefix()).Msg("setting up hook handler")
+	log.Info().Str("path", GetServer().hooksPrefix()).Msg("setting up hook handler")
 	grp.POST(ProjectHookPath, h.groupHandler)
-	log.Info().Str("path", GetServer().HooksPrefix()).Str("projectPath", ProjectHookPath).Msg("hook handler setup complete")
+	log.Info().Str("path", GetServer().hooksPrefix()).Str("projectPath", ProjectHookPath).Msg("hook handler setup complete")
 }
 
 func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	ctx := context.Background()
 	log.Debug().Msg("Received hook request")
 	// Always verify, even if no secret (no op if no secret)
-	payload, err := h.client.VerifyHook(c.Request(), h.hookSecretKey)
+	payload, err := h.client.VerifyHook(c.Request(), h.cfg.WebhookSecret)
 	if err != nil {
 		log.Err(err).Msg("Failed to verify hook")
 		return c.String(http.StatusUnauthorized, "Unauthorized")
@@ -135,7 +136,7 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	}
 
 	// If we've gotten here, we can now begin running checks (or trying to)
-	cEvent := events.NewCheckEvent(repo, h.client)
+	cEvent := events.NewCheckEvent(repo, h.client, h.cfg)
 
 	err := cEvent.CreateTempDir()
 	if err != nil {

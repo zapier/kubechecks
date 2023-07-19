@@ -74,12 +74,12 @@ build-docker:
 
     WORKDIR /tmp
     RUN curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" -o install_kustomize.sh && \
-        chmod 700 install_kustomize.sh && \ 
+        chmod 700 install_kustomize.sh && \
         ./install_kustomize.sh 4.5.7 /usr/local/bin
     RUN curl -fsSL  "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" -o get-helm-3.sh && \
-        chmod 700 get-helm-3.sh && \ 
+        chmod 700 get-helm-3.sh && \
         ./get-helm-3.sh -v v3.10.0
-    
+
     RUN mkdir /app
 
     WORKDIR /app
@@ -105,10 +105,10 @@ release-docker:
 
     WORKDIR /tmp
     RUN curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" -o install_kustomize.sh && \
-        chmod 700 install_kustomize.sh && \ 
+        chmod 700 install_kustomize.sh && \
         ./install_kustomize.sh 4.5.7 /usr/local/bin
     RUN curl -fsSL  "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" -o get-helm-3.sh && \
-        chmod 700 get-helm-3.sh && \ 
+        chmod 700 get-helm-3.sh && \
         ./get-helm-3.sh -v v3.10.0
 
     RUN mkdir /app
@@ -204,5 +204,7 @@ release-helm:
     RUN git config --global user.name "Open Source at Zapier"
     RUN git fetch --prune --unshallow | true
 
-    RUN --push cr --config .github/cr.yaml upload --token $token --skip-existing
-    RUN --push cr --config .github/cr.yaml index --token $token --push
+    ARG repo_owner=""
+    ARG token=""
+    RUN --push cr --config .github/cr.yaml upload --owner $repo_owner --token $token --skip-existing
+    RUN --push cr --config .github/cr.yaml index --owner $repo_owner --token $token --push

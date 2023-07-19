@@ -29,16 +29,18 @@ import (
 )
 
 type CheckEvent struct {
-	client          vcs_clients.Client // Client exposing methods to communicate with platform of user choice
-	fileList        []string           // What files have changed in this PR/MR
-	repoFiles       []string           // All files in this repository
-	TempWorkingDir  string             // Location of the local repo
-	repo            *repo.Repo
-	logger          zerolog.Logger
-	affectedApps    map[string]string
-	workerLimits    int
-	affectedAppSets []string
-	vcsNote         *vcs_clients.Message
+	client         vcs_clients.Client // Client exposing methods to communicate with platform of user choice
+	fileList       []string           // What files have changed in this PR/MR
+	repoFiles      []string           // All files in this repository
+	TempWorkingDir string             // Location of the local repo
+	repo           *repo.Repo
+	logger         zerolog.Logger
+	workerLimits   int
+	vcsNote        *vcs_clients.Message
+
+	affectedItems affected_apps.AffectedItems
+
+	cfg *pkg.ServerConfig
 }
 
 const (
@@ -61,8 +63,9 @@ func init() {
 	hostname, _ = os.Hostname()
 }
 
-func NewCheckEvent(repo *repo.Repo, client vcs_clients.Client) *CheckEvent {
+func NewCheckEvent(repo *repo.Repo, client vcs_clients.Client, cfg *pkg.ServerConfig) *CheckEvent {
 	ce := &CheckEvent{
+		cfg:    cfg,
 		client: client,
 		repo:   repo,
 	}
@@ -161,8 +164,13 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) (map[strin
 	var matcher affected_apps.Matcher
 	cfg, _ := repo_config.LoadRepoConfig(ce.TempWorkingDir)
 	if cfg != nil {
+		log.Debug().Msg("using the config matcher")
 		matcher = affected_apps.NewConfigMatcher(cfg)
+	} else if viper.GetBool("monitor-all-applications") {
+		log.Debug().Msg("using an argocd matcher")
+		matcher = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo)
 	} else {
+		log.Debug().Msg("using best effort matcher")
 		ce.repoFiles, err = ce.repo.GetListOfRepoFiles()
 		if err != nil {
 			telemetry.SetError(span, err, "Get List of Repo Files")
@@ -173,21 +181,21 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) (map[strin
 		}
 		matcher = affected_apps.NewBestEffortMatcher(ce.repo.Name, ce.repoFiles)
 	}
-	ce.affectedApps, ce.affectedAppSets, err = matcher.AffectedApps(ctx, ce.fileList)
+	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Affected Apps")
 		ce.logger.Error().Err(err).Msg("could not get list of affected apps and appsets")
 	}
 	span.SetAttributes(
-		attribute.Int("numAffectedApps", len(ce.affectedApps)),
-		attribute.Int("numAffectedAppSets", len(ce.affectedAppSets)),
-		attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedApps)),
-		attribute.String("affectedAppSets", fmt.Sprintf("%+v", ce.affectedAppSets)),
+		attribute.Int("numAffectedApps", len(ce.affectedItems.AppNameToPathMap)),
+		attribute.Int("numAffectedAppSets", len(ce.affectedItems.ApplicationSets)),
+		attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.AppNameToPathMap)),
+		attribute.String("affectedAppSets", fmt.Sprintf("%+v", ce.affectedItems.ApplicationSets)),
 	)
-	ce.logger.Debug().Msgf("Affected apps: %+v", ce.affectedApps)
-	ce.logger.Debug().Msgf("Affected appSets: %+v", ce.affectedAppSets)
+	ce.logger.Debug().Msgf("Affected apps: %+v", ce.affectedItems.AppNameToPathMap)
+	ce.logger.Debug().Msgf("Affected appSets: %+v", ce.affectedItems.ApplicationSets)
 
-	return ce.affectedApps, err
+	return ce.affectedItems.AppNameToPathMap, err
 }
 
 type appStruct struct {
@@ -198,9 +206,9 @@ type appStruct struct {
 func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "ProcessApps",
 		trace.WithAttributes(
-			attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedApps)),
+			attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.AppNameToPathMap)),
 			attribute.Int("workerLimits", ce.workerLimits),
-			attribute.Int("numAffectedApps", len(ce.affectedApps)),
+			attribute.Int("numAffectedApps", len(ce.affectedItems.AppNameToPathMap)),
 		))
 	defer span.End()
 
@@ -209,19 +217,19 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 		ce.logger.Error().Err(err).Msg("Failed to tidy outdated comments")
 	}
 
-	if len(ce.affectedApps) <= 0 && len(ce.affectedAppSets) <= 0 {
+	if len(ce.affectedItems.AppNameToPathMap) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
 		ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "No changes")
 		return
 	}
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
-	appChannel := make(chan appStruct, len(ce.affectedApps))
-	errChannel := make(chan error, len(ce.affectedApps))
+	appChannel := make(chan appStruct, len(ce.affectedItems.AppNameToPathMap))
+	errChannel := make(chan error, len(ce.affectedItems.AppNameToPathMap))
 
 	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
-	if ce.workerLimits > len(ce.affectedApps) {
-		ce.workerLimits = len(ce.affectedApps)
+	if ce.workerLimits > len(ce.affectedItems.AppNameToPathMap) {
+		ce.workerLimits = len(ce.affectedItems.AppNameToPathMap)
 	}
 
 	// We make one comment per run, containing output for all the apps
@@ -232,7 +240,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	}
 
 	// Produce apps onto channel
-	for app, dir := range ce.affectedApps {
+	for app, dir := range ce.affectedItems.AppNameToPathMap {
 		a := appStruct{
 			name: app,
 			dir:  dir,
@@ -249,7 +257,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 			resultError = true
 			ce.logger.Error().Err(err).Msg("error running tool")
 		}
-		if returnCount == len(ce.affectedApps) {
+		if returnCount == len(ce.affectedItems.AppNameToPathMap) {
 			ce.logger.Debug().Msg("Closing channels")
 			close(appChannel)
 			close(errChannel)
@@ -305,13 +313,14 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 
 	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", app, ce.TempWorkingDir, dir)
 	manifests, err := argo_client.GetManifestsLocal(ctx, app, ce.TempWorkingDir, dir)
-	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
-	formattedManifests := argo_client.FormatManifestsYAML(manifests)
 	if err != nil {
-		ce.logger.Error().Err(err).Msg("Unable to get manifests")
+		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", app, dir)
 		ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf("Unable to get manifests for application: \n\n ```\n%s\n```", ce.cleanupGetManifestsError(err)))
 		return nil
 	}
+
+	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
+	formattedManifests := argo_client.FormatManifestsYAML(manifests)
 	ce.logger.Trace().Msgf("Manifests:\n%+v\n", formattedManifests)
 
 	k8sVersion, err := argo_client.GetArgoClient().GetKubernetesVersionByApplicationName(ctx, app)

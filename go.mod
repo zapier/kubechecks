@@ -44,7 +44,7 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
-	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.14.0
 	github.com/r3labs/diff v1.1.0 // indirect
 	github.com/sirupsen/logrus v1.9.0
@@ -79,9 +79,9 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/creasty/defaults v1.7.0
 	github.com/go-logr/zerologr v1.2.3
-	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-github/v53 v53.2.0
 	github.com/heptiolabs/healthcheck v0.0.0-20211123025425-613501dd5deb
+	github.com/kubescape/go-git-url v0.0.25
 	github.com/labstack/echo-contrib v0.14.0
 	github.com/labstack/echo/v4 v4.10.2
 	github.com/masterminds/semver v1.5.0
@@ -94,6 +94,7 @@ require (
 	github.com/shurcooL/githubv4 v0.0.0-20230704064427-599ae7bbf278
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
+	github.com/whilp/git-urls v1.0.0
 	github.com/yannh/kubeconform v0.6.1
 	github.com/ziflex/lecho/v3 v3.5.0
 	gopkg.in/dealancer/validate.v2 v2.1.0

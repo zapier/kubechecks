@@ -5,10 +5,6 @@ on:
   release:
     types: [published]
 
-env:
-  EARTHLY_TOOL_VERSION: 0.7
-  GOLANG_TOOL_VERSION: 1.19.3
-  
 jobs:
   release:
     runs-on: ubuntu-22.04
@@ -49,4 +45,5 @@ jobs:
             --GIT_TAG=${{ env.GIT_RELEASE_TAG }} \
             --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
             --CI_REGISTRY_IMAGE=ghcr.io/zapier/kubechecks \
+            --repo_owner ${{ github.repository_owner }} \
             --token ${{ secrets.GITHUB_TOKEN }}

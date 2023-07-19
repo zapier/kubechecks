@@ -25,7 +25,7 @@ var controllerCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
 
-		server := server.NewServer(&server.ServerConfig{
+		server := server.NewServer(&pkg.ServerConfig{
 			UrlPrefix:     viper.GetString("webhook-url-prefix"),
 			WebhookSecret: viper.GetString("webhook-secret"),
 		})
@@ -56,6 +56,7 @@ var controllerCmd = &cobra.Command{
 		log.Info().Msg("Server Configuration: ")
 		log.Info().Msgf("Webhook URL Base: %s", viper.GetString("webhook-url-base"))
 		log.Info().Msgf("Webhook URL Prefix: %s", viper.GetString("webhook-url-prefix"))
+		log.Info().Msgf("VCS Type: %s", viper.GetString("vcs-type"))
 		return nil
 	},
 }
@@ -72,15 +73,23 @@ func init() {
 	flags.String("webhook-url-base", "", "The URL where KubeChecks receives webhooks from Gitlab")
 	flags.String("webhook-url-prefix", "", "If your application is running behind a proxy that uses path based routing, set this value to match the path prefix.")
 	flags.String("webhook-secret", "", "Optional secret key for validating the source of incoming webhooks.")
-	flags.String("vcs-type", "gitlab", "The type of VCS provider (gitlab|github).")
-	// Map viper to cobra flags so we can get these parameters from Environment variables if set.
-	viper.BindPFlag("enable-conftest", flags.Lookup("enable-conftest"))
-	viper.BindPFlag("fallback-k8s-version", flags.Lookup("fallback-k8s-version"))
-	viper.BindPFlag("show-debug-info", flags.Lookup("show-debug-info"))
-	viper.BindPFlag("label-filter", flags.Lookup("label-filter"))
-	viper.BindPFlag("openai-api-token", flags.Lookup("openai-api-token"))
-	viper.BindPFlag("webhook-url-base", flags.Lookup("webhook-url-base"))
-	viper.BindPFlag("webhook-url-prefix", flags.Lookup("webhook-url-prefix"))
-	viper.BindPFlag("webhook-secret", flags.Lookup("webhook-secret"))
-	viper.BindPFlag("vcs-type", flags.Lookup("vcs-type"))
+	flags.Bool("monitor-all-applications", false, "Monitor all applications in argocd automatically")
+	flags.Bool("ensure-webhooks", false, "Ensure that webhooks are created in repositories referenced by argo")
+
+	// Map viper to cobra flags, so we can get these parameters from Environment variables if set.
+	panicIfError := func(err error) {
+		if err != nil {
+			panic(err)
+		}
+	}
+	panicIfError(viper.BindPFlag("enable-conftest", flags.Lookup("enable-conftest")))
+	panicIfError(viper.BindPFlag("fallback-k8s-version", flags.Lookup("fallback-k8s-version")))
+	panicIfError(viper.BindPFlag("show-debug-info", flags.Lookup("show-debug-info")))
+	panicIfError(viper.BindPFlag("label-filter", flags.Lookup("label-filter")))
+	panicIfError(viper.BindPFlag("openai-api-token", flags.Lookup("openai-api-token")))
+	panicIfError(viper.BindPFlag("webhook-url-base", flags.Lookup("webhook-url-base")))
+	panicIfError(viper.BindPFlag("webhook-url-prefix", flags.Lookup("webhook-url-prefix")))
+	panicIfError(viper.BindPFlag("webhook-secret", flags.Lookup("webhook-secret")))
+	panicIfError(viper.BindPFlag("ensure-webhooks", flags.Lookup("ensure-webhooks")))
+	panicIfError(viper.BindPFlag("monitor-all-applications", flags.Lookup("monitor-all-applications")))
 }

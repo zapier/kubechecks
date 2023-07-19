@@ -4,12 +4,15 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/google/go-github/v53/github"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
 	"github.com/spf13/viper"
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/vcs_clients"
 	"golang.org/x/oauth2"
@@ -24,6 +27,8 @@ type Client struct {
 	*github.Client
 }
 
+var _ vcs_clients.Client = new(Client)
+
 func GetGithubClient() (*Client, string) {
 	once.Do(func() {
 		githubClient = createGithubClient()
@@ -37,7 +42,7 @@ func getTokenUser() string {
 	user, _, err := githubClient.Users.Get(context.Background(), "")
 	if err != nil {
 		if err != nil {
-			log.Fatal().Err(err).Msg("could not create Github token user")
+			log.Fatal().Err(err).Msg("could not get Github user")
 		}
 	}
 	return *user.Login
@@ -65,6 +70,10 @@ func createGithubClient() *Client {
 	return &Client{Client: c, v4Client: v4Client}
 }
 
+func (c *Client) GetName() string {
+	return "github"
+}
+
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// Github provides the SHA256 of the secret + payload body, so we extract the body and compare
 	// We have to split it like this as the ValidatePayload method consumes the request
@@ -80,8 +89,8 @@ func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error)
 	return github.ParseWebHook(github.WebHookType(r), payload)
 }
 
-// Creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
-// Has already occured previously, so we expect a valid event type for the Github client in the payload arg
+// CreateRepo creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
+// Has already occured previously, so we expect a valid event type for the GitHub client in the payload arg
 func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Repo, error) {
 	switch p := payload.(type) {
 	case *github.PullRequestEvent:
@@ -159,5 +168,59 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status vcs_c
 		return err
 	}
 	log.Debug().Interface("status", repoStatus).Msg("Github commit status set")
+	return nil
+}
+
+func parseRepo(cloneUrl string) (string, string) {
+	if strings.HasPrefix(cloneUrl, "git@") {
+		// parse ssh string
+		parts := strings.Split(cloneUrl, ":")
+		parts = strings.Split(parts[1], "/")
+		owner := parts[0]
+		repo := strings.TrimSuffix(parts[1], ".git")
+		return owner, repo
+	}
+
+	panic(cloneUrl)
+}
+
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
+	owner, repo := parseRepo(repoName)
+	items, _, err := c.Repositories.ListHooks(ctx, owner, repo, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list hooks")
+	}
+
+	for _, item := range items {
+		if item.URL != nil && *item.URL == webhookUrl {
+			return &vcs_clients.WebHookConfig{
+				Url:    item.GetURL(),
+				Events: item.Events, // TODO: translate GH specific event names to VCS agnostic
+			}, nil
+		}
+	}
+
+	return nil, vcs_clients.ErrHookNotFound
+}
+
+func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {
+	owner, repo := parseRepo(repoName)
+	_, _, err := c.Repositories.CreateHook(ctx, owner, repo, &github.Hook{
+		Active: pkg.Pointer(true),
+		Config: map[string]interface{}{
+			"content_type": "json",
+			"insecure_ssl": "0",
+			"secret":       webhookSecret,
+			"url":          webhookUrl,
+		},
+		Events: []string{
+			"pull_request",
+		},
+		Name: pkg.Pointer("web"),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to create hook")
+	}
+
 	return nil
 }

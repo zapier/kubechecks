@@ -3,13 +3,17 @@ package gitlab_client
 import (
 	"context"
 	"fmt"
+	giturl "github.com/kubescape/go-git-url"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/xanzy/go-gitlab"
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/vcs_clients"
 )
@@ -24,6 +28,8 @@ const GitlabTokenHeader = "X-Gitlab-Token"
 type Client struct {
 	*gitlab.Client
 }
+
+var _ vcs_clients.Client = new(Client)
 
 func GetGitlabClient() (*Client, string) {
 	once.Do(func() {
@@ -58,6 +64,10 @@ func (c *Client) getTokenUser() (string, string) {
 	return user.Username, user.Email
 }
 
+func (c *Client) GetName() string {
+	return "gitlab"
+}
+
 // Each client has a different way of verifying their payloads; return an err if this isnt valid
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// If we have a secret, and the secret doesn't match, return an error
@@ -70,12 +80,12 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	return io.ReadAll(r.Body)
 }
 
-// Each client has a different way of discerning their webhook events; return an err if this isnt valid
+// ParseHook parses and validates a webhook event; return an err if this isn't valid
 func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error) {
 	return gitlab.ParseHook(gitlab.HookEventType(r), payload)
 }
 
-// Takes a valid gitlab webhook event request, and determines if we should process it
+// CreateRepo takes a valid gitlab webhook event request, and determines if we should process it
 // Returns a generic Repo with all info kubechecks needs on success, err if not
 func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*repo.Repo, error) {
 	switch event := eventRequest.(type) {
@@ -97,6 +107,54 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 		return nil, vcs_clients.ErrInvalidType
 	}
 	return nil, vcs_clients.ErrInvalidType
+}
+
+func parseRepoName(url string) string {
+	gitURL, err := giturl.NewGitURL(url)
+	if err != nil {
+		log.Error().Err(err).Str("url", url).Msg("could not parse GitLab URL")
+	}
+
+	return strings.Join([]string{gitURL.GetOwnerName(), gitURL.GetRepoName()}, "/")
+}
+
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
+	pid := parseRepoName(repoName)
+	webhooks, _, err := c.Client.Projects.ListProjectHooks(pid, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list project webhooks")
+	}
+
+	for _, hook := range webhooks {
+		if hook.URL == webhookUrl {
+			events := []string{}
+			// TODO: translate GL specific event names to VCS agnostic
+			if hook.MergeRequestsEvents {
+				events = append(events, string(gitlab.MergeRequestEventTargetType))
+			}
+			return &vcs_clients.WebHookConfig{
+				Url:    hook.URL,
+				Events: events,
+			}, nil
+		}
+	}
+
+	return nil, vcs_clients.ErrHookNotFound
+}
+
+func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {
+	pid := parseRepoName(repoName)
+	_, _, err := c.Client.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
+		URL:                 pkg.Pointer(webhookUrl),
+		MergeRequestsEvents: pkg.Pointer(true),
+		Token:               pkg.Pointer(webhookSecret),
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "failed to create project webhook")
+	}
+
+	return nil
 }
 
 func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
