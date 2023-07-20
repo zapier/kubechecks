@@ -23,7 +23,7 @@ deployment:
   image:
     repository: ""
     pullPolicy: Always
-    name: "kubechecks-server"
+    name: "kubechecks"
     tag: ""
 
 secrets:

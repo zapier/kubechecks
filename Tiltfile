@@ -1,11 +1,8 @@
-load('ext://configmap', 'configmap_from_dict')
 load('ext://dotenv', 'dotenv')
+load('ext://earthly', 'earthly_build', 'earthly_build_with_restart')
 load('ext://helm_remote', 'helm_remote')
-load('ext://tests/golang', 'test_go')
-load('ext://list_port_forwards', 'display_port_forwards')
 load('ext://namespace', 'namespace_yaml')
-load('ext://restart_process', 'docker_build_with_restart')
-load('ext://secret', 'secret_from_dict')
+load('ext://tests/golang', 'test_go')
 load('ext://uibutton', 'cmd_button')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
@@ -13,7 +10,7 @@ dotenv()
 
 config.define_bool("enable_repo", True, 'create a new project for testing this app')
 config.define_string("vcs-type")
-config.define_bool("live_debug")
+config.define_bool("live_debug") # not used, but kept for backwards compat
 config.define_string("ngrok_fqdn")
 cfg = config.parse()
 
@@ -48,10 +45,8 @@ deploy_ngrok(cfg)
 # /////////////////////////////////////////////////////////////////////////////
 
 # Load ArgoCD Tiltfile
-load('./localdev/argocd/Tiltfile', 'deploy_argo', 'cleanup_argo_apps')
+load('./localdev/argocd/Tiltfile', 'deploy_argo')
 deploy_argo()
-if config.tilt_subcommand == 'down':
-    cleanup_argo_apps(k8s_context, k8s_namespace)
 
 #load('./localdev/reloader/Tiltfile', 'deploy_reloader')
 #deploy_reloader()
@@ -126,66 +121,33 @@ if cfg.get('enable_repo', True):
 # /////////////////////////////////////////////////////////////////////////////
 
 test_go(
-  'go-test', '.', '.',
+  'go-test', '.',
   recursive=True,
   timeout='30s',
   extra_args=['-v'],
   labels=["kubechecks"],
-  ignore=[
-    'localdev/*',
+  deps=[
+    "cmd",
+    "pkg",
+    "telemetry",
+    "main.go",
+    "go.mod",
   ],
 )
 
 arch="arm64" if str(local("uname -m")).strip('\n') == "arm64" else "amd64"
-build_cmd = """
-CGO_ENABLED=0 GOOS=linux GOARCH={} go build -gcflags="all=-N -l" \
-   -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit={}" \
-  -o build/kubechecks ./
-"""
-local_resource(
-  'go-build',
-  build_cmd.format(arch, "dev"),
-  deps=[
-    './main.go',
-    './go.mod',
-    './go.sum',
-    './cmd',
-    './internal',
-    './pkg',
-    './controller',
-  ],
-  labels=["kubechecks"],
-  resource_deps = ['go-test']
+
+earthly_build(
+    context='.',
+    target="+docker-debug",
+    ref='kubechecks',
+    image_arg='CI_REGISTRY_IMAGE',
+    ignore='./dist',
+    extra_args=[
+        '--GOARCH={}'.format(arch),
+    ]
 )
 
-if cfg.get("live_debug"):
-  docker_build_with_restart(
-    'kubechecks-server',
-    '.',
-    dockerfile='localdev/Dockerfile.dlv',
-    entrypoint='$GOPATH/bin/dlv --listen=:2345 --api-version=2 --headless=true --accept-multiclient exec --continue /app/kubechecks controller',
-    ignore=['./Dockerfile', '.git'],
-    only=[
-      './build',
-      './policy',
-      './schemas'
-    ],
-    live_update=[
-        sync('./build/kubechecks', '/app/kubechecks'),
-    ]
-  )
-
-else:
-  docker_build(
-    'kubechecks-server',
-    '.',
-    dockerfile='localdev/Dockerfile',
-    only=[
-      './build',
-      './policy',
-      './schemas'
-    ]
-  )
 
 cmd_button('loc:go mod tidy',
   argv=['go', 'mod', 'tidy'],
@@ -251,60 +213,8 @@ helm_remote(
     version='1.0.26'
 )
 
-# /////////////////////////////////////////////////////////////////////////////
-# Test Apps
-# /////////////////////////////////////////////////////////////////////////////
-# Load the terraform url we output, default to gitlab if cant find a vcs-type variable
-vcsPath = "./localdev/terraform/{}/project.url".format(cfg.get('vcs-type', 'gitlab'))
-print("Path to url: " + vcsPath)
-projectUrl=str(read_file(vcsPath, "")).strip('\n')
-print("Remote Project URL: " + projectUrl)
+load("localdev/test_apps/Tiltfile", "install_test_apps")
+install_test_apps(cfg)
 
-if projectUrl != "":
-  for app in ["echo-server", "httpbin"]:
-    print("Creating Test App: " + app)
-    # apply the test Application manifests to the test namespace
-    # update the source repo URL with our test gitlab project
-    apply_cmd = """
-    envsubst < {}.yaml | kubectl -n {} apply -f - 1>&2
-    kubectl --namespace={} get application in-cluster-{} -oyaml 
-    """
-    k8s_custom_deploy (
-        '{}-application'.format(app) ,
-        apply_cmd.format(app, k8s_namespace, k8s_namespace, app),
-        'kubectl -n {} delete application in-cluster-{} --wait || true'.format(k8s_namespace, app),
-        [
-            'localdev/test_apps/{}.yaml'.format(app),
-        ] ,
-        apply_dir = 'localdev/test_apps/',
-        apply_env = {
-            "REPO_URL": projectUrl,
-        } ,
-        delete_dir = 'localdev/test_apps/',
-        delete_env = {},
-    )
-
-  for appset in ["httpdump"]:
-    print("Creating Test Appsets: " + app)
-    # apply the test Application manifests to the test namespace
-    # update the source repo URL with our test gitlab project
-    apply_cmd = """
-    envsubst < {}.yaml | kubectl -n {} apply -f - 1>&2
-    kubectl get applicationset {} -oyaml --namespace={}
-    """
-    k8s_custom_deploy (
-        '{}-applicationset'.format(appset) ,
-        apply_cmd.format(appset, k8s_namespace, appset, k8s_namespace),
-        'kubectl -n {} delete applicationset {} --wait || true'.format(k8s_namespace, appset),
-        [
-            'localdev/test_appsets/{}.yaml'.format(appset),
-        ] ,
-        apply_dir = 'localdev/test_appsets/',
-        apply_env = {
-            "REPO_URL": projectUrl,
-        } ,
-        delete_dir = 'localdev/test_appsets/',
-        delete_env = {},
-    )
-
-display_port_forwards()
+load("localdev/test_appsets/Tiltfile", "install_test_appsets")
+install_test_appsets(cfg)

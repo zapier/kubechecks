@@ -6,7 +6,7 @@ namespace: kubechecks
 images:
   - name: quay.io/argoproj/argocd
     newName: quay.io/argoproj/argocd
-    newTag: v2.6.4
+    newTag: v2.6.12
 
 resources:
   - argocd-initial-admin-secret.yaml
@@ -25,3 +25,7 @@ patchesStrategicMerge:
   - ./argocd-rbac-cm-patch.yaml
   - ./argocd-secret-patch.yaml
   - ./argocd-server-patch.yaml
+  - ./argocd-application-controller-statefulset-patch.yaml
+  - ./argocd-applicationset-controller-deployment-patch.yaml
+  - ./argocd-redis-deployment-patch.yaml
+  - ./argocd-repo-server-deployment-patch.yaml
