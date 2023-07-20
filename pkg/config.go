@@ -5,8 +5,10 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
 	giturls "github.com/whilp/git-urls"
+	"github.com/zapier/kubechecks/pkg/app_directory"
 )
 
 type repoURL struct {
@@ -41,17 +43,16 @@ func normalizeRepoUrl(s string) (repoURL, error) {
 }
 
 type VcsToArgoMap struct {
-	//                map[string]map[AppPath]AppName
-	vcsAppStubsByRepo map[repoURL]map[string]string
+	vcsAppStubsByRepo map[repoURL]*app_directory.AppDirectory
 }
 
 func NewVcsToArgoMap() VcsToArgoMap {
 	return VcsToArgoMap{
-		vcsAppStubsByRepo: make(map[repoURL]map[string]string),
+		vcsAppStubsByRepo: make(map[repoURL]*app_directory.AppDirectory),
 	}
 }
 
-func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) map[string]string {
+func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *app_directory.AppDirectory {
 	repoUrl, err := normalizeRepoUrl(repoCloneUrl)
 	if err != nil {
 		log.Warn().Err(err).Msgf("failed to parse %s", repoCloneUrl)
@@ -60,19 +61,24 @@ func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) map[string]string {
 	return v2a.vcsAppStubsByRepo[repoUrl]
 }
 
-func (v2a *VcsToArgoMap) AddApp(repoCloneUrl, path, name string) {
-	repoUrl, err := normalizeRepoUrl(repoCloneUrl)
-	if err != nil {
-		log.Warn().Err(err).Msgf("failed to parse %s", repoCloneUrl)
+func (v2a *VcsToArgoMap) AddApp(app v1alpha1.Application) {
+	if app.Spec.Source == nil {
 		return
 	}
 
-	apps, ok := v2a.vcsAppStubsByRepo[repoUrl]
-	if !ok {
-		apps = make(map[string]string)
-		v2a.vcsAppStubsByRepo[repoUrl] = apps
+	rawRepoUrl := app.Spec.Source.RepoURL
+	cleanRepoUrl, err := normalizeRepoUrl(rawRepoUrl)
+	if err != nil {
+		log.Warn().Err(err).Msgf("failed to parse %s", rawRepoUrl)
+		return
 	}
-	apps[path] = name
+
+	appDirectory := v2a.vcsAppStubsByRepo[cleanRepoUrl]
+	if appDirectory == nil {
+		appDirectory = app_directory.NewAppDirectory()
+	}
+	appDirectory.AddApp(app)
+	v2a.vcsAppStubsByRepo[cleanRepoUrl] = appDirectory
 }
 
 type ServerConfig struct {

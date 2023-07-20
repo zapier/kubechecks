@@ -103,11 +103,13 @@ func (ce *CheckEvent) Cleanup(ctx context.Context) {
 	defer span.End()
 
 	if ce.TempWorkingDir != "" {
-		os.RemoveAll(ce.TempWorkingDir)
+		if err := os.RemoveAll(ce.TempWorkingDir); err != nil {
+			log.Warn().Err(err).Msgf("failed to remove %s", ce.TempWorkingDir)
+		}
 	}
 }
 
-// Ensure we init git for this Check Event
+// InitializeGit sets the username and email for a git repo
 func (ce *CheckEvent) InitializeGit(ctx context.Context) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "InitializeGit")
 	defer span.End()
@@ -115,7 +117,7 @@ func (ce *CheckEvent) InitializeGit(ctx context.Context) error {
 	return repo.InitializeGitSettings(ce.repo.Username, ce.repo.Email)
 }
 
-// Take the repo inside the Check Event and try to clone it locally
+// CloneRepoLocal takes the repo inside the Check Event and try to clone it locally
 func (ce *CheckEvent) CloneRepoLocal(ctx context.Context) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CloneRepoLocal")
 	defer span.End()
@@ -123,29 +125,29 @@ func (ce *CheckEvent) CloneRepoLocal(ctx context.Context) error {
 	return ce.repo.CloneRepoLocal(ctx, ce.TempWorkingDir)
 }
 
-// Merge the changes from the MR/PR into the base branch
+// MergeIntoTarget merges the changes from the MR/PR into the base branch
 func (ce *CheckEvent) MergeIntoTarget(ctx context.Context) error {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "MergeIntoTarget")
 	defer span.End()
-	repo, err := ce.GetRepo(ctx)
+	gitRepo, err := ce.GetRepo(ctx)
 	if err != nil {
 		return err
 	}
 
-	return repo.MergeIntoTarget(ctx)
+	return gitRepo.MergeIntoTarget(ctx)
 }
 
 func (ce *CheckEvent) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetListOfChangedFiles")
 	defer span.End()
 
-	repo, err := ce.GetRepo(ctx)
+	gitRepo, err := ce.GetRepo(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(ce.fileList) == 0 {
-		ce.fileList, err = repo.GetListOfChangedFiles(ctx)
+		ce.fileList, err = gitRepo.GetListOfChangedFiles(ctx)
 	}
 
 	if err == nil {
@@ -156,7 +158,7 @@ func (ce *CheckEvent) GetListOfChangedFiles(ctx context.Context) ([]string, erro
 }
 
 // Walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
-func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) (map[string]string, error) {
+func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 	var err error
@@ -187,15 +189,15 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) (map[strin
 		ce.logger.Error().Err(err).Msg("could not get list of affected apps and appsets")
 	}
 	span.SetAttributes(
-		attribute.Int("numAffectedApps", len(ce.affectedItems.AppNameToPathMap)),
+		attribute.Int("numAffectedApps", len(ce.affectedItems.Applications)),
 		attribute.Int("numAffectedAppSets", len(ce.affectedItems.ApplicationSets)),
-		attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.AppNameToPathMap)),
+		attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.Applications)),
 		attribute.String("affectedAppSets", fmt.Sprintf("%+v", ce.affectedItems.ApplicationSets)),
 	)
-	ce.logger.Debug().Msgf("Affected apps: %+v", ce.affectedItems.AppNameToPathMap)
+	ce.logger.Debug().Msgf("Affected apps: %+v", ce.affectedItems.Applications)
 	ce.logger.Debug().Msgf("Affected appSets: %+v", ce.affectedItems.ApplicationSets)
 
-	return ce.affectedItems.AppNameToPathMap, err
+	return err
 }
 
 type appStruct struct {
@@ -206,9 +208,9 @@ type appStruct struct {
 func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "ProcessApps",
 		trace.WithAttributes(
-			attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.AppNameToPathMap)),
+			attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.Applications)),
 			attribute.Int("workerLimits", ce.workerLimits),
-			attribute.Int("numAffectedApps", len(ce.affectedItems.AppNameToPathMap)),
+			attribute.Int("numAffectedApps", len(ce.affectedItems.Applications)),
 		))
 	defer span.End()
 
@@ -217,19 +219,19 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 		ce.logger.Error().Err(err).Msg("Failed to tidy outdated comments")
 	}
 
-	if len(ce.affectedItems.AppNameToPathMap) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
+	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
 		ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "No changes")
 		return
 	}
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
-	appChannel := make(chan appStruct, len(ce.affectedItems.AppNameToPathMap))
-	errChannel := make(chan error, len(ce.affectedItems.AppNameToPathMap))
+	appChannel := make(chan appStruct, len(ce.affectedItems.Applications))
+	errChannel := make(chan error, len(ce.affectedItems.Applications))
 
 	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
-	if ce.workerLimits > len(ce.affectedItems.AppNameToPathMap) {
-		ce.workerLimits = len(ce.affectedItems.AppNameToPathMap)
+	if ce.workerLimits > len(ce.affectedItems.Applications) {
+		ce.workerLimits = len(ce.affectedItems.Applications)
 	}
 
 	// We make one comment per run, containing output for all the apps
@@ -240,10 +242,10 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	}
 
 	// Produce apps onto channel
-	for app, dir := range ce.affectedItems.AppNameToPathMap {
+	for _, app := range ce.affectedItems.Applications {
 		a := appStruct{
-			name: app,
-			dir:  dir,
+			name: app.Name,
+			dir:  app.Path,
 		}
 		ce.logger.Trace().Str("app", a.name).Str("dir", a.dir).Msg("producing app on channel")
 		appChannel <- a
@@ -257,7 +259,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 			resultError = true
 			ce.logger.Error().Err(err).Msg("error running tool")
 		}
-		if returnCount == len(ce.affectedItems.AppNameToPathMap) {
+		if returnCount == len(ce.affectedItems.Applications) {
 			ce.logger.Debug().Msg("Closing channels")
 			close(appChannel)
 			close(errChannel)
@@ -274,13 +276,15 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.CommitStatus(ctx, vcs_clients.Success)
 }
 
-// Take one of "success", "failure", "pending" or "error" and pass off to client
+// CommitStatus takes one of "success", "failure", "pending" or "error" and pass off to client
 // To set the PR/MR status
 func (ce *CheckEvent) CommitStatus(ctx context.Context, status vcs_clients.CommitState) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CommitStatus")
 	defer span.End()
 
-	ce.client.CommitStatus(ctx, ce.repo, status)
+	if err := ce.client.CommitStatus(ctx, ce.repo, status); err != nil {
+		log.Warn().Err(err).Msg("failed to update commit status")
+	}
 }
 
 // Process all apps on the provided channel
@@ -450,7 +454,7 @@ func (ce *CheckEvent) createNote(ctx context.Context) *vcs_clients.Message {
 	defer span.End()
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "# Kubechecks Report:\n")
+	_, _ = fmt.Fprintf(&sb, "# Kubechecks Report:\n")
 	ce.logger.Info().Msgf("Creating note")
 
 	return ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, sb.String())

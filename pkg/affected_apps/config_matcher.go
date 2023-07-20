@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/zapier/kubechecks/pkg/app_directory"
 
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/repo_config"
@@ -23,8 +24,8 @@ func NewConfigMatcher(cfg *repo_config.Config) *ConfigMatcher {
 }
 
 func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
-	appList := make(map[string]string)
-	var appSetList []string
+	appsMap := make(map[string]string)
+	var appSetList []ApplicationSet
 
 	triggeredApps, triggeredAppsets, err := b.triggeredApps(ctx, changeList)
 	if err != nil {
@@ -32,14 +33,19 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (
 	}
 
 	for _, app := range triggeredApps {
-		appList[app.Name] = app.Path
+		appsMap[app.Name] = app.Path
 	}
 
 	for _, appset := range triggeredAppsets {
-		appSetList = append(appSetList, appset.Name)
+		appSetList = append(appSetList, ApplicationSet{appset.Name})
 	}
 
-	return AffectedItems{appList, appSetList}, nil
+	var appsSlice []app_directory.ApplicationStub
+	for name, appPath := range appsMap {
+		appsSlice = append(appsSlice, app_directory.ApplicationStub{Name: name, Path: appPath})
+	}
+
+	return AffectedItems{Applications: appsSlice, ApplicationSets: appSetList}, nil
 }
 
 func (b *ConfigMatcher) triggeredApps(ctx context.Context, modifiedFiles []string) ([]*repo_config.ArgoCdApplicationConfig, []*repo_config.ArgocdApplicationSetConfig, error) {
@@ -84,15 +90,15 @@ func (b *ConfigMatcher) triggeredApps(ctx context.Context, modifiedFiles []strin
 }
 
 func (b *ConfigMatcher) applicationsForDir(dir string) []*repo_config.ArgoCdApplicationConfig {
-	apps := []*repo_config.ArgoCdApplicationConfig{}
+	var apps []*repo_config.ArgoCdApplicationConfig
 	for _, app := range b.cfg.Applications {
 		if dirMatchForApp(dir, app.Path) {
 			apps = append(apps, app)
 			continue
 		}
 
-		for _, path := range app.AdditionalPaths {
-			if dirMatchForApp(dir, path) {
+		for _, addlPath := range app.AdditionalPaths {
+			if dirMatchForApp(dir, addlPath) {
 				apps = append(apps, app)
 				continue
 			}
@@ -105,10 +111,10 @@ func (b *ConfigMatcher) applicationsForDir(dir string) []*repo_config.ArgoCdAppl
 
 // appsFromApplicationSetForDir: Get the list of apps managed by an applicationset from dir
 func (b *ConfigMatcher) appsFromApplicationSetForDir(ctx context.Context, dir string) ([]*repo_config.ArgocdApplicationSetConfig, []*repo_config.ArgoCdApplicationConfig, error) {
-	appsets := []*repo_config.ArgocdApplicationSetConfig{}
+	var appsets []*repo_config.ArgocdApplicationSetConfig
 	for _, appset := range b.cfg.ApplicationSets {
-		for _, path := range appset.Paths {
-			if dirMatchForAppSet(dir, path) {
+		for _, appsetPath := range appset.Paths {
+			if dirMatchForAppSet(dir, appsetPath) {
 				appsets = append(appsets, appset)
 				break
 			}

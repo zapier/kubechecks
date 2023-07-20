@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/zapier/kubechecks/pkg/app_directory"
 )
 
 func TestBestEffortMatcher(t *testing.T) {
@@ -16,50 +17,50 @@ func TestBestEffortMatcher(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want map[string]string
+		want []app_directory.ApplicationStub
 	}{
 		{
-			"helm:cluster-change",
-			args{
+			name: "helm:cluster-change",
+			args: args{
 				fileList: []string{
 					"apps/echo-server/foo-eks-01/values.yaml",
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-echo-server": "apps/echo-server/foo-eks-01/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
 			},
 		},
 		{
-			"helm:all-cluster-change",
-			args{
+			name: "helm:all-cluster-change",
+			args: args{
 				fileList: []string{
 					"apps/echo-server/values.yaml",
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-echo-server": "apps/echo-server/foo-eks-01/",
-				"foo-eks-02-echo-server": "apps/echo-server/foo-eks-02/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
+				{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
 			},
 		},
 		{
-			"helm:all-cluster-change:and:cluster-app-change",
-			args{
+			name: "helm:all-cluster-change:and:cluster-app-change",
+			args: args{
 				fileList: []string{
 					"apps/echo-server/values.yaml",
 					"apps/echo-server/foo-eks-01/values.yaml",
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-echo-server": "apps/echo-server/foo-eks-01/",
-				"foo-eks-02-echo-server": "apps/echo-server/foo-eks-02/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
+				{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
 			},
 		},
 		{
-			"helm:all-cluster-change:and:double-cluster-app-change",
-			args{
+			name: "helm:all-cluster-change:and:double-cluster-app-change",
+			args: args{
 				fileList: []string{
 					"apps/echo-server/values.yaml",
 					"apps/echo-server/foo-eks-01/values.yaml",
@@ -67,69 +68,69 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-echo-server": "apps/echo-server/foo-eks-01/",
-				"foo-eks-02-echo-server": "apps/echo-server/foo-eks-02/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
+				{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
 			},
 		},
 		{
-			"kustomize:overlays-change",
-			args{
+			name: "kustomize:overlays-change",
+			args: args{
 				fileList: []string{
 					"apps/httpbin/overlays/foo-eks-01/kustomization.yaml",
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-httpbin": "apps/httpbin/overlays/foo-eks-01/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 			},
 		},
 		{
-			"kustomize:overlays-subdir-change",
-			args{
+			name: "kustomize:overlays-subdir-change",
+			args: args{
 				fileList: []string{
 					"apps/httpbin/overlays/foo-eks-01/server/deploy.yaml",
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-httpbin": "apps/httpbin/overlays/foo-eks-01/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 			},
 		},
 		{
-			"kustomize:base-change",
-			args{
+			name: "kustomize:base-change",
+			args: args{
 				fileList: []string{
 					"apps/httpbin/base/kustomization.yaml",
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-httpbin": "apps/httpbin/overlays/foo-eks-01/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 			},
 		},
 		{
-			"kustomize:bases-change",
-			args{
+			name: "kustomize:bases-change",
+			args: args{
 				fileList: []string{
 					"apps/httpbin/bases/foo.yaml",
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-httpbin": "apps/httpbin/overlays/foo-eks-01/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 			},
 		},
 		{
-			"kustomize:resources-change",
-			args{
+			name: "kustomize:resources-change",
+			args: args{
 				fileList: []string{
 					"apps/httpbin/resources/foo.yaml",
 				},
 				repoName: "",
 			},
-			map[string]string{
-				"foo-eks-01-httpbin": "apps/httpbin/overlays/foo-eks-01/",
+			want: []app_directory.ApplicationStub{
+				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 			},
 		},
 	}
@@ -139,7 +140,7 @@ func TestBestEffortMatcher(t *testing.T) {
 			got, err := matcher.AffectedApps(context.TODO(), tt.args.fileList)
 			assert.NoError(t, err)
 
-			if !reflect.DeepEqual(got.AppNameToPathMap, tt.want) {
+			if !reflect.DeepEqual(got.Applications, tt.want) {
 				t.Errorf("GenerateListOfAffectedApps() = %v, want %v", got, tt.want)
 			}
 		})
