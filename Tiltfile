@@ -1,12 +1,8 @@
-load('ext://configmap', 'configmap_from_dict')
 load('ext://dotenv', 'dotenv')
 load('ext://earthly', 'earthly_build', 'earthly_build_with_restart')
 load('ext://helm_remote', 'helm_remote')
-load('ext://tests/golang', 'test_go')
-load('ext://list_port_forwards', 'display_port_forwards')
 load('ext://namespace', 'namespace_yaml')
-load('ext://restart_process', 'docker_build_with_restart')
-load('ext://secret', 'secret_from_dict')
+load('ext://tests/golang', 'test_go')
 load('ext://uibutton', 'cmd_button')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
@@ -14,7 +10,7 @@ dotenv()
 
 config.define_bool("enable_repo", True, 'create a new project for testing this app')
 config.define_string("vcs-type")
-config.define_bool("live_debug")
+config.define_bool("live_debug") # not used, but kept for backwards compat
 config.define_string("ngrok_fqdn")
 cfg = config.parse()
 
@@ -223,5 +219,3 @@ install_test_apps(cfg)
 
 load("localdev/test_appsets/Tiltfile", "install_test_appsets")
 install_test_appsets(cfg)
-
-display_port_forwards()
