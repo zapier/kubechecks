@@ -139,11 +139,10 @@ arch="arm64" if str(local("uname -m")).strip('\n') == "arm64" else "amd64"
 
 earthly_build(
     context='.',
-    target="+build-docker-debug",
+    target="+docker-debug",
     ref='kubechecks',
     image_arg='CI_REGISTRY_IMAGE',
     ignore='./dist',
-    # entrypoint='$GOPATH/bin/dlv --listen=:2345 --api-version=2 --headless=true --accept-multiclient exec --continue /app/kubechecks controller',
     extra_args=[
         '--GOARCH={}'.format(arch),
     ]

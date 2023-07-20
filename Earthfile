@@ -110,6 +110,24 @@ docker:
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_COMMIT
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_TAG
 
+dlv:
+    FROM golang:1.19
+
+    RUN apt update && apt install -y ca-certificates curl git
+    RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+    SAVE ARTIFACT /go/bin/dlv
+
+docker-debug:
+    ARG CI_REGISTRY_IMAGE="kubechecks"
+    FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef --CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE
+
+    COPY (+dlv/dlv --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
+
+    CMD ["/usr/local/bin/dlv", "--listen=:2345", "--api-version=2", "--headless=true", "--accept-multiclient", "exec", "--continue", "./kubechecks", "controller"]
+
+    SAVE IMAGE --push $CI_REGISTRY_IMAGE
+
 lint-golang:
     ARG STATICCHECK_VERSION="0.3.3"
 
