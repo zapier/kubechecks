@@ -25,7 +25,7 @@ func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *app_directory.AppDi
 	return v2a.vcsAppStubsByRepo[repoUrl]
 }
 
-func (v2a *VcsToArgoMap) AddApp(app v1alpha1.Application) {
+func (v2a *VcsToArgoMap) AddApp(app *v1alpha1.Application) {
 	if app.Spec.Source == nil {
 		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
 		return

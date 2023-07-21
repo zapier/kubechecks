@@ -31,7 +31,7 @@ func (d *AppDirectory) Count() int {
 	return len(d.appsMap)
 }
 
-func (d *AppDirectory) AddApp(app v1alpha1.Application) {
+func (d *AppDirectory) AddApp(app *v1alpha1.Application) {
 	appName := app.Name
 
 	src := app.Spec.Source

@@ -29,7 +29,7 @@ func TestPathsAreJoinedProperly(t *testing.T) {
 		},
 	}
 
-	rad.AddApp(app1)
+	rad.AddApp(&app1)
 
 	assert.Equal(t, map[string]ApplicationStub{
 		"test-app": {

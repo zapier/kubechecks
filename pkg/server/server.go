@@ -5,8 +5,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/zapier/kubechecks/pkg/config"
-
 	"github.com/heptiolabs/healthcheck"
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
@@ -17,7 +15,9 @@ import (
 	"github.com/ziflex/lecho/v3"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/app_watcher"
 	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 const KubeChecksHooksPathPrefix = "/hooks"
@@ -25,12 +25,24 @@ const KubeChecksHooksPathPrefix = "/hooks"
 var singleton *Server
 
 type Server struct {
-	cfg *config.ServerConfig
+	cfg        *config.ServerConfig
+	appWatcher *app_watcher.ApplicationWatcher
 }
 
 func NewServer(cfg *config.ServerConfig) *Server {
+	cfg.VcsToArgoMap = config.NewVcsToArgoMap()
+
+	var appWatcher *app_watcher.ApplicationWatcher
+	if viper.GetBool("monitor-all-applications") {
+		var err error
+		appWatcher, err = app_watcher.NewApplicationWatcher(cfg)
+		if err != nil {
+			log.Fatal().Err(err).Msg("could not create ApplicationWatcher")
+		}
+	}
 	singleton = &Server{
-		cfg: cfg,
+		appWatcher: appWatcher,
+		cfg:        cfg,
 	}
 
 	return singleton
@@ -41,6 +53,10 @@ func GetServer() *Server {
 }
 
 func (s *Server) Start() {
+	if s.appWatcher != nil {
+		go s.appWatcher.Run(context.Background(), 1)
+	}
+
 	if err := s.buildVcsToArgoMap(); err != nil {
 		log.Warn().Err(err).Msg("failed to build vcs app map from argo")
 	}
@@ -133,8 +149,6 @@ func (s *Server) buildVcsToArgoMap() error {
 
 	ctx := context.TODO()
 
-	result := config.NewVcsToArgoMap()
-
 	argoClient := argo_client.GetArgoClient()
 
 	apps, err := argoClient.GetApplications(ctx)
@@ -142,9 +156,8 @@ func (s *Server) buildVcsToArgoMap() error {
 		return errors.Wrap(err, "failed to list applications")
 	}
 	for _, app := range apps.Items {
-		result.AddApp(app)
+		s.cfg.VcsToArgoMap.AddApp(&app)
 	}
 
-	s.cfg.VcsToArgoMap = result
 	return nil
 }
