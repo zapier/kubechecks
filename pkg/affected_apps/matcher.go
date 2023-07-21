@@ -3,11 +3,17 @@ package affected_apps
 import (
 	"context"
 	"path"
+
+	"github.com/zapier/kubechecks/pkg/app_directory"
 )
 
 type AffectedItems struct {
-	AppNameToPathMap map[string]string
-	ApplicationSets  []string
+	Applications    []app_directory.ApplicationStub
+	ApplicationSets []ApplicationSet
+}
+
+type ApplicationSet struct {
+	Name string
 }
 
 type Matcher interface {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	"github.com/rs/zerolog/log"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
@@ -112,6 +113,21 @@ func (argo *ArgoClient) GetApplications(ctx context.Context) (*v1alpha1.Applicat
 	defer closer.Close()
 
 	resp, err := appClient.List(ctx, new(application.ApplicationQuery))
+	if err != nil {
+		telemetry.SetError(span, err, "Argo List All Applications error")
+		return nil, errors.Wrap(err, "failed to applications")
+	}
+	return resp, nil
+}
+
+func (argo *ArgoClient) GetApplicationSets(ctx context.Context) (*v1alpha1.ApplicationSetList, error) {
+	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetApplications")
+	defer span.End()
+
+	closer, appClient := argo.GetApplicationSetClient()
+	defer closer.Close()
+
+	resp, err := appClient.List(ctx, new(applicationset.ApplicationSetListQuery))
 	if err != nil {
 		telemetry.SetError(span, err, "Argo List All Applications error")
 		return nil, errors.Wrap(err, "failed to applications")

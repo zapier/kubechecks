@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/zapier/kubechecks/pkg/app_directory"
 )
 
 // TODO: move this out to config and or in an .kubechecks.yaml as well
@@ -29,7 +30,7 @@ func NewBestEffortMatcher(repoName string, repoFileList []string) *BestEffort {
 }
 
 func (b *BestEffort) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
-	appList := make(map[string]string)
+	appsMap := make(map[string]string)
 
 	for _, file := range changeList {
 		fileParts := strings.Split(file, "/")
@@ -50,16 +51,16 @@ func (b *BestEffort) AffectedApps(ctx context.Context, changeList []string) (Aff
 							appName := fmt.Sprintf("%s-%s", repoFileParts[3], fileParts[1])
 							appPath := fmt.Sprintf("%s%s/", oversDir, repoFileParts[3])
 							log.Debug().Str("app", appName).Str("path", appPath).Msg("adding application to map")
-							appList[appName] = appPath
+							appsMap[appName] = appPath
 						}
 					}
 				} else {
-					appList[fmt.Sprintf("%s-%s", fileParts[3], fileParts[1])] = fmt.Sprintf("%s/%s/%s/%s/", fileParts[0], fileParts[1], fileParts[2], fileParts[3])
+					appsMap[fmt.Sprintf("%s-%s", fileParts[3], fileParts[1])] = fmt.Sprintf("%s/%s/%s/%s/", fileParts[0], fileParts[1], fileParts[2], fileParts[3])
 				}
 			} else {
 				// helm
 				if isHelmClusterAppFile(file) {
-					appList[fmt.Sprintf("%s-%s", fileParts[2], fileParts[1])] = fmt.Sprintf("%s/%s/%s/", fileParts[0], fileParts[1], fileParts[2])
+					appsMap[fmt.Sprintf("%s-%s", fileParts[2], fileParts[1])] = fmt.Sprintf("%s/%s/%s/", fileParts[0], fileParts[1], fileParts[2])
 				} else {
 					// touching a file that is at the helm root, return list of all cluster apps below this dir
 					appDir := filepath.Dir(file)
@@ -71,7 +72,7 @@ func (b *BestEffort) AffectedApps(ctx context.Context, changeList []string) (Aff
 								appName := fmt.Sprintf("%s-%s", repoFileParts[2], fileParts[1])
 								appPath := fmt.Sprintf("%s/%s/", appDir, repoFileParts[2])
 								log.Debug().Str("app", appName).Str("path", appPath).Msg("adding application to map")
-								appList[appName] = appPath
+								appsMap[appName] = appPath
 							} else {
 								log.Warn().Str("dir", dir).Msg("ignoring dir")
 							}
@@ -82,11 +83,16 @@ func (b *BestEffort) AffectedApps(ctx context.Context, changeList []string) (Aff
 		}
 		// If using the /manifests/ pattern, we need the repo name to use as the app
 		if fileParts[0] == "manifests" || fileParts[0] == "charts" {
-			appList[fmt.Sprintf("%s-%s", fileParts[1], b.repoName)] = fmt.Sprintf("%s/%s/", fileParts[0], fileParts[1])
+			appsMap[fmt.Sprintf("%s-%s", fileParts[1], b.repoName)] = fmt.Sprintf("%s/%s/", fileParts[0], fileParts[1])
 		}
 	}
 
-	return AffectedItems{appList, []string{}}, nil
+	var appsSlice []app_directory.ApplicationStub
+	for name, path := range appsMap {
+		appsSlice = append(appsSlice, app_directory.ApplicationStub{Name: name, Path: path})
+	}
+
+	return AffectedItems{Applications: appsSlice}, nil
 }
 
 func isHelmClusterAppFile(file string) bool {

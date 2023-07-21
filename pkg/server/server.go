@@ -69,12 +69,12 @@ func (s *Server) Start() {
 
 func (s *Server) hooksPrefix() string {
 	prefix := s.cfg.UrlPrefix
-	url, err := url.JoinPath("/", prefix, KubeChecksHooksPathPrefix)
+	serverUrl, err := url.JoinPath("/", prefix, KubeChecksHooksPathPrefix)
 	if err != nil {
 		log.Warn().Err(err).Msg(":whatintarnation:")
 	}
 
-	return strings.TrimSuffix(url, "/")
+	return strings.TrimSuffix(serverUrl, "/")
 }
 
 func (s *Server) ensureWebhooks() error {
@@ -131,17 +131,13 @@ func (s *Server) buildVcsToArgoMap() error {
 	result := pkg.NewVcsToArgoMap()
 
 	argoClient := argo_client.GetArgoClient()
+
 	apps, err := argoClient.GetApplications(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to list applications")
 	}
-
 	for _, app := range apps.Items {
-		if app.Spec.Source == nil {
-			continue
-		}
-
-		result.AddApp(app.Spec.Source.RepoURL, app.Spec.Source.Path, app.Name)
+		result.AddApp(app)
 	}
 
 	s.cfg.VcsToArgoMap = result

@@ -4,6 +4,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 
@@ -51,11 +52,19 @@ func NewArgoClient(client apiclient.Client) *ArgoClient {
 	}
 }
 
-// related argocd diff code https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L899
+// GetApplicationClient has related argocd diff code https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L899
 func (argo *ArgoClient) GetApplicationClient() (io.Closer, application.ApplicationServiceClient) {
 	closer, appClient, err := argo.client.NewApplicationClient()
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not create ArgoCD Application Client")
+	}
+	return closer, appClient
+}
+
+func (argo *ArgoClient) GetApplicationSetClient() (io.Closer, applicationset.ApplicationSetServiceClient) {
+	closer, appClient, err := argo.client.NewApplicationSetClient()
+	if err != nil {
+		log.Fatal().Err(err).Msg("could not create ArgoCD Application Set Client")
 	}
 	return closer, appClient
 }
