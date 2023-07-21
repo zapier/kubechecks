@@ -2,7 +2,6 @@ package affected_apps
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +16,7 @@ func TestBestEffortMatcher(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want []app_directory.ApplicationStub
+		want AffectedItems
 	}{
 		{
 			name: "helm:cluster-change",
@@ -27,8 +26,10 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
+				},
 			},
 		},
 		{
@@ -39,9 +40,11 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
-				{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
+					{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
+				},
 			},
 		},
 		{
@@ -53,9 +56,11 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
-				{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
+					{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
+				},
 			},
 		},
 		{
@@ -68,9 +73,11 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
-				{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
+					{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
+				},
 			},
 		},
 		{
@@ -81,8 +88,10 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+				},
 			},
 		},
 		{
@@ -93,8 +102,10 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+				},
 			},
 		},
 		{
@@ -105,8 +116,10 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+				},
 			},
 		},
 		{
@@ -117,8 +130,10 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+				},
 			},
 		},
 		{
@@ -129,20 +144,23 @@ func TestBestEffortMatcher(t *testing.T) {
 				},
 				repoName: "",
 			},
-			want: []app_directory.ApplicationStub{
-				{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+			want: AffectedItems{
+				Applications: []app_directory.ApplicationStub{
+					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
+				},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var got AffectedItems
+			var err error
+
 			matcher := NewBestEffortMatcher(tt.args.repoName, testRepoFiles)
-			got, err := matcher.AffectedApps(context.TODO(), tt.args.fileList)
+			got, err = matcher.AffectedApps(context.TODO(), tt.args.fileList)
 			assert.NoError(t, err)
 
-			if !reflect.DeepEqual(got.Applications, tt.want) {
-				t.Errorf("GenerateListOfAffectedApps() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "GenerateListOfAffectedApps not equal")
 		})
 	}
 }
