@@ -25,9 +25,9 @@ var ControllerCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
 
-		server := server.NewServer(&pkg.ServerConfig{
-			UrlPrefix:     viper.GetString("webhook-url-prefix"),
-			WebhookSecret: viper.GetString("webhook-secret"),
+		server := server.NewServer(&config.ServerConfig{
+			UrlPrefix:       viper.GetString("webhook-url-prefix"),
+			WebhookSecret:   viper.GetString("webhook-secret"),
 		})
 		go server.Start()
 

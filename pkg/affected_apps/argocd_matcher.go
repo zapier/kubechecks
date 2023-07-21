@@ -2,9 +2,9 @@ package affected_apps
 
 import (
 	"context"
+	"github.com/zapier/kubechecks/pkg/config"
 
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/app_directory"
 	"github.com/zapier/kubechecks/pkg/repo"
 )
@@ -13,7 +13,7 @@ type ArgocdMatcher struct {
 	appsDirectory *app_directory.AppDirectory
 }
 
-func NewArgocdMatcher(vcsToArgoMap pkg.VcsToArgoMap, repo *repo.Repo) *ArgocdMatcher {
+func NewArgocdMatcher(vcsToArgoMap config.VcsToArgoMap, repo *repo.Repo) *ArgocdMatcher {
 	log.Debug().Msgf("looking for %s repos", repo.CloneURL)
 	repoApps := vcsToArgoMap.GetAppsInRepo(repo.CloneURL)
 	if repoApps == nil {

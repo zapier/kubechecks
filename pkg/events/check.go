@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/zapier/kubechecks/pkg/config"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -41,12 +43,12 @@ type CheckEvent struct {
 
 	affectedItems affected_apps.AffectedItems
 
-	cfg *pkg.ServerConfig
+	cfg *config.ServerConfig
 }
 
 var inFlight int32
 
-func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *pkg.ServerConfig) *CheckEvent {
+func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig) *CheckEvent {
 	ce := &CheckEvent{
 		cfg:    cfg,
 		client: client,

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/zapier/kubechecks/pkg/config"
+
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -25,7 +27,7 @@ import (
 type VCSHookHandler struct {
 	client    pkg.Client
 	tokenUser string
-	cfg       *pkg.ServerConfig
+	cfg       *config.ServerConfig
 	// labelFilter is a string specifying the required label name to filter merge events by; if empty, all merge events will pass the filter.
 	labelFilter string
 }
@@ -60,7 +62,7 @@ func createVCSClient() (pkg.Client, string) {
 
 }
 
-func NewVCSHookHandler(cfg *pkg.ServerConfig) *VCSHookHandler {
+func NewVCSHookHandler(cfg *config.ServerConfig) *VCSHookHandler {
 	client, tokenUser := GetVCSClient()
 	labelFilter := viper.GetString("label-filter")
 
