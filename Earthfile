@@ -70,6 +70,7 @@ docker:
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
+    ARG KUSTOMIZE_VERSION=4.5.7
     RUN \
         curl \
             --fail \
@@ -79,7 +80,9 @@ docker:
             "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
             --output install_kustomize.sh && \
         chmod 700 install_kustomize.sh && \
-        ./install_kustomize.sh 4.5.7 /usr/local/bin
+        ./install_kustomize.sh ${KUSTOMIZE_VERSION} /usr/local/bin
+
+    ARG HELM_VERSION=3.10.0
     RUN \
         curl \
             --fail \
@@ -89,7 +92,7 @@ docker:
             "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" \
             --output get-helm-3.sh && \
         chmod 700 get-helm-3.sh && \
-        ./get-helm-3.sh -v v3.10.0
+        ./get-helm-3.sh -v v${HELM_VERSION}
 
     RUN mkdir /app
 
@@ -102,12 +105,19 @@ docker:
 
     CMD ["./kubechecks", "controller"]
 
+docker-dev:
+    FROM +docker
+
+    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
+    SAVE IMAGE --push $CI_REGISTRY_IMAGE:dev
+
+docker-tag:
+    FROM +docker
+
     ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
     ARG --required GIT_TAG
-    ARG --required GIT_COMMIT
 
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:latest
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_COMMIT
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_TAG
 
 dlv:
@@ -120,7 +130,7 @@ dlv:
 
 docker-debug:
     ARG CI_REGISTRY_IMAGE="kubechecks"
-    FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef --CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE
+    FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef
 
     COPY (+dlv/dlv --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
 
@@ -152,12 +162,10 @@ lint-golang:
 
 test-helm:
     ARG CHART_TESTING_VERSION="3.7.1"
-    ARG HELM_VERSION="3.8.1"
-    ARG HELM_UNITTEST_VERSION="0.3.3"
-    ARG KUBECONFORM_VERSION="0.5.0"
     FROM quay.io/helmpack/chart-testing:v${CHART_TESTING_VERSION}
 
     # install kubeconform
+    ARG KUBECONFORM_VERSION="0.5.0"
     RUN FILE=kubeconform.tgz \
         && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz \
         && wget ${URL} \
@@ -169,9 +177,11 @@ test-helm:
             --file ${FILE} \
         && kubeconform -v
 
+    ARG HELM_UNITTEST_VERSION="0.3.3"
     RUN apk add --no-cache bash git \
         && helm plugin install --version "${HELM_UNITTEST_VERSION}" https://github.com/helm-unittest/helm-unittest \
         && helm unittest --help
+
     # actually lint the chart
     WORKDIR /src
     COPY . /src
@@ -180,10 +190,9 @@ test-helm:
 
 release-helm:
     ARG CHART_RELEASER_VERSION="1.6.0"
-    ARG HELM_VERSION="3.8.1"
-    ARG token=""
     FROM quay.io/helmpack/chart-releaser:v${CHART_RELEASER_VERSION}
 
+    ARG HELM_VERSION="3.8.1"
     RUN FILE=helm.tgz \
         && URL=https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz \
         && wget ${URL} \

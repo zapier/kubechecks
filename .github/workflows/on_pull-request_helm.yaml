@@ -6,10 +6,6 @@ on:
       - 'Earthfile'
       - 'charts/**'
 
-env:
-  EARTHLY_TOOL_VERSION: 0.7
-  GOLANG_TOOL_VERSION: 1.19.3
-  
 jobs:
   ci-helm:
     runs-on: ubuntu-22.04
@@ -21,4 +17,9 @@ jobs:
       - uses: earthly/actions-setup@v1
         with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
-      - run: earthly +ci-helm
+      - run: |
+          earthly \
+            +ci-helm \
+            --HELM_VERSION=${{ env.HELM_TOOL_VERSION }} \
+            --CHART_TESTING_VERSION=${{ env.HELM_CT_TOOL_VERSION }} \
+            --KUBECONFORM_VERSION=${{ env.KUBECONFORM_TOOL_VERSION }}
