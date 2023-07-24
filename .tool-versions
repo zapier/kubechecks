@@ -1,7 +1,7 @@
 earthly 0.7.12
 golang 1.19.11
 helm 3.12.2
-helm-ct 3.9.0
+helm-ct 3.8.0
 kubeconform 0.6.3
 kustomize 5.1.0
 tilt 0.33.2
