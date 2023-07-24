@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/zapier/kubechecks/pkg/config"
-
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -17,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/events"
 	"github.com/zapier/kubechecks/pkg/github_client"
 	"github.com/zapier/kubechecks/pkg/gitlab_client"

@@ -2,6 +2,7 @@ package app_watcher
 
 import (
 	"context"
+
 	appclientset "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
 	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/config"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	appv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
@@ -78,7 +79,7 @@ func (ctrl *ApplicationWatcher) onApplicationAdded(obj interface{}) {
 		log.Error().Err(err).Msg("appwatcher: could not get key for added application")
 	}
 	log.Trace().Str("key", key).Msg("appwatcher: onApplicationAdded")
-	ctrl.cfg.VcsToArgoMap.AddApp(obj.(*appv1.Application))
+	ctrl.cfg.VcsToArgoMap.AddApp(obj.(*appv1alpha1.Application))
 }
 
 func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
@@ -119,7 +120,7 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister() (cache.SharedI
 				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications(ctrl.cfg.ArgoCdNamespace).Watch(context.TODO(), options)
 			},
 		},
-		&appv1.Application{},
+		&appv1alpha1.Application{},
 		refreshTimeout,
 		cache.Indexers{
 			cache.NamespaceIndex: func(obj interface{}) ([]string, error) {
@@ -139,7 +140,7 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister() (cache.SharedI
 }
 
 func canProcessApp(obj interface{}) bool {
-	app, ok := obj.(*appv1.Application)
+	app, ok := obj.(*appv1alpha1.Application)
 	if !ok {
 		return false
 	}
