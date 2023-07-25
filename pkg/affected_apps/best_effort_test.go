@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zapier/kubechecks/pkg/app_directory"
 )
 
@@ -158,11 +159,38 @@ func TestBestEffortMatcher(t *testing.T) {
 
 			matcher := NewBestEffortMatcher(tt.args.repoName, testRepoFiles)
 			got, err = matcher.AffectedApps(context.TODO(), tt.args.fileList)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
-			assert.Equal(t, tt.want, got, "GenerateListOfAffectedApps not equal")
+			assert.Equal(t, len(tt.want.Applications), len(got.Applications))
+			assert.Equal(t, len(tt.want.ApplicationSets), len(got.ApplicationSets))
+
+			// ordering doesn't matter, we just want to make sure the items all exist
+			wantAppsMap := listToMap(tt.want.Applications, appStubKey)
+			gotAppsMap := listToMap(got.Applications, appStubKey)
+			assert.Equal(t, wantAppsMap, gotAppsMap, "Applications not equal")
+
+			wantAppSetsMap := listToMap(tt.want.ApplicationSets, appSetKey)
+			gotAppSetsMap := listToMap(got.ApplicationSets, appSetKey)
+			assert.Equal(t, wantAppSetsMap, gotAppSetsMap, "ApplicationSets not equal")
 		})
 	}
+}
+
+func appSetKey(item ApplicationSet) string {
+	return item.Name
+}
+
+func appStubKey(stub app_directory.ApplicationStub) string {
+	return stub.Name
+}
+
+func listToMap[T any](items []T, makeKey func(T) string) map[string]T {
+	result := make(map[string]T)
+	for _, item := range items {
+		key := makeKey(item)
+		result[key] = item
+	}
+	return result
 }
 
 var testRepoFiles = []string{
