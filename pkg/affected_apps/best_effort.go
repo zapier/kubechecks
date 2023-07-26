@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/app_directory"
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 // TODO: move this out to config and or in an .kubechecks.yaml as well
@@ -87,9 +87,9 @@ func (b *BestEffort) AffectedApps(ctx context.Context, changeList []string) (Aff
 		}
 	}
 
-	var appsSlice []app_directory.ApplicationStub
+	var appsSlice []config.ApplicationStub
 	for name, path := range appsMap {
-		appsSlice = append(appsSlice, app_directory.ApplicationStub{Name: name, Path: path})
+		appsSlice = append(appsSlice, config.ApplicationStub{Name: name, Path: path})
 	}
 
 	return AffectedItems{Applications: appsSlice}, nil

@@ -3,47 +3,47 @@ package server
 import (
 	"testing"
 
-	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 func TestHooksPrefix(t *testing.T) {
 	tests := []struct {
 		name string
 		want string
-		cfg  *pkg.ServerConfig
+		cfg  *config.ServerConfig
 	}{
 		{
 			name: "no-prefix",
 			want: "/hooks",
-			cfg: &pkg.ServerConfig{
+			cfg: &config.ServerConfig{
 				UrlPrefix: "",
 			},
 		},
 		{
 			name: "prefix-no-slash",
 			want: "/test/hooks",
-			cfg: &pkg.ServerConfig{
+			cfg: &config.ServerConfig{
 				UrlPrefix: "test",
 			},
 		},
 		{
 			name: "prefix-trailing-slash",
 			want: "/test/hooks",
-			cfg: &pkg.ServerConfig{
+			cfg: &config.ServerConfig{
 				UrlPrefix: "test/",
 			},
 		},
 		{
 			name: "prefix-leading-slash",
 			want: "/test/hooks",
-			cfg: &pkg.ServerConfig{
+			cfg: &config.ServerConfig{
 				UrlPrefix: "/test",
 			},
 		},
 		{
 			name: "prefix-slash-sandwich",
 			want: "/test/hooks",
-			cfg: &pkg.ServerConfig{
+			cfg: &config.ServerConfig{
 				UrlPrefix: "/test/",
 			},
 		},

@@ -8,12 +8,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/conftest"
 	"github.com/zapier/kubechecks/pkg/diff"
 	"github.com/zapier/kubechecks/pkg/kubepug"
@@ -40,7 +42,7 @@ type CheckEvent struct {
 
 	affectedItems affected_apps.AffectedItems
 
-	cfg *pkg.ServerConfig
+	cfg *config.ServerConfig
 }
 
 const (
@@ -63,7 +65,7 @@ func init() {
 	hostname, _ = os.Hostname()
 }
 
-func NewCheckEvent(repo *repo.Repo, client vcs_clients.Client, cfg *pkg.ServerConfig) *CheckEvent {
+func NewCheckEvent(repo *repo.Repo, client vcs_clients.Client, cfg *config.ServerConfig) *CheckEvent {
 	ce := &CheckEvent{
 		cfg:    cfg,
 		client: client,
@@ -170,7 +172,10 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) error {
 		matcher = affected_apps.NewConfigMatcher(cfg)
 	} else if viper.GetBool("monitor-all-applications") {
 		log.Debug().Msg("using an argocd matcher")
-		matcher = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo)
+		matcher, err = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo, ce.TempWorkingDir)
+		if err != nil {
+			return errors.Wrap(err, "failed to create argocd matcher")
+		}
 	} else {
 		log.Debug().Msg("using best effort matcher")
 		ce.repoFiles, err = ce.repo.GetListOfRepoFiles()

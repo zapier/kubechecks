@@ -1,4 +1,4 @@
-package app_directory
+package config
 
 import (
 	"testing"
@@ -29,7 +29,7 @@ func TestPathsAreJoinedProperly(t *testing.T) {
 		},
 	}
 
-	rad.AddApp(app1)
+	rad.ProcessApp(app1)
 
 	assert.Equal(t, map[string]ApplicationStub{
 		"test-app": {
@@ -39,7 +39,7 @@ func TestPathsAreJoinedProperly(t *testing.T) {
 	}, rad.appsMap)
 	assert.Equal(t, map[string][]string{
 		"/test1/test2": {"test-app"},
-	}, rad.appPaths)
+	}, rad.appDirs)
 	assert.Equal(t, map[string][]string{
 		"/test1/test2/one.json": {"test-app"},
 		"/test1/test2/two.json": {"test-app"},

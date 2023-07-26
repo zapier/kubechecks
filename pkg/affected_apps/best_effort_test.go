@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zapier/kubechecks/pkg/app_directory"
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 func TestBestEffortMatcher(t *testing.T) {
@@ -28,7 +28,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
 				},
 			},
@@ -42,7 +42,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
 					{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
 				},
@@ -58,7 +58,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
 					{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
 				},
@@ -75,7 +75,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-echo-server", Path: "apps/echo-server/foo-eks-01/"},
 					{Name: "foo-eks-02-echo-server", Path: "apps/echo-server/foo-eks-02/"},
 				},
@@ -90,7 +90,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 				},
 			},
@@ -104,7 +104,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 				},
 			},
@@ -118,7 +118,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 				},
 			},
@@ -132,7 +132,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 				},
 			},
@@ -146,7 +146,7 @@ func TestBestEffortMatcher(t *testing.T) {
 				repoName: "",
 			},
 			want: AffectedItems{
-				Applications: []app_directory.ApplicationStub{
+				Applications: []config.ApplicationStub{
 					{Name: "foo-eks-01-httpbin", Path: "apps/httpbin/overlays/foo-eks-01/"},
 				},
 			},
@@ -180,7 +180,7 @@ func appSetKey(item ApplicationSet) string {
 	return item.Name
 }
 
-func appStubKey(stub app_directory.ApplicationStub) string {
+func appStubKey(stub config.ApplicationStub) string {
 	return stub.Name
 }
 

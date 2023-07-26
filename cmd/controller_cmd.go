@@ -7,13 +7,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/zapier/kubechecks/pkg/events"
-
 	_ "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/events"
 	"github.com/zapier/kubechecks/pkg/server"
 )
 
@@ -25,7 +25,7 @@ var controllerCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
 
-		server := server.NewServer(&pkg.ServerConfig{
+		server := server.NewServer(&config.ServerConfig{
 			UrlPrefix:     viper.GetString("webhook-url-prefix"),
 			WebhookSecret: viper.GetString("webhook-secret"),
 		})
