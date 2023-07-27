@@ -45,7 +45,9 @@ deploy_ngrok(cfg)
 # /////////////////////////////////////////////////////////////////////////////
 
 # Load ArgoCD Tiltfile
-load('./localdev/argocd/Tiltfile', 'deploy_argo')
+load('./localdev/argocd/Tiltfile', 'deploy_argo', 'delete_argocd_apps_on_tilt_down', 'force_argocd_cleanup_on_tilt_down')
+# make sure apps get removed (cleanly) before ArgoCD is shutdown
+delete_argocd_apps_on_tilt_down()
 deploy_argo()
 
 #load('./localdev/reloader/Tiltfile', 'deploy_reloader')
@@ -148,19 +150,13 @@ earthly_build(
     ]
 )
 
-
 cmd_button('loc:go mod tidy',
   argv=['go', 'mod', 'tidy'],
   resource='kubechecks',
   icon_name='move_up',
   text='go mod tidy',
 )
-cmd_button('generate-mocks',
-   argv=['go', 'generate', './...'],
-   resource='kubechecks',
-   icon_name='change_circle',
-   text='go generate',
-)
+
 cmd_button('restart-pod',
    argv=['kubectl', '-n', 'kubechecks', 'rollout', 'restart', 'deployment/kubechecks'],
    resource='kubechecks',
@@ -188,7 +184,11 @@ k8s_resource(
   resource_deps=[
     # 'go-build',
     'go-test',
-    'k8s:namespace'
+    'k8s:namespace',
+    'argocd',
+    'argocd-crds',
+    'tf-gitlab',
+    'tf-github',
   ],
   labels=["kubechecks"]
 )
@@ -218,3 +218,6 @@ install_test_apps(cfg)
 
 load("localdev/test_appsets/Tiltfile", "install_test_appsets")
 install_test_appsets(cfg)
+
+
+force_argocd_cleanup_on_tilt_down()
