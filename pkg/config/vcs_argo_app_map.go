@@ -7,17 +7,17 @@ import (
 )
 
 type VcsToArgoMap struct {
-	vcsAppStubsByRepo map[repoURL]*app_directory.AppDirectory
+	vcsAppStubsByRepo map[RepoURL]*app_directory.AppDirectory
 }
 
 func NewVcsToArgoMap() VcsToArgoMap {
 	return VcsToArgoMap{
-		vcsAppStubsByRepo: make(map[repoURL]*app_directory.AppDirectory),
+		vcsAppStubsByRepo: make(map[RepoURL]*app_directory.AppDirectory),
 	}
 }
 
 func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *app_directory.AppDirectory {
-	repoUrl, err := normalizeRepoUrl(repoCloneUrl)
+	repoUrl, err := NormalizeRepoUrl(repoCloneUrl)
 	if err != nil {
 		log.Warn().Err(err).Msgf("failed to parse %s", repoCloneUrl)
 	}
@@ -32,7 +32,7 @@ func (v2a *VcsToArgoMap) AddApp(app *v1alpha1.Application) {
 	}
 
 	rawRepoUrl := app.Spec.Source.RepoURL
-	cleanRepoUrl, err := normalizeRepoUrl(rawRepoUrl)
+	cleanRepoUrl, err := NormalizeRepoUrl(rawRepoUrl)
 	if err != nil {
 		log.Warn().Err(err).Msgf("%s/%s: failed to parse %s", app.Namespace, app.Name, rawRepoUrl)
 		return

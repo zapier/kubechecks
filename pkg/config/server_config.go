@@ -23,21 +23,21 @@ func (cfg *ServerConfig) GetVcsRepos() []string {
 	return repos
 }
 
-type repoURL struct {
+type RepoURL struct {
 	Host, Path string
 }
 
-func (r repoURL) CloneURL() string {
+func (r RepoURL) CloneURL() string {
 	return fmt.Sprintf("git@%s:%s", r.Host, r.Path)
 }
 
-func buildNormalizedRepoUrl(host, path string) repoURL {
+func buildNormalizedRepoUrl(host, path string) RepoURL {
 	path = strings.TrimPrefix(path, "/")
 	path = strings.TrimSuffix(path, ".git")
-	return repoURL{host, path}
+	return RepoURL{host, path}
 }
 
-func normalizeRepoUrl(s string) (repoURL, error) {
+func NormalizeRepoUrl(s string) (RepoURL, error) {
 	var parser func(string) (*url.URL, error)
 
 	if strings.HasPrefix(s, "http") {
@@ -48,7 +48,7 @@ func normalizeRepoUrl(s string) (repoURL, error) {
 
 	r, err := parser(s)
 	if err != nil {
-		return repoURL{}, err
+		return RepoURL{}, err
 	}
 
 	return buildNormalizedRepoUrl(r.Host, r.Path), nil

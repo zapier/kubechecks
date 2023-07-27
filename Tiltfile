@@ -187,8 +187,6 @@ k8s_resource(
     'k8s:namespace',
     'argocd',
     'argocd-crds',
-    'tf-gitlab',
-    'tf-github',
   ],
   labels=["kubechecks"]
 )

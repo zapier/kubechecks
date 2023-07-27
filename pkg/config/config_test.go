@@ -11,29 +11,29 @@ import (
 func TestNormalizeStrings(t *testing.T) {
 	testCases := []struct {
 		input    string
-		expected repoURL
+		expected RepoURL
 	}{
 		{
 			input:    "git@github.com:one/two",
-			expected: repoURL{"github.com", "one/two"},
+			expected: RepoURL{"github.com", "one/two"},
 		},
 		{
 			input:    "https://github.com/one/two",
-			expected: repoURL{"github.com", "one/two"},
+			expected: RepoURL{"github.com", "one/two"},
 		},
 		{
 			input:    "git@gitlab.com:djeebus/helm-test.git",
-			expected: repoURL{"gitlab.com", "djeebus/helm-test"},
+			expected: RepoURL{"gitlab.com", "djeebus/helm-test"},
 		},
 		{
 			input:    "https://gitlab.com/djeebus/helm-test.git",
-			expected: repoURL{"gitlab.com", "djeebus/helm-test"},
+			expected: RepoURL{"gitlab.com", "djeebus/helm-test"},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("case %s", tc.input), func(t *testing.T) {
-			actual, err := normalizeRepoUrl(tc.input)
+			actual, err := NormalizeRepoUrl(tc.input)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, actual)
 		})
