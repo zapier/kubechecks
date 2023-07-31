@@ -20,7 +20,7 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-var once sync.Once // used to ensure we don't reauth this
+var getSchemasOnce sync.Once // used to ensure we don't reauth this
 var refreshSchemasOnce sync.Once
 
 const kubeconformCommentFormat = `
@@ -37,7 +37,7 @@ const inRepoSchemaLocation = "./schemas"
 var localSchemasLocation string
 
 func getSchemaLocations() []string {
-	once.Do(func() {
+	getSchemasOnce.Do(func() {
 		ctx := context.Background()
 		_, span := otel.Tracer("Kubechecks").Start(ctx, "GetSchemaLocations")
 		schemasLocation := viper.GetString("schemas-location")
@@ -72,6 +72,7 @@ func getSchemaLocations() []string {
 
 			err = os.RemoveAll(oldLocalSchemasLocation)
 			if err != nil {
+				telemetry.SetError(span, err, "failed to clean up old schemas directory")
 				log.Err(err).Msg("failed to clean up old schemas directory")
 			}
 
@@ -79,7 +80,7 @@ func getSchemaLocations() []string {
 			refreshSchemasOnce.Do(func() {
 				c := cron.New()
 				c.AddFunc("@daily", func() {
-					once = *new(sync.Once)
+					getSchemasOnce = *new(sync.Once)
 				})
 				c.Start()
 			})
