@@ -14,7 +14,7 @@ import (
 )
 
 func TestDefaultGetSchemaLocations(t *testing.T) {
-	once = *new(sync.Once)
+	getSchemasOnce = *new(sync.Once)
 	schemaLocations := getSchemaLocations()
 
 	// default schema location is "./schemas"
@@ -26,7 +26,7 @@ func TestGetRemoteSchemaLocations(t *testing.T) {
 		t.Skip("Skipping testing. Only for CI environments")
 	}
 
-	once = *new(sync.Once)
+	getSchemasOnce = *new(sync.Once)
 
 	fixture := fixtures.Basic().One()
 	fmt.Println(fixture.URL)
