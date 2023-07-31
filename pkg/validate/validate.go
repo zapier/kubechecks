@@ -7,13 +7,21 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
+	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg"
+	"github.com/spf13/viper"
+	"github.com/yannh/kubeconform/pkg/validator"
 	"go.opentelemetry.io/otel"
 
-	"github.com/yannh/kubeconform/pkg/validator"
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/telemetry"
 )
+
+var getSchemasOnce sync.Once // used to ensure we don't reauth this
+var refreshSchemasOnce sync.Once
 
 const kubeconformCommentFormat = `
 <details><summary><b>Show kubeconform report:</b> %s</summary>
@@ -24,10 +32,65 @@ const kubeconformCommentFormat = `
 
 </details>
 `
+const inRepoSchemaLocation = "./schemas"
 
-var schemaLocations = []string{
-	`./schemas/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json`,
-	"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
+var localSchemasLocation string
+
+func getSchemaLocations() []string {
+	getSchemasOnce.Do(func() {
+		ctx := context.Background()
+		_, span := otel.Tracer("Kubechecks").Start(ctx, "GetSchemaLocations")
+		schemasLocation := viper.GetString("schemas-location")
+
+		var oldLocalSchemasLocation string
+		// Store the oldSchemasLocation for clean up afterwards
+		if localSchemasLocation != inRepoSchemaLocation {
+			oldLocalSchemasLocation = localSchemasLocation
+		}
+
+		localSchemasLocation = inRepoSchemaLocation
+		// if this is a git repo, we want to clone it locally
+		if strings.HasPrefix(schemasLocation, "https://") || strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "git@") {
+
+			tmpSchemasLocalDir, err := os.MkdirTemp("/tmp", "schemas")
+			if err != nil {
+				log.Err(err).Msg("failed to make temporary directory for downloading schemas")
+				telemetry.SetError(span, err, "failed to make temporary directory for downloading schemas")
+				return
+			}
+
+			r := repo.Repo{CloneURL: schemasLocation}
+			err = r.CloneRepoLocal(ctx, tmpSchemasLocalDir)
+			if err != nil {
+				telemetry.SetError(span, err, "failed to clone schemas repository")
+				log.Err(err).Msg("failed to clone schemas repository")
+				return
+			}
+
+			log.Debug().Str("schemas-repo", schemasLocation).Msg("Cloned schemas Repo to /tmp/schemas")
+			localSchemasLocation = tmpSchemasLocalDir
+
+			err = os.RemoveAll(oldLocalSchemasLocation)
+			if err != nil {
+				telemetry.SetError(span, err, "failed to clean up old schemas directory")
+				log.Err(err).Msg("failed to clean up old schemas directory")
+			}
+
+			// This is a little function to allow getSchemaLocations to refresh daily by resetting the sync.Once mutex
+			refreshSchemasOnce.Do(func() {
+				c := cron.New()
+				c.AddFunc("@daily", func() {
+					getSchemasOnce = *new(sync.Once)
+				})
+				c.Start()
+			})
+		}
+	})
+
+	return []string{
+		localSchemasLocation + `/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json`,
+		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
+	}
 }
 
 func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion string, appManifests []string) (string, error) {
@@ -49,7 +112,7 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion str
 
 	var outputString []string
 
-	v, err := validator.New(schemaLocations, vOpts)
+	v, err := validator.New(getSchemaLocations(), vOpts)
 	if err != nil {
 		log.Error().Err(err).Msg("could not create kubeconform validator")
 		return "", fmt.Errorf("could not create kubeconform validator: %v", err)

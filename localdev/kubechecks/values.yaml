@@ -18,6 +18,7 @@ deployment:
     KUBECHECKS_MONITOR_ALL_APPLICATIONS: "true"
     #
     # KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
+    # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
     KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
 
   image:
