@@ -36,10 +36,9 @@ func getSchemaLocations() []string {
 		schemasLocation := viper.GetString("schemas-location")
 		localSchemasLocation = "./schemas"
 		// if this is a git repo, we want to clone it locally
-		if strings.HasPrefix(schemasLocation, "https://") || strings.HasPrefix(schemasLocation, "git@") {
+		if strings.HasPrefix(schemasLocation, "https://") || strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "git@") {
 
-			tmpSchemasLocalDir := "/tmp/schemas"
-			err := os.MkdirAll(tmpSchemasLocalDir, os.ModePerm)
+			tmpSchemasLocalDir, err := os.MkdirTemp("/tmp", "schemas")
 			if err != nil {
 				log.Err(err).Msg("failed to make temporary directory for downloading schemas")
 				return
