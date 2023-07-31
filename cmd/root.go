@@ -58,6 +58,7 @@ func init() {
 	flags.Bool("otel-enabled", false, "Enable OpenTelemetry (KUBECHECKS_OTEL_ENABLED).")
 
 	flags.StringP("tidy-outdated-comments-mode", "", "hide", "Sets the mode to use when tidying outdated comments. Defaults to hide. Other options are delete, hide (KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE).")
+	flags.StringP("schemas-location", "", "./schemas", "Sets the schema location. Can be local path or git repository. Defaults to ./schemas (KUBECHECKS_SCHEMAS_LOCATION)")
 
 	viper.BindPFlags(flags)
 
