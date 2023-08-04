@@ -39,7 +39,7 @@ jobs:
     strategy:
       matrix:
         platform:
-          - { earthly: linux/arm64, suffix: linux-arm64 }
+#          - { earthly: linux/arm64, suffix: linux-arm64 }
           - { earthly: linux/amd64, suffix: linux-amd64 }
 
     steps:
@@ -108,4 +108,4 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/kubechecks:${{ env.GIT_RELEASE_TAG }}
           suffixes: |
             -linux-amd64
-            -linux-arm64
+#            -linux-arm64
