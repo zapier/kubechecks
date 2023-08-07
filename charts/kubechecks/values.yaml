@@ -5,6 +5,8 @@ deployment:
   annotations: {}
     # reloader.stakater.com/auto: "true"
 
+  args: []
+
   # Default values for kubechecks.
   resources:
     limits:

@@ -35,5 +35,8 @@ func AIDiffSummary(ctx context.Context, mrNote *vcs_clients.Message, name string
 		mrNote.AddToAppMessage(ctx, name, fmt.Sprintf("failed to summarize diff: %s", err))
 		return
 	}
-	mrNote.AddToAppMessage(ctx, name, fmt.Sprintf(diffAISummaryCommentFormat, aiSummary))
+
+	if aiSummary != "" {
+		mrNote.AddToAppMessage(ctx, name, fmt.Sprintf(diffAISummaryCommentFormat, aiSummary))
+	}
 }

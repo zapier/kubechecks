@@ -3,12 +3,12 @@ package gitlab_client
 import (
 	"context"
 	"fmt"
-	giturl "github.com/kubescape/go-git-url"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 
+	"github.com/kubescape/go-git-url"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -42,12 +42,20 @@ func GetGitlabClient() (*Client, string) {
 
 func createGitlabClient() *Client {
 	// Initialize the GitLab client with access token
-	t := viper.GetString("vcs-token")
-	if t == "" {
+	gitlabToken := viper.GetString("vcs-token")
+	if gitlabToken == "" {
 		log.Fatal().Msg("gitlab token needs to be set")
 	}
-	log.Debug().Msgf("Token Length - %d", len(t))
-	c, err := gitlab.NewClient(t)
+	log.Debug().Msgf("Token Length - %d", len(gitlabToken))
+
+	var gitlabOptions []gitlab.ClientOptionFunc
+
+	gitlabUrl := viper.GetString("vcs-base-url")
+	if gitlabUrl != "" {
+		gitlabOptions = append(gitlabOptions, gitlab.WithBaseURL(gitlabUrl))
+	}
+
+	c, err := gitlab.NewClient(gitlabToken, gitlabOptions...)
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not create Gitlab client")
 	}

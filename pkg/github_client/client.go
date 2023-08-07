@@ -51,6 +51,12 @@ func getTokenUser() string {
 // Create a new github client using the auth token provided. We
 // can't validate the token at this point, so if it exists we assume it works
 func createGithubClient() *Client {
+	var (
+		err            error
+		googleClient   *github.Client
+		shurcoolClient *githubv4.Client
+	)
+
 	// Initialize the GitLab client with access token
 	t := viper.GetString("vcs-token")
 	if t == "" {
@@ -62,12 +68,22 @@ func createGithubClient() *Client {
 		&oauth2.Token{AccessToken: t},
 	)
 	tc := oauth2.NewClient(ctx, ts)
-	c := github.NewClient(tc) // If this has failed, we'll catch it on first call
 
-	// Use the client from shurcooL's githubv4 library for queries.
-	v4Client := githubv4.NewClient(tc)
+	githubUrl := viper.GetString("vcs-base-url")
+	if githubUrl == "" {
+		googleClient = github.NewClient(tc) // If this has failed, we'll catch it on first call
 
-	return &Client{Client: c, v4Client: v4Client}
+		// Use the client from shurcooL's githubv4 library for queries.
+		shurcoolClient = githubv4.NewClient(tc)
+	} else {
+		googleClient, err = github.NewEnterpriseClient(githubUrl, githubUrl, tc)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create github enterprise client")
+		}
+		shurcoolClient = githubv4.NewEnterpriseClient(githubUrl, tc)
+	}
+
+	return &Client{Client: googleClient, v4Client: shurcoolClient}
 }
 
 func (c *Client) GetName() string {
