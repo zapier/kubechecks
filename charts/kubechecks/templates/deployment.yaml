@@ -34,6 +34,9 @@ spec:
           image: "{{ .name }}:{{ coalesce .tag (printf "v%s" $.Chart.AppVersion) }}"
           imagePullPolicy: {{ .pullPolicy }}
           {{- end }}
+          {{- with .Values.deployment.args }}
+          args: {{ . | toYaml | nindent 12 }}
+          {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "kubechecks.name" . }}

@@ -47,6 +47,7 @@ func init() {
 	flags := rootCmd.PersistentFlags()
 	flags.StringP("log-level", "l", "info", "Set the log output level (info, debug, trace)")
 	flags.Bool("persist_log_level", false, "Persists the set log level down to other module loggers")
+	flags.String("vcs-base-url", "", "VCS base url, useful if self hosting gitlab, enterprise github, etc")
 	flags.String("vcs-type", "gitlab", "VCS type, defaults to Gitlab. (KUBECHECKS_VCS_TYPE).")
 	flags.String("vcs-token", "", "VCS API token (KUBECHECKS_VCS_TOKEN).")
 	flags.String("argocd-api-token", "", "ArgoCD API token (KUBECHECKS_ARGOCD_API_TOKEN).")

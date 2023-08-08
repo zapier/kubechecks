@@ -117,5 +117,14 @@ tests:
       - equal:
           path: metadata.labels.team
           value: "test"
-
-
+  - it: should allow configuration of args
+    set:
+      deployment:
+        args:
+          - one
+          - two
+          - "123"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: [one, two, "123"]
