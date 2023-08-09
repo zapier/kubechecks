@@ -28,18 +28,18 @@ deployment:
 
   affinity: {}
 
-  podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 32123
+  podSecurityContext: {}
+    # runAsNonRoot: true
+    # runAsUser: 32123
     # fsGroup: 32123
 
-  securityContext:
-    allowPrivilegeEscalation: false
-    privileged: false
-    capabilities:
-      drop:
-        - ALL
-    readOnlyRootFilesystem: true
+  securityContext: {}
+    # allowPrivilegeEscalation: false
+    # privileged: false
+    # capabilities:
+    #   drop:
+    #     - ALL
+    # readOnlyRootFilesystem: false
 
   env:
     # KUBECHECKS_ARGOCD_API_INSECURE: "false"
