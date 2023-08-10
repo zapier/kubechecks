@@ -5,7 +5,6 @@ test:
     BUILD +ci-helm
 
 ci-golang:
-    # This should be enabled at some point
     BUILD +lint-golang
     BUILD +validate-golang
     BUILD +test-golang
@@ -33,6 +32,14 @@ go-deps:
     RUN go mod download
     SAVE ARTIFACT go.mod AS LOCAL go.mod
     SAVE ARTIFACT go.sum AS LOCAL go.sum
+
+rebuild-docs:
+    FROM +go-deps
+
+    COPY . /src
+    RUN go run hacks/env-to-docs.go
+
+    SAVE ARTIFACT ./docs/usage.md AS LOCAL ./docs/usage.md
 
 validate-golang:
     FROM +go-deps

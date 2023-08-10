@@ -17,8 +17,8 @@ import (
 	"github.com/zapier/kubechecks/pkg/server"
 )
 
-// controllerCmd represents the run command
-var controllerCmd = &cobra.Command{
+// ControllerCmd represents the run command
+var ControllerCmd = &cobra.Command{
 	Use:   "controller",
 	Short: "Start the VCS Webhook handler.",
 	Long:  ``,
@@ -62,9 +62,9 @@ var controllerCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(controllerCmd)
+	RootCmd.AddCommand(ControllerCmd)
 
-	flags := controllerCmd.Flags()
+	flags := ControllerCmd.Flags()
 	flags.String("fallback-k8s-version", "1.23.0", "Fallback target Kubernetes version for schema / upgrade checks (KUBECHECKS_FALLBACK_K8S_VERSION).")
 	flags.Bool("show-debug-info", false, "Set to true to print debug info to the footer of MR comments (KUBECHECKS_SHOW_DEBUG_INFO).")
 	flags.Bool("enable-conftest", false, "Set to true to enable conftest policy checking of manifests (KUBECHECKS_ENABLE_CONFTEST).")

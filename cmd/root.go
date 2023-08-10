@@ -14,8 +14,8 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
+// RootCmd represents the base command when called without any subcommands
+var RootCmd = &cobra.Command{
 	Use:              "kubechecks",
 	Short:            "Argo Git Hooks",
 	Long:             `A Kubernetes controller and webhook server for integration of ArgoCD applications into CI`,
@@ -33,22 +33,25 @@ func Execute() {
 
 	defer t.Shutdown()
 
-	cobra.CheckErr(rootCmd.Execute())
-
+	cobra.CheckErr(RootCmd.Execute())
 }
+
+const EnvPrefix = "kubechecks"
+
+var EnvKeyReplacer = strings.NewReplacer("-", "_")
 
 func init() {
 
 	// allows environment variables to use _ instead of -
-	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_")) // sync-provider becomes SYNC_PROVIDER
-	viper.SetEnvPrefix("kubechecks")                       // port becomes KUBECHECKS_PORT
-	viper.AutomaticEnv()                                   // read in environment variables that match
+	viper.SetEnvKeyReplacer(EnvKeyReplacer) // sync-provider becomes SYNC_PROVIDER
+	viper.SetEnvPrefix(EnvPrefix)           // port becomes KUBECHECKS_PORT
+	viper.AutomaticEnv()                    // read in environment variables that match
 
-	flags := rootCmd.PersistentFlags()
+	flags := RootCmd.PersistentFlags()
 	flags.StringP("log-level", "l", "info", "Set the log output level (info, debug, trace)")
 	flags.Bool("persist_log_level", false, "Persists the set log level down to other module loggers")
 	flags.String("vcs-base-url", "", "VCS base url, useful if self hosting gitlab, enterprise github, etc")
-	flags.String("vcs-type", "gitlab", "VCS type, defaults to Gitlab. (KUBECHECKS_VCS_TYPE).")
+	flags.String("vcs-type", "gitlab", "VCS type, one of gitlab or github. Defaults to gitlab (KUBECHECKS_VCS_TYPE).")
 	flags.String("vcs-token", "", "VCS API token (KUBECHECKS_VCS_TOKEN).")
 	flags.String("argocd-api-token", "", "ArgoCD API token (KUBECHECKS_ARGOCD_API_TOKEN).")
 	flags.String("argocd-api-server-addr", "argocd-server", "ArgoCD API Server Address (KUBECHECKS_ARGOCD_API_SERVER_ADDR).")
@@ -59,7 +62,7 @@ func init() {
 	flags.Bool("otel-enabled", false, "Enable OpenTelemetry (KUBECHECKS_OTEL_ENABLED).")
 
 	flags.StringP("tidy-outdated-comments-mode", "", "hide", "Sets the mode to use when tidying outdated comments. Defaults to hide. Other options are delete, hide (KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE).")
-	flags.StringP("schemas-location", "", "./schemas", "Sets the schema location. Can be local path or git repository. Defaults to ./schemas (KUBECHECKS_SCHEMAS_LOCATION)")
+	flags.StringP("schemas-location", "", "./schemas", "Sets the schema location. Can be local path or git repository. Defaults to ./schemas (KUBECHECKS_SCHEMAS_LOCATION).")
 
 	viper.BindPFlags(flags)
 

@@ -1,0 +1,42 @@
+name: docs ci
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/on_pull_request_docs.yaml'
+      - 'Earthfile'
+      - '*/**.go'
+      - '*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'docs/usage.md*'
+jobs:
+  lint-docs:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: wistia/parse-tool-versions@v1.0
+
+      - uses: earthly/actions-setup@v1
+        with: { version: "${{ env.EARTHLY_TOOL_VERSION }}" }
+
+      - name: rebuild the docs
+        run: |
+          earthly \
+            +rebuild-docs \
+              --GOLANG_VERSION="${{ env.GOLANG_TOOL_VERSION }}"
+
+      - name: verify that the checked in file has not changed
+        run: |
+          #!/usr/bin/env bash
+          
+          exitCode=0
+
+          # Log the actual diff for debugging purposes
+          git diff --name-only | cat
+          if ! git diff --exit-code --quiet; then
+            echo "Please run 'earthly +rebuild-docs' and commit the results to this PR"
+            exitCode=1
+          fi
+          
+          exit $exitCode
