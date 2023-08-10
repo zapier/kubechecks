@@ -35,30 +35,27 @@ Refer to [configuration](#configuration) for details about the various options a
 The full list of supported environment variables is described below:
 
 |Env Var|Description|Default Value|
-|-------|-----------|-------------|
-|`KUBECHECKS_ARGOCD_API_INSECURE`|Configure whether `kubechecks` is allowed to communicate with ArgoCD insecurely|`false`|
-|`KUBECHECKS_ARGOCD_API_PATH_PREFIX`|Prefix to apply to ArgoCD API calls made by `kubechecks`|`"/"`|
-|`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address|`null`|
-|`KUBECHECKS_ARGOCD_WEBHOOK_URL`|ArgoCD Webhook URL `kubechecks` should use|`null`|
-|`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks|`"1.22.0"`|
-|`KUBECHECKS_LOG_LEVEL`|Log level verbosity, one of `[info, debug, trace]`|`"info"`|
-|`KUBECHECKS_NAMESPACE`|Kubernetes namespace `kubechecks` is deployed in|`kubechecks`|
-|`KUBECHECKS_WEBHOOK_URL_BASE`|The URL where KubeChecks receives webhooks from|`null`|
-|`KUBECHECKS_WEBHOOK_URL_PREFIX`|If your application is running behind a proxy that uses path based routing, set this value to match the path prefix.|`null`|
-|`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.|`""`|
-|`KUBECHECKS_OTEL_ENABLED`|Enable OpenTelemetry tracing|`false`|
-|`KUBECHECKS_OTEL_COLLECTOR_PORT`|OpenTelemetry collector port \(if OTel is enabled\) |`null`|
-|`KUBECHECKS_OTEL_COLLECTOR_HOST`|The OpenTelemetry collector host|`null`|
-|`KUBECHECKS_SHOW_DEBUG_INFO`| Set to true to print debug info to the footer of MR comments | `false`|
-|`KUBECHECKS_VCS_TYPE`| Which VCS Client to utilise (one of `gitlab` or `github`) | `gitlab`|
-|`KUBECHECKS_LABEL_FILTER`|If set, the label that must be set on an PR/MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook|`null`|
-
-The following configuration is done via Kubernetes Secrets; ensure these are specified under the `secrets` section of `values.yaml` or through your chosen secrets provider before attempting to run `kubechecks`:
-
-|Secret|Description|Default Value|
-|-------|-----------|-------------|
-|`KUBECHECKS_VCS_TOKEN`| VCS API Token for communicating with your VCS provider | `null`|
-|`KUBECHECKS_ARGOCD_API_TOKEN`| ArgoCD API Token for communicating with your ArgoCD installation| `null`|
-|`KUBECHECKS_OPENAI_API_TOKEN`| OpenAI API Token for generating AI diff summaries |`null`|
-
-**Note that the prefix `KUBECHECKS_` is required for all environment variables due to the way the application is designed.**
+|-----------|-------------|------|
+|`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections to the ArgoCD API server.|`false`|
+|`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address.|`argocd-server`|
+|`KUBECHECKS_ARGOCD_API_TOKEN`|ArgoCD API token.||
+|`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
+|`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
+|`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks.|`1.23.0`|
+|`KUBECHECKS_LABEL_FILTER`|(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook.||
+|`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of info, debug, trace.|`info`|
+|`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`false`|
+|`KUBECHECKS_OPENAI_API_TOKEN`|OpenAI API Token.||
+|`KUBECHECKS_OTEL_COLLECTOR_HOST`|The OpenTelemetry collector host.||
+|`KUBECHECKS_OTEL_COLLECTOR_PORT`|The OpenTelemetry collector port.||
+|`KUBECHECKS_OTEL_ENABLED`|Enable OpenTelemetry.|`false`|
+|`KUBECHECKS_PERSIST_LOG_LEVEL`|Persists the set log level down to other module loggers.|`false`|
+|`KUBECHECKS_SCHEMAS_LOCATION`|Sets the schema location. Can be local path or git repository.|`./schemas`|
+|`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
+|`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
+|`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||
+|`KUBECHECKS_VCS_TOKEN`|VCS API token.||
+|`KUBECHECKS_VCS_TYPE`|VCS type. One of gitlab or github.|`gitlab`|
+|`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.||
+|`KUBECHECKS_WEBHOOK_URL_BASE`|The URL where KubeChecks receives webhooks from Gitlab.||
+|`KUBECHECKS_WEBHOOK_URL_PREFIX`|If your application is running behind a proxy that uses path based routing, set this value to match the path prefix.||

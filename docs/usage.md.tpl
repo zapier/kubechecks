@@ -37,5 +37,5 @@ The full list of supported environment variables is described below:
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
 {{- range .Options }}
-`{{ .Env }}`|{{ .Usage }}|{{ if .Default }}`{{ .Default }}`{{ end }}|
+|`{{ .Env }}`|{{ .Usage }}|{{ if .Default }}`{{ .Default }}`{{ end }}|
 {{- end }}

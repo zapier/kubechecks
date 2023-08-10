@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -46,25 +45,19 @@ func main() {
 		}
 	}
 
-	viperToEnv := func(s string) string {
-		s = cmd.EnvKeyReplacer.Replace(s)
-		s = fmt.Sprintf("%s_%s", cmd.EnvPrefix, s)
-		s = strings.ToUpper(s)
-		return s
-	}
-
 	flagUsage := make(map[string]option)
 
 	cleanUpUsage := func(s string) string {
 		s = UsageEnvVar.ReplaceAllString(s, "")
 		s = UsageDefaultValue.ReplaceAllString(s, "")
+		s = strings.TrimSpace(s)
 		return s
 	}
 
 	visitFlag := func(flag *pflag.Flag) {
 		flagUsage[flag.Name] = option{
 			Default: flag.DefValue,
-			Env:     viperToEnv(flag.Name),
+			Env:     cmd.ViperNameToEnv(flag.Name),
 			Option:  flag.Name,
 			Usage:   cleanUpUsage(flag.Usage),
 		}
