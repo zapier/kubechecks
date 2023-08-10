@@ -1,7 +1,7 @@
 apiVersion: v2
 name: kubechecks
 description: A Helm chart for kubechecks
-version: 0.2.1
+version: 0.2.2
 appVersion: "1.0.7"
 type: application
 maintainers:
