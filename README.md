@@ -9,6 +9,8 @@
 
 When using ArgoCD, it can be difficult to tell just how your Pull/Merge Request (PR/MR) will impact your live deployment. `kubechecks` was designed to address this problem; every time a new PR/MR is created, `kubechecks` will automatically determine what's changed and how it will impact your `main`/default branchs state, informing you of the details directly on the PR/MR. As a bonus, it also lints and checks your Kubernetes manifests to let you know ahead of time if something is outdated, invalid, or otherwise not good practice.
 
+![Demo](./docs/gif/kubechecks.gif)
+
 ### How it works
 
 This tool provides a server function that processes webhooks from Gitlab/Github, clones the repository at the `HEAD` SHA of the PR/MR, and runs various check suites, commenting the output of each check in a single comment on your PR/MR. `kubechecks` talks directly to ArgoCD to get the live state of your deployments to ensure that you have the most accurate information about how your changes will affect your production code.

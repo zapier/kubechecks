@@ -27,12 +27,16 @@ spec:
       {{- if .Values.serviceAccount.enabled}}
       serviceAccountName: {{ include "kubechecks.serviceAccountName" . }}
       {{- end }}
-      securityContext: {{- toYaml .Values.deployment.securityContext | nindent 8 }}
+      securityContext:
+        {{- toYaml .Values.deployment.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.deployment.image }}
           image: "{{ .name }}:{{ coalesce .tag (printf "v%s" $.Chart.AppVersion) }}"
           imagePullPolicy: {{ .pullPolicy }}
+          {{- end }}
+          {{- with .Values.deployment.args }}
+          args: {{ . | toYaml | nindent 12 }}
           {{- end }}
           envFrom:
             - configMapRef:
