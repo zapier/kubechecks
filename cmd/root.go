@@ -49,7 +49,13 @@ func init() {
 	flags := RootCmd.PersistentFlags()
 	stringFlag(flags, "log-level", "Set the log output level.",
 		newStringOpts().
-			withChoices("info", "debug", "trace").
+				withChoices(
+					zerolog.LevelErrorValue,
+					zerolog.LevelWarnValue,
+					zerolog.LevelInfoValue,
+					zerolog.LevelDebugValue,
+					zerolog.LevelTraceValue,
+				).
 			withDefault("info").
 			withShortHand("l"),
 	)
