@@ -24,6 +24,17 @@ func TestStringUsages(t *testing.T) {
 			usage:    "This is a test.",
 			expected: "This is a test. One of blah, test. (KUBECHECKS_SIMPLE_STRING)",
 		},
+		"string with out of order choices": {
+			name: "simple-string",
+			opt: DocOpt[any]{
+				choices: []string{
+					"test",
+					"blah",
+				},
+			},
+			usage:    "This is a test.",
+			expected: "This is a test. One of blah, test. (KUBECHECKS_SIMPLE_STRING)",
+		},
 		"string with no choices": {
 			name:     "string",
 			opt:      DocOpt[any]{},
