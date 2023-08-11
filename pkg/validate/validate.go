@@ -108,11 +108,19 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion str
 		KubernetesVersion:    targetKubernetesVersion,
 		Strict:               true,
 		IgnoreMissingSchemas: false,
+		Debug:                log.Debug().Enabled(),
 	}
 
-	var outputString []string
+	var (
+		outputString    []string
+		schemaLocations = getSchemaLocations()
+	)
 
-	v, err := validator.New(getSchemaLocations(), vOpts)
+	log.Debug().Msgf("cache location: %s", vOpts.Cache)
+	log.Debug().Msgf("target kubernetes version: %s", targetKubernetesVersion)
+	log.Debug().Msgf("schema locations: %s", strings.Join(schemaLocations, ", "))
+
+	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
 		log.Error().Err(err).Msg("could not create kubeconform validator")
 		return "", fmt.Errorf("could not create kubeconform validator: %v", err)
