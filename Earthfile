@@ -146,13 +146,13 @@ docker-debug:
     SAVE IMAGE --push $CI_REGISTRY_IMAGE
 
 lint-golang:
-    ARG STATICCHECK_VERSION="0.3.3"
+    ARG STATICCHECK_VERSION="2023.1.3"
 
     FROM +go-deps
 
     # install staticcheck
     RUN FILE=staticcheck.tgz \
-        && URL=https://github.com/dominikh/go-tools/releases/download/v$STATICCHECK_VERSION/staticcheck_linux_amd64.tar.gz \
+        && URL=https://github.com/dominikh/go-tools/releases/download/$STATICCHECK_VERSION/staticcheck_linux_amd64.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \

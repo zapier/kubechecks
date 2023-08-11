@@ -28,8 +28,8 @@ func TestStringUsages(t *testing.T) {
 			name: "simple-string",
 			opt: DocOpt[any]{
 				choices: []string{
-					"blah",
 					"test",
+					"blah",
 				},
 			},
 			usage:    "This is a test.",
@@ -45,6 +45,7 @@ func TestStringUsages(t *testing.T) {
 
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {
+
 			actual := generateUsage(test.opt, test.usage, test.name)
 			assert.Equal(t, test.expected, actual)
 		})
