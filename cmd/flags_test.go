@@ -28,12 +28,12 @@ func TestStringUsages(t *testing.T) {
 			name: "simple-string",
 			opt: DocOpt[any]{
 				choices: []string{
-					"test",
 					"blah",
+					"test",
 				},
 			},
 			usage:    "This is a test.",
-			expected: "This is a test. One of blah, test. (KUBECHECKS_SIMPLE_STRING)",
+			expected: "This is a test. One of test, blah. (KUBECHECKS_SIMPLE_STRING)",
 		},
 		"string with no choices": {
 			name:     "string",

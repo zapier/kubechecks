@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -75,9 +74,7 @@ func generateUsage[D any](opt DocOpt[D], usage string, name string) string {
 	}
 
 	if opt.choices != nil {
-		choices := opt.choices
-		sort.Strings(choices)
-		usage = fmt.Sprintf("%s One of %s.", usage, strings.Join(choices, ", "))
+		usage = fmt.Sprintf("%s One of %s.", usage, strings.Join(opt.choices, ", "))
 	}
 
 	envVar := ViperNameToEnv(name)
