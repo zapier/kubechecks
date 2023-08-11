@@ -36,14 +36,14 @@ const inRepoSchemaLocation = "./schemas"
 
 var localSchemasLocation string
 
-func getSchemaLocations() []string {
+func getSchemaLocations(tempRepoPath string) []string {
 	getSchemasOnce.Do(func() {
 		ctx := context.Background()
 		_, span := otel.Tracer("Kubechecks").Start(ctx, "GetSchemaLocations")
 		schemasLocation := viper.GetString("schemas-location")
 
 		var oldLocalSchemasLocation string
-		// Store the oldSchemasLocation for clean up afterwards
+		// Store the oldSchemasLocation for clean up afterward
 		if localSchemasLocation != inRepoSchemaLocation {
 			oldLocalSchemasLocation = localSchemasLocation
 		}
@@ -87,13 +87,21 @@ func getSchemaLocations() []string {
 		}
 	})
 
-	return []string{
+	locations := []string{
 		localSchemasLocation + `/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json`,
 		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
 	}
+
+	// bring in schemas that might be in the cloned repository
+	schemaPath := filepath.Join(tempRepoPath, inRepoSchemaLocation)
+	if stat, err := os.Stat(schemaPath); err != nil && stat.IsDir() {
+		locations = append(locations, schemaPath)
+	}
+
+	return locations
 }
 
-func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion string, appManifests []string) (string, error) {
+func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (string, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -113,7 +121,7 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion str
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations()
+		schemaLocations = getSchemaLocations(tempRepoPath)
 	)
 
 	log.Debug().Msgf("cache location: %s", vOpts.Cache)
