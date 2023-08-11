@@ -5,7 +5,6 @@ test:
     BUILD +ci-helm
 
 ci-golang:
-    # This should be enabled at some point
     BUILD +lint-golang
     BUILD +validate-golang
     BUILD +test-golang
@@ -33,6 +32,14 @@ go-deps:
     RUN go mod download
     SAVE ARTIFACT go.mod AS LOCAL go.mod
     SAVE ARTIFACT go.sum AS LOCAL go.sum
+
+rebuild-docs:
+    FROM +go-deps
+
+    COPY . /src
+    RUN go run hacks/env-to-docs.go
+
+    SAVE ARTIFACT ./docs/usage.md AS LOCAL ./docs/usage.md
 
 validate-golang:
     FROM +go-deps
@@ -139,13 +146,13 @@ docker-debug:
     SAVE IMAGE --push $CI_REGISTRY_IMAGE
 
 lint-golang:
-    ARG STATICCHECK_VERSION="0.3.3"
+    ARG STATICCHECK_VERSION="2023.1.3"
 
     FROM +go-deps
 
     # install staticcheck
     RUN FILE=staticcheck.tgz \
-        && URL=https://github.com/dominikh/go-tools/releases/download/v$STATICCHECK_VERSION/staticcheck_linux_amd64.tar.gz \
+        && URL=https://github.com/dominikh/go-tools/releases/download/$STATICCHECK_VERSION/staticcheck_linux_amd64.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \
