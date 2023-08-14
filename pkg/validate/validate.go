@@ -94,7 +94,7 @@ func getSchemaLocations(tempRepoPath string) []string {
 
 	// bring in schemas that might be in the cloned repository
 	schemaPath := filepath.Join(tempRepoPath, inRepoSchemaLocation)
-	if stat, err := os.Stat(schemaPath); err != nil && stat.IsDir() {
+	if stat, err := os.Stat(schemaPath); err == nil && stat.IsDir() {
 		locations = append(locations, schemaPath)
 	}
 
