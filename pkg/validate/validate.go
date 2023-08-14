@@ -7,21 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
-	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/yannh/kubeconform/pkg/validator"
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/repo"
-	"github.com/zapier/kubechecks/telemetry"
 )
 
-var getSchemasOnce sync.Once // used to ensure we don't reauth this
-var refreshSchemasOnce sync.Once
+var reposCache = newReposDirectory()
 
 const kubeconformCommentFormat = `
 <details><summary><b>Show kubeconform report:</b> %s</summary>
@@ -32,70 +27,31 @@ const kubeconformCommentFormat = `
 
 </details>
 `
-const inRepoSchemaLocation = "./schemas"
 
-var localSchemasLocation string
-
-func getSchemaLocations(tempRepoPath string) []string {
-	getSchemasOnce.Do(func() {
-		ctx := context.Background()
-		_, span := otel.Tracer("Kubechecks").Start(ctx, "GetSchemaLocations")
-		schemasLocation := viper.GetString("schemas-location")
-
-		var oldLocalSchemasLocation string
-		// Store the oldSchemasLocation for clean up afterward
-		if localSchemasLocation != inRepoSchemaLocation {
-			oldLocalSchemasLocation = localSchemasLocation
-		}
-
-		localSchemasLocation = inRepoSchemaLocation
-		// if this is a git repo, we want to clone it locally
-		if strings.HasPrefix(schemasLocation, "https://") || strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "git@") {
-
-			tmpSchemasLocalDir, err := os.MkdirTemp("/tmp", "schemas")
-			if err != nil {
-				log.Err(err).Msg("failed to make temporary directory for downloading schemas")
-				telemetry.SetError(span, err, "failed to make temporary directory for downloading schemas")
-				return
-			}
-
-			r := repo.Repo{CloneURL: schemasLocation}
-			err = r.CloneRepoLocal(ctx, tmpSchemasLocalDir)
-			if err != nil {
-				telemetry.SetError(span, err, "failed to clone schemas repository")
-				log.Err(err).Msg("failed to clone schemas repository")
-				return
-			}
-
-			log.Debug().Str("schemas-repo", schemasLocation).Msg("Cloned schemas Repo to /tmp/schemas")
-			localSchemasLocation = tmpSchemasLocalDir
-
-			err = os.RemoveAll(oldLocalSchemasLocation)
-			if err != nil {
-				telemetry.SetError(span, err, "failed to clean up old schemas directory")
-				log.Err(err).Msg("failed to clean up old schemas directory")
-			}
-
-			// This is a little function to allow getSchemaLocations to refresh daily by resetting the sync.Once mutex
-			refreshSchemasOnce.Do(func() {
-				c := cron.New()
-				c.AddFunc("@daily", func() {
-					getSchemasOnce = *new(sync.Once)
-				})
-				c.Start()
-			})
-		}
-	})
-
+func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
 	locations := []string{
-		localSchemasLocation + `/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json`,
+		// schemas built into the kubechecks repo
+		`./schemas/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json`,
+
+		// schemas included in kubechecks
 		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
 	}
 
+	// schemas configured globally
+	schemasLocation := viper.GetString("schemas-location")
+	if strings.HasPrefix(schemasLocation, "https://") || strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "git@") {
+		repoPath := reposCache.Register(ctx, schemasLocation)
+		if repoPath != "" {
+			locations = append(locations, repoPath)
+		}
+	} else if schemasLocation != "" {
+		locations = append(locations, schemasLocation)
+	}
+
 	// bring in schemas that might be in the cloned repository
-	schemaPath := filepath.Join(tempRepoPath, inRepoSchemaLocation)
+	schemaPath := filepath.Join(tempRepoPath, "schemas")
 	if stat, err := os.Stat(schemaPath); err == nil && stat.IsDir() {
-		locations = append(locations, schemaPath)
+		locations = append(locations, fmt.Sprintf("%s/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json", schemaPath))
 	}
 
 	return locations
@@ -121,7 +77,7 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, te
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(tempRepoPath)
+		schemaLocations = getSchemaLocations(ctx, tempRepoPath)
 	)
 
 	log.Debug().Msgf("cache location: %s", vOpts.Cache)
