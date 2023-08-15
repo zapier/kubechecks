@@ -39,7 +39,9 @@ func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
 
 	// schemas configured globally
 	schemasLocation := viper.GetString("schemas-location")
+	log.Debug().Str("schemas-location", schemasLocation).Msg("viper")
 	if strings.HasPrefix(schemasLocation, "https://") || strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "git@") {
+		log.Debug().Msg("registering repository")
 		repoPath := reposCache.Register(ctx, schemasLocation)
 		if repoPath != "" {
 			locations = append(locations, repoPath)
@@ -50,8 +52,11 @@ func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
 
 	// bring in schemas that might be in the cloned repository
 	schemaPath := filepath.Join(tempRepoPath, "schemas")
+	log.Debug().Str("path", schemaPath).Msg("repo-schema-path")
 	if stat, err := os.Stat(schemaPath); err == nil && stat.IsDir() {
 		locations = append(locations, fmt.Sprintf("%s/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json", schemaPath))
+	} else {
+		log.Debug().Err(err).Msg("failed to find repo schemas")
 	}
 
 	return locations
