@@ -50,7 +50,6 @@ var ControllerCmd = &cobra.Command{
 			time.Sleep(time.Second * 3)
 		}
 		log.Info().Msg("good bye.")
-
 	},
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		log.Info().Msg("Server Configuration: ")
@@ -78,8 +77,8 @@ func init() {
 	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests.")
 	stringFlag(flags, "label-filter", `(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook.`)
 	stringFlag(flags, "openai-api-token", "OpenAI API Token.")
-	stringFlag(flags, "webhook-url-base", "The URL where KubeChecks receives webhooks from Gitlab.")
-	stringFlag(flags, "webhook-url-prefix", "If your application is running behind a proxy that uses path based routing, set this value to match the path prefix.")
+	stringFlag(flags, "webhook-url-base", "The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.")
+	stringFlag(flags, "webhook-url-prefix", "If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.")
 	stringFlag(flags, "webhook-secret", "Optional secret key for validating the source of incoming webhooks.")
 	boolFlag(flags, "monitor-all-applications", "Monitor all applications in argocd automatically.")
 	boolFlag(flags, "ensure-webhooks", "Ensure that webhooks are created in repositories referenced by argo.")
