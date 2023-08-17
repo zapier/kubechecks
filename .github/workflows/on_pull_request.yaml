@@ -1,19 +1,27 @@
 name: pr_build
+
 on:
   pull_request:
     paths:
       - '*'
       - '*/**'
       - '!README.md'
-      - '!.tool-versions'
       - '!COPYING.LGPL-3'
       - '!.gitattributes'
       - '!.gitignore'
+
+env:
+  FS_IMAGE: ghcr.io/${{ github.repository }}
+  FS_TAG: pr-${{ github.event.pull_request.number }}
 
 # TODO: Move this to repo config
 jobs:
   build:
     runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
+      packages: write
 
     strategy:
       matrix:
@@ -38,13 +46,21 @@ jobs:
       # Reads in .tools-versions and spits out env variables
       - uses: wistia/parse-tool-versions@v1.0
 
+      - uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: earthly/actions-setup@v1
         with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
       - run: |
           earthly \
+            --push \
             --platform ${{ matrix.platform }} \
             +docker \
               --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
-              --GIT_TAG=mr \
-              --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}
+              --GIT_TAG=pr-${{ github.event.pull_request.number }} \
+              --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }} \
+              --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks
