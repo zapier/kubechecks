@@ -59,7 +59,7 @@ jobs:
           earthly \
             --push \
             --platform ${{ matrix.platform }} \
-            +docker \
+            +docker-tag \
               --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
               --GIT_TAG=pr-${{ github.event.pull_request.number }} \
               --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }} \
