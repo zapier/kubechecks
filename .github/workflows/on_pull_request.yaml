@@ -61,6 +61,6 @@ jobs:
             --platform ${{ matrix.platform }} \
             +docker-tag \
               --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
-              --GIT_TAG=pr-${{ github.event.pull_request.number }} \
+              --GIT_TAG=24h \
               --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }} \
-              --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks
+              --CI_REGISTRY_IMAGE=ttl.sh/${{ github.repository }}/pr-${{ github.event.pull_request.number }}/${{ github.event.pull_request.head.sha }}
