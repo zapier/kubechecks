@@ -124,7 +124,6 @@ docker-tag:
     ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
     ARG --required GIT_TAG
 
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:latest
     SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_TAG
 
 dlv:

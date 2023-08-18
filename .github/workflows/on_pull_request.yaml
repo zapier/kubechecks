@@ -1,19 +1,28 @@
 name: pr_build
+
 on:
   pull_request:
     paths:
       - '*'
       - '*/**'
       - '!README.md'
-      - '!.tool-versions'
       - '!COPYING.LGPL-3'
       - '!.gitattributes'
       - '!.gitignore'
+
+env:
+  FS_IMAGE: ttl.sh/${{ github.repository }}/pr-${{ github.event.pull_request.number }}/${{ github.event.pull_request.head.sha }}
+  FS_TAG: 24h
 
 # TODO: Move this to repo config
 jobs:
   build:
     runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
 
     strategy:
       matrix:
@@ -38,13 +47,26 @@ jobs:
       # Reads in .tools-versions and spits out env variables
       - uses: wistia/parse-tool-versions@v1.0
 
+      - uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: earthly/actions-setup@v1
         with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
       - run: |
           earthly \
+            --push \
             --platform ${{ matrix.platform }} \
-            +docker \
+            +docker-tag \
               --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
-              --GIT_TAG=mr \
-              --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}
+              --GIT_TAG=${{ env.FS_TAG }} \
+              --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }} \
+              --CI_REGISTRY_IMAGE=${{ env.FS_IMAGE }}
+
+      - uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            Temporary image available at `${{ env.FS_IMAGE }}:${{ env.FS_TAG }}` for 24 hours. If you need another built, close and reopen the PR.
