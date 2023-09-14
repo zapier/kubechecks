@@ -62,12 +62,12 @@ func getSchemaLocations() []string {
 			r := repo.Repo{CloneURL: schemasLocation}
 			err = r.CloneRepoLocal(ctx, tmpSchemasLocalDir)
 			if err != nil {
-				telemetry.SetError(span, err, "failed to clone schemas repository")
-				log.Err(err).Msg("failed to clone schemas repository")
+				telemetry.SetError(span, err, fmt.Sprintf("failed to clone schemas repository %s", schemasLocation))
+				log.Err(err).Msgf("failed to clone schemas repository %s", schemasLocation)
 				return
 			}
 
-			log.Debug().Str("schemas-repo", schemasLocation).Msg("Cloned schemas Repo to /tmp/schemas")
+			log.Debug().Str("schemas-repo", schemasLocation).Msgf("Cloned schemas Repo %s to /tmp/schemas", schemasLocation)
 			localSchemasLocation = tmpSchemasLocalDir
 
 			err = os.RemoveAll(oldLocalSchemasLocation)
@@ -80,6 +80,7 @@ func getSchemaLocations() []string {
 			refreshSchemasOnce.Do(func() {
 				c := cron.New()
 				c.AddFunc("@daily", func() {
+					log.Info().Msg("resetting schemas lock to allow refresh")
 					getSchemasOnce = *new(sync.Once)
 				})
 				c.Start()
@@ -89,7 +90,8 @@ func getSchemaLocations() []string {
 
 	return []string{
 		localSchemasLocation + `/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json`,
-		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
+		"default",
+		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
 	}
 }
 
