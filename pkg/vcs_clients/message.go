@@ -16,7 +16,7 @@ const (
 	appFormat = `<details><summary>
 
 ## ArgoCD Application Checks:` + "`%s` %s" +
-			`
+		`
 </summary>
 %s 
 </details>
@@ -79,7 +79,7 @@ func (m *Message) buildComment(ctx context.Context) string {
 	defer span.End()
 
 	var names []string
-	for _, name := range m.Apps {
+	for name := range m.Apps {
 		names = append(names, name)
 	}
 	sort.Strings(names)
