@@ -3,6 +3,18 @@ entries:
   kubechecks:
   - apiVersion: v2
     appVersion: 1.0.7
+    created: "2023-09-14T14:39:52.323314495Z"
+    description: A Helm chart for kubechecks
+    digest: 3b08da1588f864506dabf6433c259dceba0f6d437662b45cde7fd16d27588fdf
+    maintainers:
+    - name: zapier
+    name: kubechecks
+    type: application
+    urls:
+    - https://github.com/zapier/kubechecks/releases/download/kubechecks-0.2.2/kubechecks-0.2.2.tgz
+    version: 0.2.2
+  - apiVersion: v2
+    appVersion: 1.0.7
     created: "2023-08-01T14:52:02.177306697Z"
     description: A Helm chart for kubechecks
     digest: 453034d4a95626ba29ed5b0580c76ae43d65a35c12b632ed8380e0f62dc71e6b
@@ -85,4 +97,4 @@ entries:
     urls:
     - https://github.com/zapier/kubechecks/releases/download/kubechecks-0.1.1/kubechecks-0.1.1.tgz
     version: 0.1.1
-generated: "2023-08-01T14:52:02.1779688Z"
+generated: "2023-09-14T14:39:52.323636894Z"
