@@ -16,13 +16,22 @@ type ArgocdMatcher struct {
 func NewArgocdMatcher(vcsToArgoMap pkg.VcsToArgoMap, repo *repo.Repo) *ArgocdMatcher {
 	log.Debug().Msgf("looking for %s repos", repo.CloneURL)
 	repoApps := vcsToArgoMap.GetAppsInRepo(repo.CloneURL)
-	log.Debug().Msgf("found %d apps", repoApps.Count())
+	if repoApps == nil {
+		log.Debug().Msg("found no apps")
+	} else {
+		log.Debug().Msgf("found %d apps", repoApps.Count())
+	}
+
 	return &ArgocdMatcher{
 		appsDirectory: repoApps,
 	}
 }
 
 func (a *ArgocdMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
+	if a.appsDirectory == nil {
+		return AffectedItems{}, nil
+	}
+
 	appsSlice := a.appsDirectory.FindAppsBasedOnChangeList(changeList)
 	return AffectedItems{Applications: appsSlice}, nil
 }
