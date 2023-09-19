@@ -24,5 +24,5 @@ tilt_config.json
 localdev/terraform/gitlab/project.url
 *.tgz
 *.DS_Store
-kubechecks
+/kubechecks
 localdev/terraform/github/project.url
