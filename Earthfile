@@ -106,7 +106,11 @@ docker:
     WORKDIR /app
 
     COPY ./policy ./policy
+    VOLUME /app/policy
+
     COPY ./schemas ./schemas
+    VOLUME /app/schemas
+
     COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
     RUN ./kubechecks help
 
