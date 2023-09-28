@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kubescape/go-git-url"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"github.com/whilp/git-urls"
 	"github.com/xanzy/go-gitlab"
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
@@ -117,17 +117,23 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 	return nil, vcs_clients.ErrInvalidType
 }
 
-func parseRepoName(url string) string {
-	gitURL, err := giturl.NewGitURL(url)
+func parseRepoName(url string) (string, error) {
+	parsed, err := giturls.Parse(url)
 	if err != nil {
-		log.Error().Err(err).Str("url", url).Msg("could not parse GitLab URL")
+		return "", err
 	}
 
-	return strings.Join([]string{gitURL.GetOwnerName(), gitURL.GetRepoName()}, "/")
+	path := parsed.Path
+	path = strings.TrimSuffix(path, ".git")
+	path = strings.TrimPrefix(path, "/")
+	return path, nil
 }
 
 func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
-	pid := parseRepoName(repoName)
+	pid, err := parseRepoName(repoName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse repo url")
+	}
 	webhooks, _, err := c.Client.Projects.ListProjectHooks(pid, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list project webhooks")
@@ -151,8 +157,12 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 }
 
 func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {
-	pid := parseRepoName(repoName)
-	_, _, err := c.Client.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
+	pid, err := parseRepoName(repoName)
+	if err != nil {
+		return errors.Wrap(err, "failed to parse repo name")
+	}
+
+	_, _, err = c.Client.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
 		URL:                 pkg.Pointer(webhookUrl),
 		MergeRequestsEvents: pkg.Pointer(true),
 		Token:               pkg.Pointer(webhookSecret),
