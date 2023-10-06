@@ -2,7 +2,7 @@
 remote: origin
 target-branch: main
 helm-extra-args: --kube-version v1.24.0
-check-version-increment: false
+check-version-increment: true
 validate-maintainers: false
 additional-commands:
   - "./.github/kubeconform.sh 1.23.0 {{ .Path }}"
