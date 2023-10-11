@@ -80,6 +80,9 @@ spec:
               port: 8080
               scheme: HTTP
             {{- toYaml .Values.deployment.readinessProbe | nindent 12 }}
+          {{- with .Values.deployment.volumeMounts }}
+          volumeMounts: {{ . | toYaml | nindent 12 }}
+          {{- end }}
       {{- with .Values.deployment.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -91,4 +94,7 @@ spec:
       {{- with .Values.deployment.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.deployment.volumes }}
+      volumes: {{ . | toYaml | nindent 8 }}
       {{- end }}
