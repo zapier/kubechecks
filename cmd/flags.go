@@ -40,8 +40,16 @@ func newStringOpts() DocOpt[string] {
 	return DocOpt[string]{}
 }
 
+func newStringSliceOpts() DocOpt[[]string] {
+	return DocOpt[[]string]{}
+}
+
 func stringFlag(flags *pflag.FlagSet, name, usage string, opts ...DocOpt[string]) {
 	addFlag(name, usage, opts, flags.String, flags.StringP)
+}
+
+func stringSliceFlag(flags *pflag.FlagSet, name, usage string, opts ...DocOpt[[]string]) {
+	addFlag(name, usage, opts, flags.StringArray, flags.StringArrayP)
 }
 
 func addFlag[D any](

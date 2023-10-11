@@ -15,13 +15,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/zapier/kubechecks/telemetry"
 )
 
-// Represents a local Repostiory on disk, based off of a PR/MR
+// Repo represents a local Repostiory on disk, based off of a PR/MR
 type Repo struct {
 	BaseRef       string   // base ref is the branch that the PR is being merged into
 	HeadRef       string   // head ref is the branch that the PR is coming from

@@ -1,7 +1,6 @@
 package gitlab_client
 
 import (
-
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
 )

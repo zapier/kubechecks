@@ -1,0 +1,10 @@
+[*.go]
+ij_any_blank_lines_after_imports = 1
+ij_go_add_parentheses_for_single_import = true
+ij_go_GROUP_CURRENT_PROJECT_IMPORTS = true
+ij_go_group_stdlib_imports = true
+ij_go_import_sorting = gofmt
+ij_go_move_all_imports_in_one_declaration = true
+ij_go_move_all_stdlib_imports_in_one_group = true
+ij_go_remove_redundant_import_aliases = true
+ij_go_use_back_quotes_for_imports = false

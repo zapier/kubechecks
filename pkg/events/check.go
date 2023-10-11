@@ -344,7 +344,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 	grp, grpCtx := errgroup.WithContext(ctx)
 	wrap := ce.createWrapper(span, grpCtx, app)
 
-	grp.Go(wrap("validating app against schema", ce.validateSchemas(grpCtx, app, k8sVersion, formattedManifests)))
+	grp.Go(wrap("validating app against schema", ce.validateSchemas(grpCtx, app, k8sVersion, ce.TempWorkingDir, formattedManifests)))
 	grp.Go(wrap("generating diff for app", ce.generateDiff(grpCtx, app, manifests)))
 
 	if viper.GetBool("enable-conftest") {
@@ -431,9 +431,9 @@ func (ce *CheckEvent) generateDiff(ctx context.Context, app string, manifests []
 	}
 }
 
-func (ce *CheckEvent) validateSchemas(ctx context.Context, app string, k8sVersion string, formattedManifests []string) func() (string, error) {
+func (ce *CheckEvent) validateSchemas(ctx context.Context, app, k8sVersion, tempRepoPath string, formattedManifests []string) func() (string, error) {
 	return func() (string, error) {
-		s, err := validate.ArgoCdAppValidate(ctx, app, k8sVersion, formattedManifests)
+		s, err := validate.ArgoCdAppValidate(ctx, app, k8sVersion, tempRepoPath, formattedManifests)
 		if err != nil {
 			return "", err
 		}
