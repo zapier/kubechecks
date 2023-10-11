@@ -63,15 +63,18 @@ func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *app_directory.AppDi
 
 func (v2a *VcsToArgoMap) AddApp(app v1alpha1.Application) {
 	if app.Spec.Source == nil {
+		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
 		return
 	}
 
 	rawRepoUrl := app.Spec.Source.RepoURL
 	cleanRepoUrl, err := normalizeRepoUrl(rawRepoUrl)
 	if err != nil {
-		log.Warn().Err(err).Msgf("failed to parse %s", rawRepoUrl)
+		log.Warn().Err(err).Msgf("%s/%s: failed to parse %s", app.Namespace, app.Name, rawRepoUrl)
 		return
 	}
+
+	log.Debug().Msgf("%s/%s: %s => %s", app.Namespace, app.Name, rawRepoUrl, cleanRepoUrl)
 
 	appDirectory := v2a.vcsAppStubsByRepo[cleanRepoUrl]
 	if appDirectory == nil {
