@@ -1,0 +1,121 @@
+suite: autoscaling tests
+
+templates:
+  - hpa.yaml
+
+tests:
+  - it: can have v2beta1
+    set:
+      autoscaling:
+        create: true
+        targetCPUUtilizationPercentage: 10
+        targetMemoryUtilizationPercentage: 15
+    capabilities:
+      apiVersions:
+        - autoscaling/v2beta1
+    asserts:
+      - equal:
+          path: apiVersion
+          value: autoscaling/v2beta1
+      - equal:
+          path: spec.metrics[0]
+          value:
+            type: Resource
+            resource:
+              name: cpu
+              targetAverageUtilization: 10
+      - equal:
+          path: spec.metrics[1]
+          value:
+            type: Resource
+            resource:
+              name: memory
+              targetAverageUtilization: 15
+
+  - it: can have v2beta2
+    set:
+      autoscaling:
+        create: true
+        targetCPUUtilizationPercentage: 10
+        targetMemoryUtilizationPercentage: 15
+    capabilities:
+      apiVersions:
+        - autoscaling/v2beta2
+    asserts:
+      - equal:
+          path: apiVersion
+          value: autoscaling/v2beta2
+      - equal:
+          path: spec.metrics[0]
+          value:
+            type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 10
+      - equal:
+          path: spec.metrics[1]
+          value:
+            type: Resource
+            resource:
+              name: memory
+              target:
+                type: Utilization
+                averageUtilization: 15
+
+  - it: can have v2
+    set:
+      autoscaling:
+        create: true
+        targetCPUUtilizationPercentage: 10
+        targetMemoryUtilizationPercentage: 15
+    capabilities:
+      apiVersions:
+        - autoscaling/v2
+    asserts:
+      - equal:
+          path: apiVersion
+          value: autoscaling/v2
+      - equal:
+          path: spec.metrics[0]
+          value:
+            type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 10
+      - equal:
+          path: spec.metrics[1]
+          value:
+            type: Resource
+            resource:
+              name: memory
+              target:
+                type: Utilization
+                averageUtilization: 15
+
+  - it: prefers v2
+    set:
+      autoscaling:
+        create: true
+    capabilities:
+      apiVersions:
+        - autoscaling/v2beta1
+        - autoscaling/v2beta2
+        - autoscaling/v2
+    asserts:
+      - equal:
+          path: apiVersion
+          value: autoscaling/v2
+  - it: renders nothing with no support
+    set:
+      autoscaling:
+        create: true
+    capabilities:
+      apiVersions:
+        - autoscaling/vFake
+    asserts:
+      - failedTemplate:
+          errorMessage: server has no support for autoscaling

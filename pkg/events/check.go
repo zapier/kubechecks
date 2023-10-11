@@ -8,9 +8,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/argo_client"
@@ -22,10 +28,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/validate"
 	"github.com/zapier/kubechecks/pkg/vcs_clients"
 	"github.com/zapier/kubechecks/telemetry"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
 )
 
 type CheckEvent struct {
@@ -171,6 +173,9 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) error {
 	} else if viper.GetBool("monitor-all-applications") {
 		log.Debug().Msg("using an argocd matcher")
 		matcher = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo)
+		if err != nil {
+			return errors.Wrap(err, "failed to create argocd matcher")
+		}
 	} else {
 		log.Debug().Msg("using best effort matcher")
 		ce.repoFiles, err = ce.repo.GetListOfRepoFiles()
@@ -337,106 +342,16 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 	}
 
 	grp, grpCtx := errgroup.WithContext(ctx)
-	grp.Go(func() error {
-		const taskDescription = "validating app against schema"
-		defer func() {
-			if r := recover(); r != nil {
-				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
-			}
-		}()
+	wrap := ce.createWrapper(span, grpCtx, app)
 
-		s, err := validate.ArgoCdAppValidate(grpCtx, app, k8sVersion, formattedManifests)
-		if err != nil {
-			telemetry.SetError(span, err, taskDescription)
-			ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-			return fmt.Errorf("argo Validate: %s", err)
-		}
-
-		if s != "" {
-			ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-		}
-		return nil
-
-	})
-
-	grp.Go(func() error {
-		const taskDescription = "generating diff for app"
-		defer func() {
-			if r := recover(); r != nil {
-				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
-			}
-		}()
-
-		s, rawDiff, err := diff.GetDiff(grpCtx, app, manifests)
-		if err != nil {
-			telemetry.SetError(span, err, taskDescription)
-			ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-			return fmt.Errorf("argo Diff: %s", err)
-		}
-
-		if s != "" {
-			ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-			diff.AIDiffSummary(grpCtx, ce.vcsNote, app, manifests, rawDiff)
-		}
-
-		return nil
-	})
+	grp.Go(wrap("validating app against schema", ce.validateSchemas(grpCtx, app, k8sVersion, formattedManifests)))
+	grp.Go(wrap("generating diff for app", ce.generateDiff(grpCtx, app, manifests)))
 
 	if viper.GetBool("enable-conftest") {
-		grp.Go(func() error {
-			const taskDescription = "validating app against policy"
-			defer func() {
-				if r := recover(); r != nil {
-					telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-					ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
-				}
-			}()
-
-			argoApp, err := argo_client.GetArgoClient().GetApplicationByName(grpCtx, app)
-			if err != nil {
-				telemetry.SetError(span, err, taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf("Could not retrieve Argo App details. %v", err))
-				return fmt.Errorf("could not retrieve ArgoCD App data: %v", err)
-			}
-
-			s, err := conftest.Conftest(grpCtx, argoApp, ce.TempWorkingDir)
-			if err != nil {
-				telemetry.SetError(span, err, taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-				return fmt.Errorf("confTest: %s", err)
-			}
-
-			if s != "" {
-				ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-			}
-			return nil
-		})
+		grp.Go(wrap("validation policy", ce.validatePolicy(grpCtx, app)))
 	}
 
-	grp.Go(func() error {
-		const taskDescription = "running pre-upgrade check"
-		defer func() {
-			if r := recover(); r != nil {
-				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
-			}
-		}()
-
-		s, err := kubepug.CheckApp(grpCtx, app, k8sVersion, formattedManifests)
-		if err != nil {
-			telemetry.SetError(span, err, taskDescription)
-			ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-			return fmt.Errorf("kubePug: %s", err)
-		}
-
-		if s != "" {
-			ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-		}
-		return nil
-
-	})
+	grp.Go(wrap("running pre-upgrade check", ce.runPreupgradeCheck(grpCtx, app, k8sVersion, formattedManifests)))
 
 	err = grp.Wait()
 	if err != nil {
@@ -446,6 +361,85 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 	ce.vcsNote.AddToAppMessage(ctx, app, renderInfoFooter(time.Since(start), ce.repo.SHA))
 
 	return err
+}
+
+type checkFunction func() (string, error)
+
+func (ce *CheckEvent) createWrapper(span trace.Span, grpCtx context.Context, app string) func(string, checkFunction) func() error {
+	return func(desc string, fn checkFunction) func() error {
+		return func() error {
+			defer func() {
+				if r := recover(); r != nil {
+					telemetry.SetError(span, fmt.Errorf("%v", r), desc)
+					ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, desc, r))
+				}
+			}()
+
+			s, err := fn()
+			if err != nil {
+				telemetry.SetError(span, err, desc)
+				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, desc, err))
+				return errors.Wrapf(err, "error while %s", desc)
+			}
+
+			if s != "" {
+				ce.vcsNote.AddToAppMessage(grpCtx, app, s)
+			}
+
+			return nil
+		}
+	}
+}
+
+func (ce *CheckEvent) runPreupgradeCheck(grpCtx context.Context, app string, k8sVersion string, formattedManifests []string) func() (string, error) {
+	return func() (string, error) {
+		s, err := kubepug.CheckApp(grpCtx, app, k8sVersion, formattedManifests)
+		if err != nil {
+			return "", err
+		}
+
+		return s, nil
+	}
+}
+
+func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (string, error) {
+	return func() (string, error) {
+		argoApp, err := argo_client.GetArgoClient().GetApplicationByName(ctx, app)
+		if err != nil {
+			return "", errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", app)
+		}
+
+		s, err := conftest.Conftest(ctx, argoApp, ce.TempWorkingDir)
+		if err != nil {
+			return "", err
+		}
+
+		return s, nil
+	}
+}
+
+func (ce *CheckEvent) generateDiff(ctx context.Context, app string, manifests []string) func() (string, error) {
+	return func() (string, error) {
+		s, rawDiff, err := diff.GetDiff(ctx, app, manifests)
+		if err != nil {
+			return "", err
+		}
+
+		diff.AIDiffSummary(ctx, ce.vcsNote, app, manifests, rawDiff)
+
+		return s, nil
+	}
+}
+
+func (ce *CheckEvent) validateSchemas(ctx context.Context, app string, k8sVersion string, formattedManifests []string) func() (string, error) {
+	return func() (string, error) {
+		s, err := validate.ArgoCdAppValidate(ctx, app, k8sVersion, formattedManifests)
+		if err != nil {
+			return "", err
+		}
+
+		return s, nil
+	}
 }
 
 // Creates a generic Note struct that we can write into across all worker threads
