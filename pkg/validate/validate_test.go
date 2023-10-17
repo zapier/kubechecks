@@ -18,9 +18,8 @@ func TestDefaultGetSchemaLocations(t *testing.T) {
 	schemaLocations := getSchemaLocations(ctx, "/some/other/path")
 
 	// default schema location is "./schemas"
-	assert.Len(t, schemaLocations, 2)
+	assert.Len(t, schemaLocations, 1)
 	assert.Equal(t, "default", schemaLocations[0])
-	assert.Equal(t, "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json", schemaLocations[1])
 }
 
 func TestGetRemoteSchemaLocations(t *testing.T) {

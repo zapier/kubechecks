@@ -33,9 +33,6 @@ func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
 	locations := []string{
 		// schemas included in kubechecks
 		"default",
-
-		// schemas collected globally
-		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/",
 	}
 
 	// schemas configured globally
