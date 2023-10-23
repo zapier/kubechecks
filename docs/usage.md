@@ -50,7 +50,8 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_OTEL_COLLECTOR_PORT`|The OpenTelemetry collector port.||
 |`KUBECHECKS_OTEL_ENABLED`|Enable OpenTelemetry.|`false`|
 |`KUBECHECKS_PERSIST_LOG_LEVEL`|Persists the set log level down to other module loggers.|`false`|
-|`KUBECHECKS_SCHEMAS_LOCATION`|Sets the schema location. Can be local path or git repository.|`./schemas`|
+|`KUBECHECKS_POLICIES_LOCATION`|Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.|`[./policies]`|
+|`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be common paths inside the repos being checked or git urls in either git or http(s) format.|`[./schemas]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||
