@@ -5,6 +5,8 @@ deployment:
   annotations: {}
     # reloader.stakater.com/auto: "true"
 
+  podAnnotations: {}
+
   args: []
 
   # Default values for kubechecks.
