@@ -70,9 +70,11 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, te
 
 	cwd, _ := os.Getwd()
 	vOpts := validator.Opts{
-		Cache:                filepath.Join(cwd, "schemas/"),
-		SkipTLS:              false,
-		SkipKinds:            nil,
+		Cache:   filepath.Join(cwd, "schemas/"),
+		SkipTLS: false,
+		SkipKinds: map[string]struct{}{
+			"apiextensions.k8s.io/v1/CustomResourceDefinition": {},
+		},
 		RejectKinds:          nil,
 		KubernetesVersion:    targetKubernetesVersion,
 		Strict:               true,
