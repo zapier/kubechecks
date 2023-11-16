@@ -38,16 +38,6 @@ type objKeyLiveTarget struct {
 	target *unstructured.Unstructured
 }
 
-const diffCommentFormat = `
-<details><summary><b>Show Diff</b>: %s </summary>
-
-` + "```diff" + `
-%s
-` + "```" + `
-
-</details>
-`
-
 /*
 Take cli output and return as a string or an array of strings instead of printing
 

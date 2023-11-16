@@ -20,7 +20,6 @@ type CheckResult struct {
 }
 
 type AppResults struct {
-	lock    sync.Locker
 	results []CheckResult
 }
 
