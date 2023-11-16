@@ -4,40 +4,32 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/xanzy/go-gitlab"
-	"github.com/zapier/kubechecks/pkg/repo"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
+
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
-func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, mergeRequestID int, msg string) *vcs_clients.Message {
+func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, mergeRequestID int, msg string) *pkg.Message {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
 	n, _, err := c.Notes.CreateMergeRequestNote(
 		repo.FullName, mergeRequestID,
 		&gitlab.CreateMergeRequestNoteOptions{
-			Body: gitlab.String(msg),
+			Body: pkg.Pointer(msg),
 		})
 	if err != nil {
 		telemetry.SetError(span, err, "Create Merge Request Note")
 		log.Error().Err(err).Msg("could not post message to MR")
 	}
 
-	return &vcs_clients.Message{
-		Lock:    sync.Mutex{},
-		Name:    repo.FullName,
-		CheckID: mergeRequestID,
-		NoteID:  n.ID,
-		Msg:     msg,
-		Client:  c,
-		Apps:    make(map[string]string),
-	}
+	return pkg.NewMessage(repo.FullName, mergeRequestID, n.ID)
 }
 
 func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
@@ -80,11 +72,11 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 	return nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg string) error {
+func (c *Client) UpdateMessage(ctx context.Context, m *pkg.Message, msg string) error {
 	log.Debug().Msgf("Updating message %d for %s", m.NoteID, m.Name)
 
 	n, _, err := c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
-		Body: gitlab.String(msg),
+		Body: pkg.Pointer(msg),
 	})
 
 	if err != nil {
@@ -129,8 +121,8 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, repo *repo.Repo) erro
 	for {
 		// list merge request notes
 		notes, resp, err := c.Notes.ListMergeRequestNotes(repo.FullName, repo.CheckID, &gitlab.ListMergeRequestNotesOptions{
-			Sort:    gitlab.String("asc"),
-			OrderBy: gitlab.String("created_at"),
+			Sort:    pkg.Pointer("asc"),
+			OrderBy: pkg.Pointer("created_at"),
 			ListOptions: gitlab.ListOptions{
 				Page: nextPage,
 			},

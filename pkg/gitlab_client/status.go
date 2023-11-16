@@ -3,24 +3,26 @@ package gitlab_client
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
+
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
 )
 
 const GitlabCommitStatusContext = "kubechecks"
 
 var errNoPipelineStatus = errors.New("nil pipeline status")
 
-func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_clients.CommitState) error {
+func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state pkg.CommitState) error {
 	status := &gitlab.SetCommitStatusOptions{
-		Name:        gitlab.String(GitlabCommitStatusContext),
-		Context:     gitlab.String(GitlabCommitStatusContext),
-		Description: gitlab.String(state.StateToDesc()),
+		Name:        pkg.Pointer(GitlabCommitStatusContext),
+		Context:     pkg.Pointer(GitlabCommitStatusContext),
+		Description: pkg.Pointer(state.String()),
 		State:       convertState(state),
 	}
 	// Get pipelineStatus so we can attach new status to existing pipeline. We
@@ -53,17 +55,17 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state vcs_cl
 	return nil
 }
 
-func convertState(state vcs_clients.CommitState) gitlab.BuildStateValue {
+func convertState(state pkg.CommitState) gitlab.BuildStateValue {
 	switch state {
-	case vcs_clients.Pending:
-		return gitlab.Pending
-	case vcs_clients.Running:
+	case pkg.StateRunning:
 		return gitlab.Running
-	case vcs_clients.Failure:
+	case pkg.StateFailure, pkg.StateError, pkg.StatePanic:
 		return gitlab.Failed
-	case vcs_clients.Success:
+	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone:
 		return gitlab.Success
 	}
+
+	log.Warn().Str("state", strconv.FormatUint(uint64(state), 10)).Msg("cannot convert to gitlab state")
 	return gitlab.Failed
 }
 

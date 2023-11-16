@@ -19,8 +19,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/zapier/kubechecks/pkg"
 )
 
 const DefaultMetricInterval = 2
@@ -54,7 +52,7 @@ func (ot *OperatorTelemetry) StartMetricCollectors() error {
 	return nil
 }
 
-func Init(ctx context.Context, serviceName string, otelEnabled bool, otelHost string, otelPort string) (*OperatorTelemetry, error) {
+func Init(ctx context.Context, serviceName, gitTag, gitCommit string, otelEnabled bool, otelHost, otelPort string) (*OperatorTelemetry, error) {
 	log.Info().Msg("Initializing telemetry")
 	bt := &OperatorTelemetry{
 		BaseTelemetry: &BaseTelemetry{
@@ -64,8 +62,8 @@ func Init(ctx context.Context, serviceName string, otelEnabled bool, otelHost st
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(serviceName),
-			semconv.ServiceVersionKey.String(pkg.GitTag),
-			attribute.String("SHA", pkg.GitCommit),
+			semconv.ServiceVersionKey.String(gitTag),
+			attribute.String("SHA", gitCommit),
 		),
 	)
 	if err != nil {

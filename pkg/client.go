@@ -1,4 +1,4 @@
-package vcs_clients
+package pkg
 
 import (
 	"context"
@@ -7,46 +7,6 @@ import (
 
 	"github.com/zapier/kubechecks/pkg/repo"
 )
-
-// Enum for represnting the state of a commit for posting via CommitStatus
-type CommitState int
-
-const (
-	Pending CommitState = iota
-	Running
-	Failure
-	Success
-)
-
-// Return literal string representation of this state for use in the request
-func (s CommitState) String() string {
-	switch s {
-	case Pending:
-		return "pending"
-	case Running:
-		return "running"
-	case Failure:
-		return "error"
-	case Success:
-		return "success"
-	}
-	return "unknown"
-}
-
-// Return more informative description message based on the enum state
-func (s CommitState) StateToDesc() string {
-	switch s {
-	case Pending:
-		return "pending..."
-	case Running:
-		return "in progress..."
-	case Failure:
-		return "failed."
-	case Success:
-		return "succeeded."
-	}
-	return "unknown"
-}
 
 var (
 	// ErrInvalidType is a sentinel error for use in client implementations

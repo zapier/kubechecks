@@ -4,19 +4,19 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/google/go-github/v53/github"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
 	"github.com/spf13/viper"
-	"github.com/zapier/kubechecks/pkg/repo"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
+
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
-func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, prID int, msg string) *vcs_clients.Message {
+func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, prID int, msg string) *pkg.Message {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
@@ -34,18 +34,10 @@ func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, prID int, msg
 		log.Error().Err(err).Msg("could not post message to PR")
 	}
 
-	return &vcs_clients.Message{
-		Lock:    sync.Mutex{},
-		Name:    repo.FullName,
-		CheckID: prID,
-		NoteID:  int(*comment.ID),
-		Msg:     msg,
-		Client:  c,
-		Apps:    make(map[string]string),
-	}
+	return pkg.NewMessage(repo.FullName, prID, int(*comment.ID))
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *vcs_clients.Message, msg string) error {
+func (c *Client) UpdateMessage(ctx context.Context, m *pkg.Message, msg string) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "UpdateMessage")
 	defer span.End()
 
@@ -135,8 +127,8 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, repo *repo.Repo) erro
 
 	for {
 		comments, resp, err := c.Issues.ListComments(ctx, repo.Owner, repo.Name, repo.CheckID, &github.IssueListCommentsOptions{
-			Sort:        github.String("created"),
-			Direction:   github.String("asc"),
+			Sort:        pkg.Pointer("created"),
+			Direction:   pkg.Pointer("asc"),
 			ListOptions: github.ListOptions{Page: nextPage},
 		})
 		if err != nil {

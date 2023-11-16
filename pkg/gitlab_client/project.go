@@ -6,8 +6,10 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/xanzy/go-gitlab"
-	"github.com/zapier/kubechecks/pkg/repo_config"
 	"go.opentelemetry.io/otel"
+
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/repo_config"
 )
 
 // GetProjectByIDorName gets a project by the given Project Name or ID
@@ -31,7 +33,7 @@ func (c *Client) GetRepoConfigFile(ctx context.Context, projectId int, mergeReqI
 		b, _, err := c.RepositoryFiles.GetRawFile(
 			projectId,
 			file,
-			&gitlab.GetRawFileOptions{Ref: gitlab.String("HEAD")},
+			&gitlab.GetRawFileOptions{Ref: pkg.Pointer("HEAD")},
 		)
 		if err != nil {
 			continue
