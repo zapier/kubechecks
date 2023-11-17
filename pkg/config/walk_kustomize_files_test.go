@@ -16,6 +16,9 @@ func TestKustomizeWalking(t *testing.T) {
 			return []byte(s)
 		}
 
+		kustomizeBaseName = "kustomize-base"
+		kustomizeBasePath = "test/base"
+
 		kustomizeApp1Name = "kustomize-app"
 		kustomizeApp1Path = "test/app"
 
@@ -25,6 +28,9 @@ func TestKustomizeWalking(t *testing.T) {
 		fs = fstest.MapFS{
 			"test/app/kustomization.yaml": {
 				Data: toBytes(`
+bases:
+- ../base
+
 resources:
 - file1.yaml
 - ./file2.yaml
@@ -36,6 +42,12 @@ resources:
 
 			"test/app2/kustomization.yaml": {
 				Data: toBytes(`
+patchesStrategicMerge:
+- patch.yaml
+
+patchesJson6902:
+- path: patch2.yaml
+
 resources:
 - file1.yaml
 - ../overlays/base
@@ -64,6 +76,7 @@ resources:
 	appdir := NewAppDirectory()
 	appdir.AddAppStub(kustomizeApp1Name, kustomizeApp1Path, false, true)
 	appdir.AddAppStub(kustomizeApp2Name, kustomizeApp2Path, false, true)
+	appdir.AddAppStub(kustomizeBaseName, kustomizeBasePath, false, true)
 
 	err = walkKustomizeFiles(appdir, fs, kustomizeApp1Name, kustomizeApp1Path)
 	require.NoError(t, err)
@@ -79,6 +92,10 @@ resources:
 			kustomizeApp2Name,
 		},
 		"test/app/overlays/dev": {
+			kustomizeApp1Name,
+		},
+		"test/base": {
+			kustomizeBaseName,
 			kustomizeApp1Name,
 		},
 		"test/overlays/base": {
@@ -104,6 +121,12 @@ resources:
 		},
 		"test/file3.yaml": {
 			kustomizeApp1Name,
+		},
+		"test/app2/patch2.yaml": {
+			kustomizeApp2Name,
+		},
+		"test/app2/patch.yaml": {
+			kustomizeApp2Name,
 		},
 		"test/overlays/base/some-file1.yaml": {
 			kustomizeApp1Name,

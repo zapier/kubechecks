@@ -11,6 +11,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
+type patchJson6902 struct {
+	Path string `yaml:"path"`
+}
+
 func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string) error {
 	kustomizeFile := filepath.Join(dirpath, "kustomization.yaml")
 
@@ -18,9 +22,10 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 		err error
 
 		kustomize struct {
-			Resources []string `yaml:"resources"`
-
-			PatchesStrategicMerge []string `yaml:"patchesStrategicMerge"`
+			Bases                 []string        `yaml:"bases"`
+			Resources             []string        `yaml:"resources"`
+			PatchesJson6902       []patchJson6902 `yaml:"patchesJson6902"`
+			PatchesStrategicMerge []string        `yaml:"patchesStrategicMerge"`
 		}
 	)
 
@@ -71,8 +76,21 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 		}
 	}
 
+	for _, basePath := range kustomize.Bases {
+		relPath := filepath.Join(dirpath, basePath)
+		result.AddDir(appName, relPath)
+		if err = walkKustomizeFiles(result, fs, appName, relPath); err != nil {
+			log.Warn().Err(err).Msgf("failed to read kustomize.yaml in %s", relPath)
+		}
+	}
+
 	for _, patchFile := range kustomize.PatchesStrategicMerge {
 		relPath := filepath.Join(dirpath, patchFile)
+		result.AddFile(appName, relPath)
+	}
+
+	for _, patch := range kustomize.PatchesJson6902 {
+		relPath := filepath.Join(dirpath, patch.Path)
 		result.AddFile(appName, relPath)
 	}
 
