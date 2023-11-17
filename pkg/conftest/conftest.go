@@ -11,12 +11,14 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/olekukonko/tablewriter"
 	"github.com/open-policy-agent/conftest/output"
+	"github.com/open-policy-agent/conftest/runner"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/telemetry"
+	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel"
 
-	"github.com/open-policy-agent/conftest/runner"
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/local"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
 var gitLabCommentFormat = `
@@ -32,6 +34,8 @@ var gitLabCommentFormat = `
 
 const passedMessage = "\nPassed all policy checks."
 
+var reposCache = local.NewReposDirectory()
+
 // Conftest runs the conftest validation against an application in a given repository
 // path. It generates a summary string with the results, which can later be posted
 // as a GitLab comment. The validation checks resources against Zapier policies and
@@ -45,12 +49,26 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (
 
 	log.Debug().Str("dir", confTestDir).Str("app", app.Name).Msg("running conftest in dir for application")
 
-	var r = runner.TestRunner{}
+	policiesLocations := viper.GetStringSlice("policies-location")
+	var locations []string
+	for _, policiesLocation := range policiesLocations {
+		log.Debug().Str("schemas-location", policiesLocation).Msg("viper")
+		schemaPath := reposCache.EnsurePath(ctx, repoPath, policiesLocation)
+		if schemaPath != "" {
+			locations = append(locations, schemaPath)
+		}
+	}
+
+	if len(locations) == 0 {
+		return "no policies locations configured", nil
+	}
+
+	var r runner.TestRunner
 
 	r.NoColor = true
 	r.AllNamespaces = true
 	// PATH To Rego Polices
-	r.Policy = []string{"./policy"}
+	r.Policy = locations
 	r.SuppressExceptions = false
 	r.Trace = false
 

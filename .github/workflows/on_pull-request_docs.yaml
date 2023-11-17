@@ -27,16 +27,4 @@ jobs:
               --GOLANG_VERSION="${{ env.GOLANG_TOOL_VERSION }}"
 
       - name: verify that the checked in file has not changed
-        run: |
-          #!/usr/bin/env bash
-          
-          exitCode=0
-
-          # Log the actual diff for debugging purposes
-          git diff --name-only | cat
-          if ! git diff --exit-code --quiet; then
-            echo "Please run 'earthly +rebuild-docs' and commit the results to this PR"
-            exitCode=1
-          fi
-          
-          exit $exitCode
+        run: ./hacks/exit-on-changed-files.sh "Please run 'earthly +rebuild-docs' and commit the results to this PR"

@@ -115,9 +115,9 @@ func isKustomizeApp(file string) bool {
 
 func isKustomizeBaseComponentsChange(file string) bool {
 	return strings.Contains(file, "base/") ||
-			strings.Contains(file, "bases/") ||
-			strings.Contains(file, "components/") ||
-			strings.Contains(file, "resources/")
+		strings.Contains(file, "bases/") ||
+		strings.Contains(file, "components/") ||
+		strings.Contains(file, "resources/")
 }
 
 func overlaysDir(file string) string {

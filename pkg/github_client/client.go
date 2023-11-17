@@ -48,7 +48,7 @@ func getTokenUser() string {
 	return *user.Login
 }
 
-// Create a new github client using the auth token provided. We
+// Create a new GitHub client using the auth token provided. We
 // can't validate the token at this point, so if it exists we assume it works
 func createGithubClient() *Client {
 	var (
@@ -91,7 +91,7 @@ func (c *Client) GetName() string {
 }
 
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
-	// Github provides the SHA256 of the secret + payload body, so we extract the body and compare
+	// GitHub provides the SHA256 of the secret + payload body, so we extract the body and compare
 	// We have to split it like this as the ValidatePayload method consumes the request
 	if secret != "" {
 		return github.ValidatePayload(r, []byte(secret))
@@ -107,7 +107,7 @@ func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error)
 
 // CreateRepo creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
 // Has already occured previously, so we expect a valid event type for the GitHub client in the payload arg
-func (c *Client) CreateRepo(ctx context.Context, payload interface{}) (*repo.Repo, error) {
+func (c *Client) CreateRepo(_ context.Context, payload interface{}) (*repo.Repo, error) {
 	switch p := payload.(type) {
 	case *github.PullRequestEvent:
 		switch p.GetAction() {
@@ -132,7 +132,7 @@ func (c *Client) getUserDetails() (string, string, error) {
 		return "", "", err
 	}
 
-	// Some users on Github don't have an email listed; if so, catch that and return empty string
+	// Some users on GitHub don't have an email listed; if so, catch that and return empty string
 	if user.Email == nil {
 		log.Error().Msg("could not load Github user email")
 		return *user.Login, "", nil
@@ -163,7 +163,7 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		FullName:      event.Repo.GetFullName(),
 		Owner:         *event.Repo.Owner.Login,
 		Name:          event.Repo.GetName(),
-		CheckID:       int(*event.PullRequest.Number),
+		CheckID:       *event.PullRequest.Number,
 		SHA:           *event.PullRequest.Head.SHA,
 		Username:      username,
 		Email:         email,
@@ -193,16 +193,16 @@ func parseRepo(cloneUrl string) (string, string) {
 		parts := strings.Split(cloneUrl, ":")
 		parts = strings.Split(parts[1], "/")
 		owner := parts[0]
-		repo := strings.TrimSuffix(parts[1], ".git")
-		return owner, repo
+		repoName := strings.TrimSuffix(parts[1], ".git")
+		return owner, repoName
 	}
 
 	panic(cloneUrl)
 }
 
-func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
-	owner, repo := parseRepo(repoName)
-	items, _, err := c.Repositories.ListHooks(ctx, owner, repo, nil)
+func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
+	owner, repoName := parseRepo(ownerAndRepoName)
+	items, _, err := c.Repositories.ListHooks(ctx, owner, repoName, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list hooks")
 	}
@@ -219,9 +219,9 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 	return nil, vcs_clients.ErrHookNotFound
 }
 
-func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {
-	owner, repo := parseRepo(repoName)
-	_, _, err := c.Repositories.CreateHook(ctx, owner, repo, &github.Hook{
+func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, webhookSecret string) error {
+	owner, repoName := parseRepo(ownerAndRepoName)
+	_, _, err := c.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
 		Active: pkg.Pointer(true),
 		Config: map[string]interface{}{
 			"content_type": "json",

@@ -5,6 +5,7 @@ test:
     BUILD +ci-helm
 
 ci-golang:
+    BUILD +fmt-golang
     BUILD +lint-golang
     BUILD +validate-golang
     BUILD +test-golang
@@ -105,8 +106,9 @@ docker:
 
     WORKDIR /app
 
-    COPY ./policy ./policy
-    COPY ./schemas ./schemas
+    VOLUME /app/policies
+    VOLUME /app/schemas
+
     COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
     RUN ./kubechecks help
 
@@ -143,6 +145,15 @@ docker-debug:
     CMD ["/usr/local/bin/dlv", "--listen=:2345", "--api-version=2", "--headless=true", "--accept-multiclient", "exec", "--continue", "./kubechecks", "controller"]
 
     SAVE IMAGE --push $CI_REGISTRY_IMAGE
+
+fmt-golang:
+    FROM +go-deps
+
+    WORKDIR /src
+    COPY . /src
+
+    RUN go fmt \
+        && ./hacks/exit-on-changed-files.sh
 
 lint-golang:
     ARG STATICCHECK_VERSION="2023.1.3"

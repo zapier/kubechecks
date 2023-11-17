@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -77,10 +78,17 @@ func (m *Message) buildComment(ctx context.Context) string {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "buildComment")
 	defer span.End()
 
+	var names []string
+	for name := range m.Apps {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Kubechecks Report\n")
 	// m.Msg = fmt.Sprintf("%s \n\n---\n\n%s", m.Msg, msg)
-	for app, msg := range m.Apps {
+	for _, name := range names {
+		msg := m.Apps[name]
 		appEmoji := pkg.PassEmoji()
 
 		// Test the message for failures, since we'll be showing this at the top
@@ -88,7 +96,7 @@ func (m *Message) buildComment(ctx context.Context) string {
 			appEmoji = pkg.FailedEmoji()
 		}
 
-		fmt.Fprintf(&sb, appFormat, app, appEmoji, msg)
+		fmt.Fprintf(&sb, appFormat, name, appEmoji, msg)
 	}
 	return sb.String()
 }

@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg"
-
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -21,6 +19,8 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 const DefaultMetricInterval = 2

@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
 	"github.com/zapier/kubechecks/telemetry"
 )
 
@@ -79,14 +80,17 @@ func init() {
 			withChoices("hide", "delete").
 			withDefault("hide"),
 	)
-	stringFlag(flags, "schemas-location", "Sets the schema location. Can be local path or git repository.",
-		newStringOpts().
-			withDefault("./schemas"))
+	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. Can be common paths inside the repos being checked or git urls in either git or http(s) format.",
+		newStringSliceOpts().
+			withDefault([]string{"./schemas"}))
+
+	stringSliceFlag(flags, "policies-location", "Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.",
+		newStringSliceOpts().
+			withDefault([]string{"./policies"}))
 
 	panicIfError(viper.BindPFlags(flags))
 
 	setupLogOutput()
-
 }
 
 func initTelemetry(ctx context.Context) (*telemetry.OperatorTelemetry, error) {

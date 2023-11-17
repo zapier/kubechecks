@@ -5,21 +5,24 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/zapier/kubechecks/telemetry"
 )
 
-// Represents a local Repostiory on disk, based off of a PR/MR
+// Repo represents a local Repostiory on disk, based off of a PR/MR
 type Repo struct {
 	BaseRef       string   // base ref is the branch that the PR is being merged into
 	HeadRef       string   // head ref is the branch that the PR is coming from
@@ -220,45 +223,67 @@ func InitializeGitSettings(user string, email string) error {
 	cmd := exec.Command("git", "config", "--global", "user.email", email)
 	err := cmd.Run()
 	if err != nil {
-		log.Error().Err(err).Msg("unable to set git username")
-		return err
+		return errors.Wrap(err, "failed to set git email address")
 	}
 
 	cmd = exec.Command("git", "config", "--global", "user.name", user)
 	err = cmd.Run()
 	if err != nil {
-		log.Error().Err(err).Msg("unable to set git username")
-		return err
+		return errors.Wrap(err, "failed to set git user name")
 	}
 
-	cmd = exec.Command("echo", fmt.Sprintf("https://%s:%s@%s.com", user, viper.GetString("vcs-token"), viper.GetString("vcs-type")))
+	cloneUrl, err := getCloneUrl(user, viper.GetViper())
+	if err != nil {
+		return errors.Wrap(err, "failed to get clone url")
+	}
+
 	homedir, err := os.UserHomeDir()
 	if err != nil {
 		if err != nil {
-			log.Error().Err(err).Msg("unable to get home directory")
-			return err
+			return errors.Wrap(err, "unable to get home directory")
 		}
 	}
 	outfile, err := os.Create(fmt.Sprintf("%s/.git-credentials", homedir))
 	if err != nil {
-		log.Error().Err(err).Msg("unable to create credentials file")
-		return err
+		return errors.Wrap(err, "unable to create credentials file")
 	}
 	defer outfile.Close()
+
+	cmd = exec.Command("echo", cloneUrl)
 	cmd.Stdout = outfile
 	err = cmd.Run()
 	if err != nil {
-		log.Error().Err(err).Msg("unable to set git credentials")
-		return err
+		return errors.Wrap(err, "unable to set git credentials")
 	}
 
 	cmd = exec.Command("git", "config", "--global", "credential.helper", "store")
 	err = cmd.Run()
 	if err != nil {
-		log.Error().Err(err).Msg("unable to set git credential usage")
-		return err
+		return errors.Wrap(err, "unable to set git credential usage")
 	}
 	log.Debug().Msg("git credentials set")
 
 	return nil
+}
+
+func getCloneUrl(user string, cfg *viper.Viper) (string, error) {
+	vcsBaseUrl := cfg.GetString("vcs-base-url")
+	vcsType := cfg.GetString("vcs-type")
+	vcsToken := cfg.GetString("vcs-token")
+
+	var hostname, scheme string
+
+	if vcsBaseUrl == "" {
+		// hack: but it does happen to work for now
+		hostname = fmt.Sprintf("%s.com", vcsType)
+		scheme = "https"
+	} else {
+		parts, err := url.Parse(vcsBaseUrl)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to parse %q", vcsBaseUrl)
+		}
+		hostname = parts.Host
+		scheme = parts.Scheme
+	}
+	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, vcsToken, hostname), nil
 }

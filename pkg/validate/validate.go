@@ -14,9 +14,10 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/local"
 )
 
-var reposCache = newReposDirectory()
+var reposCache = local.NewReposDirectory()
 
 const kubeconformCommentFormat = `
 <details><summary><b>Show kubeconform report:</b> %s</summary>
@@ -30,33 +31,32 @@ const kubeconformCommentFormat = `
 
 func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
 	locations := []string{
-		// schemas built into the kubechecks repo
-		`./schemas/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json`,
-
 		// schemas included in kubechecks
-		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
+		"default",
 	}
 
 	// schemas configured globally
-	schemasLocation := viper.GetString("schemas-location")
-	log.Debug().Str("schemas-location", schemasLocation).Msg("viper")
-	if strings.HasPrefix(schemasLocation, "https://") || strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "git@") {
-		log.Debug().Msg("registering repository")
-		repoPath := reposCache.Register(ctx, schemasLocation)
-		if repoPath != "" {
-			locations = append(locations, repoPath)
+	schemasLocations := viper.GetStringSlice("schemas-location")
+	for _, schemasLocation := range schemasLocations {
+		log.Debug().Str("schemas-location", schemasLocation).Msg("viper")
+		schemaPath := reposCache.EnsurePath(ctx, tempRepoPath, schemasLocation)
+		if schemaPath != "" {
+			locations = append(locations, schemaPath)
 		}
-	} else if schemasLocation != "" {
-		locations = append(locations, schemasLocation)
 	}
 
-	// bring in schemas that might be in the cloned repository
-	schemaPath := filepath.Join(tempRepoPath, "schemas")
-	log.Debug().Str("path", schemaPath).Msg("repo-schema-path")
-	if stat, err := os.Stat(schemaPath); err == nil && stat.IsDir() {
-		locations = append(locations, fmt.Sprintf("%s/{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json", schemaPath))
-	} else {
-		log.Debug().Err(err).Msg("failed to find repo schemas")
+	for index := range locations {
+		location := locations[index]
+		if location == "default" {
+			continue
+		}
+
+		if !strings.HasSuffix(location, "/") {
+			location += "/"
+		}
+
+		location += "{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+		locations[index] = location
 	}
 
 	return locations
@@ -70,9 +70,11 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, te
 
 	cwd, _ := os.Getwd()
 	vOpts := validator.Opts{
-		Cache:                filepath.Join(cwd, "schemas/"),
-		SkipTLS:              false,
-		SkipKinds:            nil,
+		Cache:   filepath.Join(cwd, "schemas/"),
+		SkipTLS: false,
+		SkipKinds: map[string]struct{}{
+			"apiextensions.k8s.io/v1/CustomResourceDefinition": {},
+		},
 		RejectKinds:          nil,
 		KubernetesVersion:    targetKubernetesVersion,
 		Strict:               true,

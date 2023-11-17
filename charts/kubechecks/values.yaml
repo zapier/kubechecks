@@ -5,6 +5,8 @@ deployment:
   annotations: {}
     # reloader.stakater.com/auto: "true"
 
+  podAnnotations: {}
+
   args: []
 
   # Default values for kubechecks.
@@ -76,6 +78,9 @@ deployment:
     periodSeconds: 10
     successThreshold: 1
     timeoutSeconds: 5
+
+  volumes: []
+  volumeMounts: []
 
 secrets:
   create: false

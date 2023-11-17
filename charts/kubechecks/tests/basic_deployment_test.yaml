@@ -128,3 +128,25 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args
           value: [one, two, "123"]
+  - it: can have volumes
+    set:
+      deployment:
+        volumes:
+          - name: test-volume
+            hostPath:
+              path: /abc/def
+        volumeMounts:
+          - name: test-volume
+            path: /ghi
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes
+          value:
+            - hostPath:
+                path: /abc/def
+              name: test-volume
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts
+          value:
+            - name: test-volume
+              path: /ghi
