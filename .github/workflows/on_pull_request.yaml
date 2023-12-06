@@ -9,10 +9,14 @@ on:
       - '!COPYING.LGPL-3'
       - '!.gitattributes'
       - '!.gitignore'
+    types:
+      - opened
+      - reopened
+      - synchronize
 
 env:
-  FS_IMAGE: ttl.sh/${{ github.repository }}/pr-${{ github.event.pull_request.number }}/${{ github.event.pull_request.head.sha }}
-  FS_TAG: 24h
+  FS_IMAGE: ghcr.io/${{ github.repository }}
+  FS_TAG: 0.0.0-pr${{ github.event.pull_request.number }}
 
 # TODO: Move this to repo config
 jobs:
@@ -69,4 +73,4 @@ jobs:
       - uses: mshick/add-pr-comment@v2
         with:
           message: |
-            Temporary image available at `${{ env.FS_IMAGE }}:${{ env.FS_TAG }}` for 24 hours. If you need another built, close and reopen the PR.
+            Temporary image available at `${{ env.FS_IMAGE }}:${{ env.FS_TAG }}`.
