@@ -362,11 +362,11 @@ Check kubechecks application logs for more information.
 `
 )
 
-func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app string, wg *sync.WaitGroup) func(string, checkFunction) func() {
-	wg.Add(1)
+func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app string, wg *sync.WaitGroup) func(string, checkFunction) {
+	return func(desc string, fn checkFunction) {
+		wg.Add(1)
 
-	return func(desc string, fn checkFunction) func() {
-		return func() {
+		go func() {
 			defer func() {
 				wg.Done()
 
@@ -392,7 +392,7 @@ func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app 
 			ce.vcsNote.AddToAppMessage(grpCtx, app, cr)
 
 			ce.logger.Info().Str("app", app).Str("check", desc).Str("result", cr.State.String()).Msgf("check done")
-		}
+		}()
 	}
 }
 
