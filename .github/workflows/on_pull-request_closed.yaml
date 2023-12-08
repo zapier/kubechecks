@@ -1,0 +1,35 @@
+name: PR closed
+
+on:
+  pull_request:
+    types:
+      - closed
+
+env:
+  FS_IMAGE: ghcr.io/${{ github.repository }}
+  FS_TAG: 0.0.0-pr${{ github.event.pull_request.number }}
+
+jobs:
+  remove-temp-image:
+    runs-on: ubuntu-22.04
+
+    # should match env.FS_TAG, in both pr-open.yaml and pr-close.yaml
+    concurrency: pr-${{ github.event.pull_request.number }}
+
+    permissions:
+      packages: write
+      pull-requests: write
+
+    steps:
+      - name: Delete all images without tags
+        uses: bots-house/ghcr-delete-image-action@v1.1.0
+        with:
+          owner: zapier
+          name: kubechecks
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ env.FS_TAG }}
+
+      - uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            Temporary image deleted.
