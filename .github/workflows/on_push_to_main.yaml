@@ -3,6 +3,9 @@ on:
     branches:
       - main
 
+env:
+  FS_IMAGE: ghcr.io/${{ github.repository }}
+
 jobs:
   release-docker:
     runs-on: ubuntu-22.04
@@ -36,6 +39,7 @@ jobs:
       - name: extract sha
         run: |
           echo "GIT_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "GIT_TAG=$(git describe)" >> $GITHUB_ENV
 
       - name: login to registry
         uses: docker/login-action@v1
@@ -52,9 +56,9 @@ jobs:
             +docker-dev \
               --HELM_VERSION=${{ env.HELM_TOOL_VERSION }} \
               --KUSTOMIZE_VERSION=${{ env.KUSTOMIZE_TOOL_VERSION }} \
-              --GIT_TAG=main-${{ matrix.platform.suffix }} \
+              --GIT_TAG=${{ env.GIT_TAG }} \
               --GIT_COMMIT=${{ env.GIT_COMMIT }} \
-              --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks
+              --CI_REGISTRY_IMAGE=${{ env.FS_IMAGE }}
 
   release-multiarch:
     runs-on: ubuntu-22.04
