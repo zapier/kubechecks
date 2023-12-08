@@ -137,15 +137,15 @@ func buildComment(ctx context.Context, apps map[string]*AppResults) string {
 				summary = fmt.Sprintf("%s %s", check.Summary, check.State.String())
 			}
 
-			msg := fmt.Sprintf("<details><summary>%s</summary>\n%s\n</details>", summary, check.Details)
+			msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
 			checkStrings = append(checkStrings, msg)
 			appState = WorstState(appState, check.State)
 		}
 
 		sb.WriteString("<details>\n")
-		sb.WriteString("<summary>\n")
-		sb.WriteString(fmt.Sprintf("## ArgoCD Application Checks:`%s` %s\n", appName, appState.Emoji()))
-		sb.WriteString("</summary>\n")
+		sb.WriteString("<summary>\n\n")
+		sb.WriteString(fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, appState.Emoji()))
+		sb.WriteString("</summary>\n\n")
 		sb.WriteString(strings.Join(checkStrings, "---\n"))
 		sb.WriteString("</details>")
 	}
