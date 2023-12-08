@@ -10,20 +10,21 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/events"
 	"github.com/zapier/kubechecks/pkg/github_client"
 	"github.com/zapier/kubechecks/pkg/gitlab_client"
 	"github.com/zapier/kubechecks/pkg/repo"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
 	"github.com/zapier/kubechecks/telemetry"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type VCSHookHandler struct {
-	client    vcs_clients.Client
+	client    pkg.Client
 	tokenUser string
 	cfg       *config.ServerConfig
 	// labelFilter is a string specifying the required label name to filter merge events by; if empty, all merge events will pass the filter.
@@ -31,19 +32,19 @@ type VCSHookHandler struct {
 }
 
 var once sync.Once
-var vcsClient vcs_clients.Client // Currently, only allow one client at a time
+var vcsClient pkg.Client // Currently, only allow one client at a time
 var tokenUser string
 var ProjectHookPath = "/gitlab/project"
 
 // High level type representing the fields we care about from an arbitrary Git repository
-func GetVCSClient() (vcs_clients.Client, string) {
+func GetVCSClient() (pkg.Client, string) {
 	once.Do(func() {
 		vcsClient, tokenUser = createVCSClient()
 	})
 	return vcsClient, tokenUser
 }
 
-func createVCSClient() (vcs_clients.Client, string) {
+func createVCSClient() (pkg.Client, string) {
 	// Determine what client to use based on set config (default Gitlab)
 	clientType := viper.GetString("vcs-type")
 	// All hooks set up follow the convention /VCS_PROVIDER/project
@@ -99,7 +100,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	repo, err := h.client.CreateRepo(ctx, eventRequest)
 	if err != nil {
 		switch err {
-		case vcs_clients.ErrInvalidType:
+		case pkg.ErrInvalidType:
 			log.Debug().Msg("Ignoring event, not a merge request")
 			return c.String(http.StatusOK, "Skipped")
 		default:

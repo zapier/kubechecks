@@ -21,17 +21,6 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-var gitLabCommentFormat = `
-<details><summary><b>Show Conftest Validation result</b>: %s</summary>
-
-%s
-
-> This check validates resources against conftest policies.
-> Currently this is informational only and a warning or error does not block deploy.
-
-</details>
-`
-
 const passedMessage = "\nPassed all policy checks."
 
 var reposCache = local.NewReposDirectory()
@@ -41,7 +30,7 @@ var reposCache = local.NewReposDirectory()
 // as a GitLab comment. The validation checks resources against Zapier policies and
 // provides feedback for warnings or errors as informational messages. Failure to
 // pass a policy check currently does not block deploy.
-func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (string, error) {
+func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (pkg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "Conftest")
 	defer span.End()
 
@@ -60,7 +49,10 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (
 	}
 
 	if len(locations) == 0 {
-		return "no policies locations configured", nil
+		return pkg.CheckResult{
+			State:   pkg.StateWarning,
+			Summary: "no policies locations configured",
+		}, nil
 	}
 
 	var r runner.TestRunner
@@ -80,7 +72,7 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (
 	results, err := r.Run(ctx, []string{confTestDir})
 	if err != nil {
 		telemetry.SetError(span, err, "ConfTest Run")
-		return "", err
+		return pkg.CheckResult{}, err
 	}
 
 	var b bytes.Buffer
@@ -104,16 +96,19 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (
 		innerStrings = append(innerStrings, passedMessage)
 	}
 
-	resultString := pkg.PassString()
-	if warnings {
-		resultString = pkg.WarningString()
-	}
+	var cr pkg.CheckResult
 	if failures {
-		resultString = pkg.FailedString()
+		cr.State = pkg.StateFailure
+	} else if warnings {
+		cr.State = pkg.StateWarning
+	} else {
+		cr.State = pkg.StateSuccess
 	}
 
-	comment := fmt.Sprintf(gitLabCommentFormat, resultString, strings.Join(innerStrings, "\n"))
-	return comment, nil
+	cr.Summary = "<b>Show Conftest Validation result</b>"
+	cr.Details = strings.Join(innerStrings, "\n")
+
+	return cr, nil
 }
 
 // formatConftestResults writes the check results from an array of output.CheckResult objects into a formatted table.
@@ -134,11 +129,11 @@ func formatConftestResults(w io.Writer, checkResults []output.CheckResult) {
 		}
 
 		for _, result := range checkResult.Exceptions {
-			tableData = append(tableData, []string{pkg.FailedEmoji(), code(checkResult.FileName), result.Message})
+			tableData = append(tableData, []string{pkg.StateError.Emoji(), code(checkResult.FileName), result.Message})
 		}
 
 		for _, result := range checkResult.Warnings {
-			tableData = append(tableData, []string{pkg.WarningEmoji(), code(checkResult.FileName), result.Message})
+			tableData = append(tableData, []string{pkg.StateWarning.Emoji(), code(checkResult.FileName), result.Message})
 		}
 
 		for _, result := range checkResult.Skipped {
@@ -146,7 +141,7 @@ func formatConftestResults(w io.Writer, checkResults []output.CheckResult) {
 		}
 
 		for _, result := range checkResult.Failures {
-			tableData = append(tableData, []string{pkg.FailedEmoji(), code(checkResult.FileName), result.Message})
+			tableData = append(tableData, []string{pkg.StateFailure.Emoji(), code(checkResult.FileName), result.Message})
 		}
 	}
 

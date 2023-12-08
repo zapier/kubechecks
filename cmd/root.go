@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
@@ -97,7 +98,7 @@ func initTelemetry(ctx context.Context) (*telemetry.OperatorTelemetry, error) {
 	enableOtel := viper.GetBool("otel-enabled")
 	otelHost := viper.GetString("otel-collector-host")
 	otelPort := viper.GetString("otel-collector-port")
-	return telemetry.Init(ctx, "kubechecks", enableOtel, otelHost, otelPort)
+	return telemetry.Init(ctx, "kubechecks", pkg.GitTag, pkg.GitCommit, enableOtel, otelHost, otelPort)
 }
 
 func setupLogOutput() {

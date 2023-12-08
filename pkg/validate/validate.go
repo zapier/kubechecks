@@ -19,16 +19,6 @@ import (
 
 var reposCache = local.NewReposDirectory()
 
-const kubeconformCommentFormat = `
-<details><summary><b>Show kubeconform report:</b> %s</summary>
-
->Validated against Kubernetes Version: %s
-
-%s
-
-</details>
-`
-
 func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
 	locations := []string{
 		// schemas included in kubechecks
@@ -62,7 +52,7 @@ func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
 	return locations
 }
 
-func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (string, error) {
+func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (pkg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -94,7 +84,7 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, te
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
 		log.Error().Err(err).Msg("could not create kubeconform validator")
-		return "", fmt.Errorf("could not create kubeconform validator: %v", err)
+		return pkg.CheckResult{}, fmt.Errorf("could not create kubeconform validator: %v", err)
 	}
 	result := v.Validate("-", io.NopCloser(strings.NewReader(strings.Join(appManifests, "\n"))))
 	var invalid, failedValidation bool
@@ -118,12 +108,18 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, te
 			outputString = append(outputString, fmt.Sprintf(" * :white_check_mark: Passed: %s", sig))
 		}
 	}
-	summary := pkg.PassString()
+
+	var cr pkg.CheckResult
 	if invalid {
-		summary = pkg.WarningString()
+		cr.State = pkg.StateWarning
 	} else if failedValidation {
-		summary = pkg.FailedString()
+		cr.State = pkg.StateFailure
+	} else {
+		cr.State = pkg.StateSuccess
 	}
 
-	return fmt.Sprintf(kubeconformCommentFormat, summary, targetKubernetesVersion, strings.Join(outputString, "\n")), nil
+	cr.Summary = "<b>Show kubeconform report:</b>"
+	cr.Details = fmt.Sprintf(">Validated against Kubernetes Version: %s\n\n%s", targetKubernetesVersion, strings.Join(outputString, "\n"))
+
+	return cr, nil
 }

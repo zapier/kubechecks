@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
@@ -27,46 +27,27 @@ import (
 	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 	"github.com/zapier/kubechecks/pkg/validate"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
 type CheckEvent struct {
-	client         vcs_clients.Client // Client exposing methods to communicate with platform of user choice
-	fileList       []string           // What files have changed in this PR/MR
-	repoFiles      []string           // All files in this repository
-	TempWorkingDir string             // Location of the local repo
+	client         pkg.Client // Client exposing methods to communicate with platform of user choice
+	fileList       []string   // What files have changed in this PR/MR
+	repoFiles      []string   // All files in this repository
+	TempWorkingDir string     // Location of the local repo
 	repo           *repo.Repo
 	logger         zerolog.Logger
 	workerLimits   int
-	vcsNote        *vcs_clients.Message
+	vcsNote        *pkg.Message
 
 	affectedItems affected_apps.AffectedItems
 
 	cfg *config.ServerConfig
 }
 
-const (
-	errorCommentFormat = `
-:warning:  **Error while %s** :warning: 
-` + "```" + `
-%v
-` + "```" + `
+var inFlight int32
 
-Check kubechecks application logs for more information.
-`
-)
-
-var (
-	hostname = ""
-	inFlight int32
-)
-
-func init() {
-	hostname, _ = os.Hostname()
-}
-
-func NewCheckEvent(repo *repo.Repo, client vcs_clients.Client, cfg *config.ServerConfig) *CheckEvent {
+func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig) *CheckEvent {
 	ce := &CheckEvent{
 		cfg:    cfg,
 		client: client,
@@ -77,7 +58,7 @@ func NewCheckEvent(repo *repo.Repo, client vcs_clients.Client, cfg *config.Serve
 	return ce
 }
 
-// Get the Repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
+// GetRepo gets the repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
 // As the Repo is built from a webhook payload via the VCSClient, it should always be present. If not, error
 func (ce *CheckEvent) GetRepo(ctx context.Context) (*repo.Repo, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetRepo")
@@ -233,7 +214,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
 	appChannel := make(chan appStruct, len(ce.affectedItems.Applications))
-	errChannel := make(chan error, len(ce.affectedItems.Applications))
+	doneChannel := make(chan bool, len(ce.affectedItems.Applications))
 
 	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
 	if ce.workerLimits > len(ce.affectedItems.Applications) {
@@ -244,7 +225,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.vcsNote = ce.createNote(ctx)
 
 	for w := 0; w <= ce.workerLimits; w++ {
-		go ce.appWorkers(ctx, w, appChannel, errChannel)
+		go ce.appWorkers(ctx, w, appChannel, doneChannel)
 	}
 
 	// Produce apps onto channel
@@ -258,33 +239,37 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	}
 
 	returnCount := 0
-	resultError := false
-	for err := range errChannel {
-		returnCount++
-		if err != nil {
-			resultError = true
-			ce.logger.Error().Err(err).Msg("error running tool")
+	commitStatus := true
+	for appStatus := range doneChannel {
+		if !appStatus {
+			commitStatus = false
 		}
+
+		returnCount++
 		if returnCount == len(ce.affectedItems.Applications) {
 			ce.logger.Debug().Msg("Closing channels")
 			close(appChannel)
-			close(errChannel)
+			close(doneChannel)
 		}
 	}
 	ce.logger.Info().Msg("Finished")
 
-	if resultError {
-		ce.CommitStatus(ctx, vcs_clients.Failure)
+	if err = ce.vcsNote.PushComment(ctx, ce.client); err != nil {
+		ce.logger.Error().Err(err).Msg("failed to push comment")
+	}
+
+	if !commitStatus {
+		ce.CommitStatus(ctx, pkg.StateFailure)
 		ce.logger.Error().Msg("Errors found")
 		return
 	}
 
-	ce.CommitStatus(ctx, vcs_clients.Success)
+	ce.CommitStatus(ctx, pkg.StateSuccess)
 }
 
-// CommitStatus takes one of "success", "failure", "pending" or "error" and pass off to client
+// CommitStatus sets the commit status on the MR
 // To set the PR/MR status
-func (ce *CheckEvent) CommitStatus(ctx context.Context, status vcs_clients.CommitState) {
+func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CommitStatus")
 	defer span.End()
 
@@ -294,10 +279,11 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status vcs_clients.Commi
 }
 
 // Process all apps on the provided channel
-func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int, appChannel chan appStruct, resultChannel chan error) {
+func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int, appChannel chan appStruct, resultChannel chan bool) {
 	for app := range appChannel {
 		ce.logger.Info().Int("workerID", workerID).Str("app", app.name).Msg("Processing App")
-		resultChannel <- ce.processApp(ctx, app.name, app.dir)
+		isSuccess := ce.processApp(ctx, app.name, app.dir)
+		resultChannel <- isSuccess
 	}
 }
 
@@ -306,7 +292,7 @@ func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int, appChannel c
 // It takes a context (ctx), application name (app), directory (dir) as input and returns an error if any check fails.
 // The processing is performed concurrently using Go routines and error groups. Any check results are sent through
 // the returnChan. The function also manages the inFlight atomic counter to track active processing routines.
-func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
+func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) bool {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "processApp", trace.WithAttributes(
 		attribute.String("app", app),
 		attribute.String("dir", dir),
@@ -325,8 +311,9 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 	manifests, err := argo_client.GetManifestsLocal(ctx, app, ce.TempWorkingDir, dir)
 	if err != nil {
 		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", app, dir)
-		ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf("Unable to get manifests for application: \n\n ```\n%s\n```", ce.cleanupGetManifestsError(err)))
-		return nil
+		cr := pkg.CheckResult{State: pkg.StateError, Summary: "Unable to get manifests", Details: fmt.Sprintf("```\n%s\n```", ce.cleanupGetManifestsError(err))}
+		ce.vcsNote.AddToAppMessage(ctx, app, cr)
+		return false
 	}
 
 	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
@@ -342,117 +329,133 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
 		ce.logger.Info().Msgf("Kubernetes version: %s", k8sVersion)
 	}
 
-	grp, grpCtx := errgroup.WithContext(ctx)
-	wrap := ce.createWrapper(span, grpCtx, app)
+	var wg sync.WaitGroup
 
-	grp.Go(wrap("validating app against schema", ce.validateSchemas(grpCtx, app, k8sVersion, ce.TempWorkingDir, formattedManifests)))
-	grp.Go(wrap("generating diff for app", ce.generateDiff(grpCtx, app, manifests)))
+	run := ce.createRunner(span, ctx, app, &wg)
+
+	run("validating app against schema", ce.validateSchemas(ctx, app, k8sVersion, ce.TempWorkingDir, formattedManifests))
+	run("generating diff for app", ce.generateDiff(ctx, app, manifests))
 
 	if viper.GetBool("enable-conftest") {
-		grp.Go(wrap("validation policy", ce.validatePolicy(grpCtx, app)))
+		run("validation policy", ce.validatePolicy(ctx, app))
 	}
 
-	grp.Go(wrap("running pre-upgrade check", ce.runPreupgradeCheck(grpCtx, app, k8sVersion, formattedManifests)))
+	run("running pre-upgrade check", ce.runPreupgradeCheck(ctx, app, k8sVersion, formattedManifests))
 
-	err = grp.Wait()
-	if err != nil {
-		telemetry.SetError(span, err, "running checks")
-	}
+	wg.Wait()
 
-	ce.vcsNote.AddToAppMessage(ctx, app, renderInfoFooter(time.Since(start), ce.repo.SHA))
+	ce.vcsNote.SetFooter(start, ce.repo.SHA)
 
-	return err
+	commitStatus := ce.vcsNote.IsSuccess()
+	return commitStatus
 }
 
-type checkFunction func() (string, error)
+type checkFunction func() (pkg.CheckResult, error)
 
-func (ce *CheckEvent) createWrapper(span trace.Span, grpCtx context.Context, app string) func(string, checkFunction) func() error {
-	return func(desc string, fn checkFunction) func() error {
-		return func() error {
+const (
+	errorCommentFormat = `
+:warning:  **Error while %s** :warning: 
+` + "```" + `
+%v
+` + "```" + `
+
+Check kubechecks application logs for more information.
+`
+)
+
+func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app string, wg *sync.WaitGroup) func(string, checkFunction) {
+	return func(desc string, fn checkFunction) {
+		wg.Add(1)
+
+		go func() {
 			defer func() {
+				wg.Done()
+
 				if r := recover(); r != nil {
+					ce.logger.Error().Str("app", app).Str("check", desc).Msgf("panic while running check")
+
 					telemetry.SetError(span, fmt.Errorf("%v", r), desc)
-					ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, desc, r))
+					result := pkg.CheckResult{State: pkg.StatePanic, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, r)}
+					ce.vcsNote.AddToAppMessage(grpCtx, app, result)
 				}
 			}()
 
-			s, err := fn()
+			ce.logger.Info().Str("app", app).Str("check", desc).Msgf("running check")
+
+			cr, err := fn()
 			if err != nil {
 				telemetry.SetError(span, err, desc)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, desc, err))
-				return errors.Wrapf(err, "error while %s", desc)
+				result := pkg.CheckResult{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}
+				ce.vcsNote.AddToAppMessage(grpCtx, app, result)
+				return
 			}
 
-			if s != "" {
-				ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-			}
+			ce.vcsNote.AddToAppMessage(grpCtx, app, cr)
 
-			return nil
-		}
+			ce.logger.Info().Str("app", app).Str("check", desc).Str("result", cr.State.String()).Msgf("check done")
+		}()
 	}
 }
 
-func (ce *CheckEvent) runPreupgradeCheck(grpCtx context.Context, app string, k8sVersion string, formattedManifests []string) func() (string, error) {
-	return func() (string, error) {
+func (ce *CheckEvent) runPreupgradeCheck(grpCtx context.Context, app string, k8sVersion string, formattedManifests []string) func() (pkg.CheckResult, error) {
+	return func() (pkg.CheckResult, error) {
 		s, err := kubepug.CheckApp(grpCtx, app, k8sVersion, formattedManifests)
 		if err != nil {
-			return "", err
+			return pkg.CheckResult{}, err
 		}
 
 		return s, nil
 	}
 }
 
-func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (string, error) {
-	return func() (string, error) {
+func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (pkg.CheckResult, error) {
+	return func() (pkg.CheckResult, error) {
 		argoApp, err := argo_client.GetArgoClient().GetApplicationByName(ctx, app)
 		if err != nil {
-			return "", errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", app)
+			return pkg.CheckResult{}, errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", app)
 		}
 
-		s, err := conftest.Conftest(ctx, argoApp, ce.TempWorkingDir)
+		cr, err := conftest.Conftest(ctx, argoApp, ce.TempWorkingDir)
 		if err != nil {
-			return "", err
+			return pkg.CheckResult{}, err
 		}
 
-		return s, nil
+		return cr, nil
 	}
 }
 
-func (ce *CheckEvent) generateDiff(ctx context.Context, app string, manifests []string) func() (string, error) {
-	return func() (string, error) {
-		s, rawDiff, err := diff.GetDiff(ctx, app, manifests)
+func (ce *CheckEvent) generateDiff(ctx context.Context, app string, manifests []string) func() (pkg.CheckResult, error) {
+	return func() (pkg.CheckResult, error) {
+		cr, rawDiff, err := diff.GetDiff(ctx, app, manifests)
 		if err != nil {
-			return "", err
+			return pkg.CheckResult{}, err
 		}
 
 		diff.AIDiffSummary(ctx, ce.vcsNote, app, manifests, rawDiff)
 
-		return s, nil
+		return cr, nil
 	}
 }
 
-func (ce *CheckEvent) validateSchemas(ctx context.Context, app, k8sVersion, tempRepoPath string, formattedManifests []string) func() (string, error) {
-	return func() (string, error) {
-		s, err := validate.ArgoCdAppValidate(ctx, app, k8sVersion, tempRepoPath, formattedManifests)
+func (ce *CheckEvent) validateSchemas(ctx context.Context, app, k8sVersion, tempRepoPath string, formattedManifests []string) func() (pkg.CheckResult, error) {
+	return func() (pkg.CheckResult, error) {
+		cr, err := validate.ArgoCdAppValidate(ctx, app, k8sVersion, tempRepoPath, formattedManifests)
 		if err != nil {
-			return "", err
+			return pkg.CheckResult{}, err
 		}
 
-		return s, nil
+		return cr, nil
 	}
 }
 
 // Creates a generic Note struct that we can write into across all worker threads
-func (ce *CheckEvent) createNote(ctx context.Context) *vcs_clients.Message {
+func (ce *CheckEvent) createNote(ctx context.Context) *pkg.Message {
 	ctx, span := otel.Tracer("check").Start(ctx, "createNote")
 	defer span.End()
 
-	var sb strings.Builder
-	_, _ = fmt.Fprintf(&sb, "# Kubechecks Report:\n")
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, sb.String())
+	return ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "kubechecks running ... ")
 }
 
 // cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.
@@ -469,17 +472,4 @@ func (ce *CheckEvent) cleanupGetManifestsError(err error) string {
 	errStr = strings.ReplaceAll(errStr, ce.TempWorkingDir+"/", "")
 
 	return errStr
-}
-
-func renderInfoFooter(duration time.Duration, commitSHA string) string {
-	if viper.GetBool("show-debug-info") {
-		label := viper.GetString("label-filter")
-		envStr := ""
-		if label != "" {
-			envStr = fmt.Sprintf(", Env: %s", label)
-		}
-		return fmt.Sprintf("<small>_Done: Pod: %s, Dur: %v, SHA: %s%s_<small>\n", hostname, duration, pkg.GitCommit, envStr)
-	} else {
-		return fmt.Sprintf("<small>_Done. CommitSHA: %s_<small>\n", commitSHA)
-	}
 }

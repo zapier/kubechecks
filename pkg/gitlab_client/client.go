@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/viper"
 	"github.com/whilp/git-urls"
 	"github.com/xanzy/go-gitlab"
+
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
 )
 
 var gitlabClient *Client
@@ -29,7 +29,7 @@ type Client struct {
 	*gitlab.Client
 }
 
-var _ vcs_clients.Client = new(Client)
+var _ pkg.Client = new(Client)
 
 func GetGitlabClient() (*Client, string) {
 	once.Do(func() {
@@ -108,13 +108,13 @@ func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*rep
 			return buildRepoFromEvent(event), nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
-			return nil, vcs_clients.ErrInvalidType
+			return nil, pkg.ErrInvalidType
 		}
 	default:
 		log.Trace().Msgf("Unhandled Event: %T", event)
-		return nil, vcs_clients.ErrInvalidType
+		return nil, pkg.ErrInvalidType
 	}
-	return nil, vcs_clients.ErrInvalidType
+	return nil, pkg.ErrInvalidType
 }
 
 func parseRepoName(url string) (string, error) {
@@ -129,7 +129,7 @@ func parseRepoName(url string) (string, error) {
 	return path, nil
 }
 
-func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*pkg.WebHookConfig, error) {
 	pid, err := parseRepoName(repoName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse repo url")
@@ -146,14 +146,14 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 			if hook.MergeRequestsEvents {
 				events = append(events, string(gitlab.MergeRequestEventTargetType))
 			}
-			return &vcs_clients.WebHookConfig{
+			return &pkg.WebHookConfig{
 				Url:    hook.URL,
 				Events: events,
 			}, nil
 		}
 	}
 
-	return nil, vcs_clients.ErrHookNotFound
+	return nil, pkg.ErrHookNotFound
 }
 
 func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {

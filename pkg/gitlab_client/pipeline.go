@@ -3,11 +3,13 @@ package gitlab_client
 import (
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 func (c *Client) GetPipelinesForCommit(projectName string, commitSHA string) ([]*gitlab.PipelineInfo, error) {
 	pipelines, _, err := c.Pipelines.ListProjectPipelines(projectName, &gitlab.ListProjectPipelinesOptions{
-		SHA: gitlab.String(commitSHA),
+		SHA: pkg.Pointer(commitSHA),
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("gitlab client: could not get pipelines for commit")

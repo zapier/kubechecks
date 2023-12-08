@@ -53,10 +53,10 @@ func stringSliceFlag(flags *pflag.FlagSet, name, usage string, opts ...DocOpt[[]
 }
 
 func addFlag[D any](
-		name, usage string,
-		opts []DocOpt[D],
-		onlyLong func(string, D, string) *D,
-		longAndShort func(string, string, D, string) *D,
+	name, usage string,
+	opts []DocOpt[D],
+	onlyLong func(string, D, string) *D,
+	longAndShort func(string, string, D, string) *D,
 ) {
 	var opt DocOpt[D]
 	for _, o := range opts {
