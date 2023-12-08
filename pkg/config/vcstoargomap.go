@@ -3,8 +3,8 @@ package config
 import (
 	"io/fs"
 
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+
 	"github.com/zapier/kubechecks/pkg/repo"
 )
 
@@ -24,24 +24,30 @@ func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *AppDirectory {
 		log.Warn().Err(err).Msgf("failed to parse %s", repoCloneUrl)
 	}
 
-	return v2a.appDirByRepo[repoUrl]
-}
-
-func (v2a *VcsToArgoMap) WalkKustomizeApps(repo *repo.Repo, fs fs.FS) (*AppDirectory, error) {
-	repoUrl, err := normalizeRepoUrl(repo.CloneURL)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %s", repo.CloneURL)
+	appdir := v2a.appDirByRepo[repoUrl]
+	if appdir == nil {
+		appdir = new(AppDirectory)
+		v2a.appDirByRepo[repoUrl] = appdir
 	}
 
-	appdir := v2a.appDirByRepo[repoUrl]
-	apps := appdir.GetApps(nil)
+	return appdir
+}
 
-	var result AppDirectory
+func (v2a *VcsToArgoMap) WalkKustomizeApps(repo *repo.Repo, fs fs.FS) *AppDirectory {
+
+	var (
+		result AppDirectory
+		err    error
+
+		appdir = v2a.GetAppsInRepo(repo.CloneURL)
+		apps   = appdir.GetApps(nil)
+	)
+
 	for _, app := range apps {
 		if err = walkKustomizeFiles(&result, fs, app.Name, app.Path); err != nil {
 			log.Error().Err(err).Msgf("failed to parse kustomize.yaml in %s", app.Path)
 		}
 	}
 
-	return &result, nil
+	return &result
 }

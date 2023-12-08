@@ -13,9 +13,10 @@ import (
 func TestCreateNewMatcherWithNilVcsMap(t *testing.T) {
 	// setup
 	var (
-		vcsMap config.VcsToArgoMap
-		repo   repo2.Repo
-		path   string
+		repo repo2.Repo
+		path string
+
+		vcsMap = config.NewVcsToArgoMap()
 	)
 
 	// run test
@@ -23,7 +24,7 @@ func TestCreateNewMatcherWithNilVcsMap(t *testing.T) {
 	require.NoError(t, err)
 
 	// verify results
-	require.Nil(t, matcher.appsDirectory)
+	require.NotNil(t, matcher.appsDirectory)
 }
 
 func TestFindAffectedAppsWithNilAppsDirectory(t *testing.T) {

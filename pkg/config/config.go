@@ -47,21 +47,8 @@ func (v2a *VcsToArgoMap) AddApp(app v1alpha1.Application) {
 		return
 	}
 
-	rawRepoUrl := app.Spec.Source.RepoURL
-	cleanRepoUrl, err := normalizeRepoUrl(rawRepoUrl)
-	if err != nil {
-		log.Warn().Err(err).Msgf("%s/%s: failed to parse %s", app.Namespace, app.Name, rawRepoUrl)
-		return
-	}
-
-	log.Debug().Msgf("%s/%s: %s => %s", app.Namespace, app.Name, rawRepoUrl, cleanRepoUrl)
-
-	appDirectory := v2a.appDirByRepo[cleanRepoUrl]
-	if appDirectory == nil {
-		appDirectory = NewAppDirectory()
-	}
+	appDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
 	appDirectory.ProcessApp(app)
-	v2a.appDirByRepo[cleanRepoUrl] = appDirectory
 }
 
 type ServerConfig struct {

@@ -39,10 +39,7 @@ func getKustomizeApps(vcsToArgoMap config.VcsToArgoMap, repo *repo.Repo, repoPat
 	log.Debug().Msgf("creating fs for %s", repoPath)
 	fs := os.DirFS(repoPath)
 	log.Debug().Msg("following kustomize apps")
-	kustomizeAppFiles, err := vcsToArgoMap.WalkKustomizeApps(repo, fs)
-	if err != nil {
-		log.Warn().Err(err).Msgf("failed to follow kustomize files")
-	}
+	kustomizeAppFiles := vcsToArgoMap.WalkKustomizeApps(repo, fs)
 
 	logCounts(kustomizeAppFiles)
 	return kustomizeAppFiles
