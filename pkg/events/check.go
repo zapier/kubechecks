@@ -371,11 +371,15 @@ func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app 
 				wg.Done()
 
 				if r := recover(); r != nil {
+					ce.logger.Error().Str("app", app).Str("check", desc).Msgf("panic while running check")
+
 					telemetry.SetError(span, fmt.Errorf("%v", r), desc)
 					result := pkg.CheckResult{State: pkg.StatePanic, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, r)}
 					ce.vcsNote.AddToAppMessage(grpCtx, app, result)
 				}
 			}()
+
+			ce.logger.Info().Str("app", app).Str("check", desc).Msgf("running check")
 
 			cr, err := fn()
 			if err != nil {
@@ -385,6 +389,8 @@ func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app 
 			}
 
 			ce.vcsNote.AddToAppMessage(grpCtx, app, cr)
+
+			ce.logger.Info().Str("app", app).Str("check", desc).Str("result", cr.State.String()).Msgf("check done")
 		}
 	}
 }
