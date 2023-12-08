@@ -386,6 +386,7 @@ func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app 
 				telemetry.SetError(span, err, desc)
 				result := pkg.CheckResult{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}
 				ce.vcsNote.AddToAppMessage(grpCtx, app, result)
+				return
 			}
 
 			ce.vcsNote.AddToAppMessage(grpCtx, app, cr)
