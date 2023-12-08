@@ -1,25 +1,16 @@
 package diff
 
 import (
-	"fmt"
-
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/aisummary"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/net/context"
+
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/aisummary"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
-const diffAISummaryCommentFormat = `
-<details><summary><b>Show AI Summary Diff</b></summary>
-
-%s
-
-</details>
-`
-
-func AIDiffSummary(ctx context.Context, mrNote *vcs_clients.Message, name string, manifests []string, diff string) {
+func AIDiffSummary(ctx context.Context, mrNote *pkg.Message, name string, manifests []string, diff string) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "AIDiffSummary")
 	defer span.End()
 
@@ -32,11 +23,13 @@ func AIDiffSummary(ctx context.Context, mrNote *vcs_clients.Message, name string
 	if err != nil {
 		telemetry.SetError(span, err, "OpenAI SummarizeDiff")
 		log.Error().Err(err).Msg("failed to summarize diff")
-		mrNote.AddToAppMessage(ctx, name, fmt.Sprintf("failed to summarize diff: %s", err))
+		cr := pkg.CheckResult{State: pkg.StateWarning, Summary: "failed to summarize diff", Details: err.Error()}
+		mrNote.AddToAppMessage(ctx, name, cr)
 		return
 	}
 
 	if aiSummary != "" {
-		mrNote.AddToAppMessage(ctx, name, fmt.Sprintf(diffAISummaryCommentFormat, aiSummary))
+		cr := pkg.CheckResult{State: pkg.StateNone, Summary: "<b>Show AI Summary Diff</b>", Details: aiSummary}
+		mrNote.AddToAppMessage(ctx, name, cr)
 	}
 }

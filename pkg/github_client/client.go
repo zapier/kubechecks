@@ -12,10 +12,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
 	"github.com/spf13/viper"
+	"golang.org/x/oauth2"
+
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
-	"golang.org/x/oauth2"
 )
 
 var githubClient *Client
@@ -27,7 +27,7 @@ type Client struct {
 	*github.Client
 }
 
-var _ vcs_clients.Client = new(Client)
+var _ pkg.Client = new(Client)
 
 func GetGithubClient() (*Client, string) {
 	once.Do(func() {
@@ -116,11 +116,11 @@ func (c *Client) CreateRepo(_ context.Context, payload interface{}) (*repo.Repo,
 			return buildRepoFromEvent(p), nil
 		default:
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
-			return nil, vcs_clients.ErrInvalidType
+			return nil, pkg.ErrInvalidType
 		}
 	default:
 		log.Error().Msg("invalid event provided to Github client")
-		return nil, vcs_clients.ErrInvalidType
+		return nil, pkg.ErrInvalidType
 	}
 }
 
@@ -171,13 +171,13 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 	}
 }
 
-func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status vcs_clients.CommitState) error {
+func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status pkg.CommitState) error {
 	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.String()).Msg("setting Github commit status")
 	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repo.Owner, repo.Name, repo.SHA, &github.RepoStatus{
-		State:       github.String(status.String()),
-		Description: github.String(status.StateToDesc()),
-		ID:          github.Int64(int64(repo.CheckID)),
-		Context:     github.String("kubechecks"),
+		State:       pkg.Pointer(status.String()),
+		Description: pkg.Pointer(status.String()),
+		ID:          pkg.Pointer(int64(repo.CheckID)),
+		Context:     pkg.Pointer("kubechecks"),
 	})
 	if err != nil {
 		log.Err(err).Msg("could not set Github commit status")
@@ -200,7 +200,7 @@ func parseRepo(cloneUrl string) (string, string) {
 	panic(cloneUrl)
 }
 
-func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*vcs_clients.WebHookConfig, error) {
+func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*pkg.WebHookConfig, error) {
 	owner, repoName := parseRepo(ownerAndRepoName)
 	items, _, err := c.Repositories.ListHooks(ctx, owner, repoName, nil)
 	if err != nil {
@@ -209,14 +209,14 @@ func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl 
 
 	for _, item := range items {
 		if item.URL != nil && *item.URL == webhookUrl {
-			return &vcs_clients.WebHookConfig{
+			return &pkg.WebHookConfig{
 				Url:    item.GetURL(),
 				Events: item.Events, // TODO: translate GH specific event names to VCS agnostic
 			}, nil
 		}
 	}
 
-	return nil, vcs_clients.ErrHookNotFound
+	return nil, pkg.ErrHookNotFound
 }
 
 func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, webhookSecret string) error {

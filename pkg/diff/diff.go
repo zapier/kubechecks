@@ -11,11 +11,6 @@ import (
 	"github.com/argoproj/argo-cd/v2/controller"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
-	"github.com/ghodss/yaml"
-	"github.com/go-logr/zerologr"
-	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
-
 	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/util/argo"
 	argodiff "github.com/argoproj/argo-cd/v2/util/argo/diff"
@@ -23,12 +18,17 @@ import (
 	"github.com/argoproj/gitops-engine/pkg/sync/ignore"
 	"github.com/argoproj/gitops-engine/pkg/utils/kube"
 	"github.com/argoproj/pkg/errors"
-	"github.com/zapier/kubechecks/pkg/argo_client"
-	"github.com/zapier/kubechecks/telemetry"
+	"github.com/ghodss/yaml"
+	"github.com/go-logr/zerologr"
+	"github.com/pmezard/go-difflib/difflib"
+	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/pmezard/go-difflib/difflib"
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
@@ -38,16 +38,6 @@ type objKeyLiveTarget struct {
 	target *unstructured.Unstructured
 }
 
-const diffCommentFormat = `
-<details><summary><b>Show Diff</b>: %s </summary>
-
-` + "```diff" + `
-%s
-` + "```" + `
-
-</details>
-`
-
 /*
 Take cli output and return as a string or an array of strings instead of printing
 
@@ -55,7 +45,7 @@ changedFilePath should be the root of the changed folder
 
 from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
 */
-func GetDiff(ctx context.Context, name string, manifests []string) (string, string, error) {
+func GetDiff(ctx context.Context, name string, manifests []string) (pkg.CheckResult, string, error) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "Diff")
 	defer span.End()
 
@@ -77,7 +67,7 @@ func GetDiff(ctx context.Context, name string, manifests []string) (string, stri
 	})
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo App")
-		return "", "", err
+		return pkg.CheckResult{}, "", err
 	}
 
 	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
@@ -85,7 +75,7 @@ func GetDiff(ctx context.Context, name string, manifests []string) (string, stri
 	})
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Managed Resources")
-		return "", "", err
+		return pkg.CheckResult{}, "", err
 	}
 
 	errors.CheckError(err)
@@ -99,13 +89,13 @@ func GetDiff(ctx context.Context, name string, manifests []string) (string, stri
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Cluster Settings")
-		return "", "", err
+		return pkg.CheckResult{}, "", err
 	}
 
 	liveObjs, err := cmdutil.LiveObjects(resources.Items)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Live Objects")
-		return "", "", err
+		return pkg.CheckResult{}, "", err
 	}
 
 	groupedObjs := groupObjsByKey(unstructureds, liveObjs, app.Spec.Destination.Namespace)
@@ -154,7 +144,7 @@ func GetDiff(ctx context.Context, name string, manifests []string) (string, stri
 			err := PrintDiff(diffBuffer, live, target)
 			if err != nil {
 				telemetry.SetError(span, err, "Print Diff")
-				return "", "", err
+				return pkg.CheckResult{}, "", err
 			}
 			switch {
 			case diffRes.Modified:
@@ -166,14 +156,20 @@ func GetDiff(ctx context.Context, name string, manifests []string) (string, stri
 			}
 		}
 	}
-	summary := "No changes"
+	var summary string
 	if added != 0 || modified != 0 || removed != 0 {
 		summary = fmt.Sprintf("%d added, %d modified, %d removed", added, modified, removed)
+	} else {
+		summary = "No changes"
 	}
 
 	diff := diffBuffer.String()
 
-	return fmt.Sprintf(diffCommentFormat, summary, diff), diff, nil
+	var cr pkg.CheckResult
+	cr.Summary = summary
+	cr.Details = fmt.Sprintf("```diff\n%s\n```", diff)
+
+	return cr, diff, nil
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879

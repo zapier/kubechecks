@@ -7,27 +7,19 @@ import (
 	"os"
 	"strings"
 
-	"github.com/zapier/kubechecks/pkg"
-	"go.opentelemetry.io/otel"
-
 	"github.com/masterminds/semver"
 	"github.com/olekukonko/tablewriter"
 	"github.com/rikatz/kubepug/lib"
 	"github.com/rikatz/kubepug/pkg/results"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 const docLinkFmt = "[%s Deprecation Notes](https://kubernetes.io/docs/reference/using-api/deprecation-guide/#%s-v%d%d)"
-const kubepugCommentFormat = `
-<details><summary><b>Show kubepug report:</b> %s</summary>
 
- > This provides a list of Kubernetes resources in this application that are either deprecated or deleted from the **next** version (%s) of Kubernetes.
-
-%s
-</details>
-`
-
-func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, manifests []string) (string, error) {
+func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, manifests []string) (pkg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "KubePug")
 	defer span.End()
 
@@ -41,7 +33,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 	if err != nil {
 		log.Error().Err(err).Msg("could not create temp directory to write manifests for kubepug check")
 		//return "", err
-		return fmt.Sprintf("Error: %v", err), err
+		return pkg.CheckResult{}, err
 	}
 	defer os.RemoveAll(tempDir)
 
@@ -52,7 +44,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 
 	nextVersion, err := nextKubernetesVersion(targetKubernetesVersion)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err), err
+		return pkg.CheckResult{}, err
 	}
 	config := lib.Config{
 		K8sVersion:      fmt.Sprintf("v%s", nextVersion.String()),
@@ -65,7 +57,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 
 	result, err := kubepug.GetDeprecated()
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err), err
+		return pkg.CheckResult{}, err
 	}
 
 	if len(result.DeprecatedAPIs) > 0 || len(result.DeletedAPIs) > 0 {
@@ -120,18 +112,26 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 		outputString = append(outputString, "No Deprecated or Deleted APIs found.")
 	}
 
-	return fmt.Sprintf(kubepugCommentFormat, checkStatus(result), "`v"+nextVersion.String()+"`", strings.Join(outputString, "\n")), nil
+	return pkg.CheckResult{
+		State:   checkStatus(result),
+		Summary: "<b>Show kubepug report:</b>",
+		Details: fmt.Sprintf(
+			"> This provides a list of Kubernetes resources in this application that are either deprecated or deleted from the **next** version (v%s) of Kubernetes.\n\n%s",
+			nextVersion.String(),
+			strings.Join(outputString, "\n"),
+		),
+	}, nil
 }
 
-func checkStatus(result *results.Result) string {
+func checkStatus(result *results.Result) pkg.CommitState {
 	switch {
 	case len(result.DeletedAPIs) > 0:
 		// for now only ever a warning
-		return pkg.WarningString()
+		return pkg.StateWarning
 	case len(result.DeprecatedAPIs) > 0:
-		return pkg.WarningString()
+		return pkg.StateWarning
 	default:
-		return pkg.PassString()
+		return pkg.StateSuccess
 	}
 }
 

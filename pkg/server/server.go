@@ -12,10 +12,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"github.com/ziflex/lecho/v3"
+
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/argo_client"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
-	"github.com/ziflex/lecho/v3"
 )
 
 const KubeChecksHooksPathPrefix = "/hooks"
@@ -105,7 +105,7 @@ func (s *Server) ensureWebhooks() error {
 
 	for _, repo := range s.cfg.GetVcsRepos() {
 		wh, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
-		if err != nil && err != vcs_clients.ErrHookNotFound {
+		if err != nil && !errors.Is(err, pkg.ErrHookNotFound) {
 			log.Error().Err(err).Msgf("failed to get hook for %s:", repo)
 			continue
 		}
