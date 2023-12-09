@@ -26,7 +26,7 @@ func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *AppDirectory {
 
 	appdir := v2a.appDirByRepo[repoUrl]
 	if appdir == nil {
-		appdir = new(AppDirectory)
+		appdir = NewAppDirectory()
 		v2a.appDirByRepo[repoUrl] = appdir
 	}
 
