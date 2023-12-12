@@ -36,18 +36,18 @@ func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *AppDirectory {
 func (v2a *VcsToArgoMap) WalkKustomizeApps(repo *repo.Repo, fs fs.FS) *AppDirectory {
 
 	var (
-		result AppDirectory
-		err    error
+		err error
 
+		result = NewAppDirectory()
 		appdir = v2a.GetAppsInRepo(repo.CloneURL)
 		apps   = appdir.GetApps(nil)
 	)
 
 	for _, app := range apps {
-		if err = walkKustomizeFiles(&result, fs, app.Name, app.Path); err != nil {
+		if err = walkKustomizeFiles(result, fs, app.Name, app.Path); err != nil {
 			log.Error().Err(err).Msgf("failed to parse kustomize.yaml in %s", app.Path)
 		}
 	}
 
-	return &result
+	return result
 }
