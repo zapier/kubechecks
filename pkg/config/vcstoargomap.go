@@ -34,7 +34,6 @@ func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *AppDirectory {
 }
 
 func (v2a *VcsToArgoMap) WalkKustomizeApps(repo *repo.Repo, fs fs.FS) *AppDirectory {
-
 	var (
 		err error
 

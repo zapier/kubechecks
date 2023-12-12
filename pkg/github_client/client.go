@@ -171,10 +171,27 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 	}
 }
 
+func toGithubCommitStatus(state pkg.CommitState) *string {
+	switch state {
+	case pkg.StateError, pkg.StatePanic:
+		return pkg.Pointer("error")
+	case pkg.StateFailure, pkg.StateWarning:
+		return pkg.Pointer("failure")
+	case pkg.StateRunning:
+		return pkg.Pointer("pending")
+	case pkg.StateSuccess:
+		return pkg.Pointer("success")
+
+	default: // maybe a different one? panic?
+		log.Warn().Str("state", state.String()).Msg("failed to convert to a github commit status")
+		return pkg.Pointer("failure")
+	}
+}
+
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status pkg.CommitState) error {
 	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.String()).Msg("setting Github commit status")
 	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repo.Owner, repo.Name, repo.SHA, &github.RepoStatus{
-		State:       pkg.Pointer(status.String()),
+		State:       toGithubCommitStatus(status),
 		Description: pkg.Pointer(status.String()),
 		ID:          pkg.Pointer(int64(repo.CheckID)),
 		Context:     pkg.Pointer("kubechecks"),
