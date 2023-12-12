@@ -18,7 +18,7 @@ func NewArgocdMatcher(vcsToArgoMap config.VcsToArgoMap, repo *repo.Repo, repoPat
 	repoApps := getArgocdApps(vcsToArgoMap, repo)
 	kustomizeAppFiles := getKustomizeApps(vcsToArgoMap, repo, repoPath)
 
-	appDirectory := new(config.AppDirectory).
+	appDirectory := config.NewAppDirectory().
 		Union(repoApps).
 		Union(kustomizeAppFiles)
 
