@@ -58,9 +58,9 @@ func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig)
 	return ce
 }
 
-// GetRepo gets the repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
+// getRepo gets the repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
 // As the Repo is built from a webhook payload via the VCSClient, it should always be present. If not, error
-func (ce *CheckEvent) GetRepo(ctx context.Context) (*repo.Repo, error) {
+func (ce *CheckEvent) getRepo(ctx context.Context) (*repo.Repo, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetRepo")
 	defer span.End()
 	var err error
@@ -113,7 +113,7 @@ func (ce *CheckEvent) CloneRepoLocal(ctx context.Context) error {
 func (ce *CheckEvent) MergeIntoTarget(ctx context.Context) error {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "MergeIntoTarget")
 	defer span.End()
-	gitRepo, err := ce.GetRepo(ctx)
+	gitRepo, err := ce.getRepo(ctx)
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func (ce *CheckEvent) GetListOfChangedFiles(ctx context.Context) ([]string, erro
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetListOfChangedFiles")
 	defer span.End()
 
-	gitRepo, err := ce.GetRepo(ctx)
+	gitRepo, err := ce.getRepo(ctx)
 	if err != nil {
 		return nil, err
 	}

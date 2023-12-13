@@ -24,6 +24,14 @@ func (s CommitState) Emoji() string {
 	}
 }
 
+func (s CommitState) BareString() string {
+	text, ok := stateString[s]
+	if !ok {
+		text = defaultString
+	}
+	return text
+}
+
 func (s CommitState) String() string {
 	text, ok := stateString[s]
 	if !ok {

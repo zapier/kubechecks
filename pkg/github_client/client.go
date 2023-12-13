@@ -192,7 +192,7 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status pkg.C
 	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.String()).Msg("setting Github commit status")
 	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repo.Owner, repo.Name, repo.SHA, &github.RepoStatus{
 		State:       toGithubCommitStatus(status),
-		Description: pkg.Pointer(status.String()),
+		Description: pkg.Pointer(status.BareString()),
 		ID:          pkg.Pointer(int64(repo.CheckID)),
 		Context:     pkg.Pointer("kubechecks"),
 	})
