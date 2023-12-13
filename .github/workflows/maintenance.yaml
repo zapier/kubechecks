@@ -16,5 +16,6 @@ jobs:
       - uses: Chizkiyahu/delete-untagged-ghcr-action@v3
         with:
           owner_type: org
+          package_name: kubechecks
           token: ${{ secrets.MAINTENANCE_TOKEN }}
           untagged_only: true
