@@ -11,7 +11,7 @@ on:
 jobs:
   delete-untagged-images:
     name: delete untagged images
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     steps:
       - uses: Chizkiyahu/delete-untagged-ghcr-action@v3
         with:
