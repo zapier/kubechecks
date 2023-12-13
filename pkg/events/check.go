@@ -20,6 +20,7 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/conftest"
 	"github.com/zapier/kubechecks/pkg/diff"
 	"github.com/zapier/kubechecks/pkg/kubepug"
@@ -41,12 +42,12 @@ type CheckEvent struct {
 
 	affectedItems affected_apps.AffectedItems
 
-	cfg *pkg.ServerConfig
+	cfg *config.ServerConfig
 }
 
 var inFlight int32
 
-func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *pkg.ServerConfig) *CheckEvent {
+func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig) *CheckEvent {
 	ce := &CheckEvent{
 		cfg:    cfg,
 		client: client,
@@ -57,9 +58,9 @@ func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *pkg.ServerConfig) *C
 	return ce
 }
 
-// GetRepo gets the repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
+// getRepo gets the repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
 // As the Repo is built from a webhook payload via the VCSClient, it should always be present. If not, error
-func (ce *CheckEvent) GetRepo(ctx context.Context) (*repo.Repo, error) {
+func (ce *CheckEvent) getRepo(ctx context.Context) (*repo.Repo, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetRepo")
 	defer span.End()
 	var err error
@@ -112,7 +113,7 @@ func (ce *CheckEvent) CloneRepoLocal(ctx context.Context) error {
 func (ce *CheckEvent) MergeIntoTarget(ctx context.Context) error {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "MergeIntoTarget")
 	defer span.End()
-	gitRepo, err := ce.GetRepo(ctx)
+	gitRepo, err := ce.getRepo(ctx)
 	if err != nil {
 		return err
 	}
@@ -124,7 +125,7 @@ func (ce *CheckEvent) GetListOfChangedFiles(ctx context.Context) ([]string, erro
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetListOfChangedFiles")
 	defer span.End()
 
-	gitRepo, err := ce.GetRepo(ctx)
+	gitRepo, err := ce.getRepo(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +154,7 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) error {
 		matcher = affected_apps.NewConfigMatcher(cfg)
 	} else if viper.GetBool("monitor-all-applications") {
 		log.Debug().Msg("using an argocd matcher")
-		matcher = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo)
+		matcher, err = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo, ce.TempWorkingDir)
 		if err != nil {
 			return errors.Wrap(err, "failed to create argocd matcher")
 		}

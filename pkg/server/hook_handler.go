@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/events"
 	"github.com/zapier/kubechecks/pkg/github_client"
 	"github.com/zapier/kubechecks/pkg/gitlab_client"
@@ -25,7 +26,7 @@ import (
 type VCSHookHandler struct {
 	client    pkg.Client
 	tokenUser string
-	cfg       *pkg.ServerConfig
+	cfg       *config.ServerConfig
 	// labelFilter is a string specifying the required label name to filter merge events by; if empty, all merge events will pass the filter.
 	labelFilter string
 }
@@ -60,7 +61,7 @@ func createVCSClient() (pkg.Client, string) {
 
 }
 
-func NewVCSHookHandler(cfg *pkg.ServerConfig) *VCSHookHandler {
+func NewVCSHookHandler(cfg *config.ServerConfig) *VCSHookHandler {
 	client, tokenUser := GetVCSClient()
 	labelFilter := viper.GetString("label-filter")
 

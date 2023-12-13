@@ -57,7 +57,7 @@ func (m *Message) IsSuccess() bool {
 	for _, r := range m.apps {
 		for _, result := range r.results {
 			switch result.State {
-			case StateSuccess, StateWarning, StateNone:
+			case StateError, StateFailure, StatePanic, StateWarning:
 				isSuccess = false
 			}
 		}

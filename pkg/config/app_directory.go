@@ -1,4 +1,4 @@
-package app_directory
+package config
 
 import (
 	"path/filepath"
@@ -10,10 +10,12 @@ import (
 
 type ApplicationStub struct {
 	Name, Path string
+
+	IsHelm, IsKustomize bool
 }
 
 type AppDirectory struct {
-	appPaths map[string][]string // directory -> array of app names
+	appDirs  map[string][]string // directory -> array of app names
 	appFiles map[string][]string // file path -> array of app names
 
 	appsMap map[string]ApplicationStub // app name -> app stub
@@ -21,7 +23,7 @@ type AppDirectory struct {
 
 func NewAppDirectory() *AppDirectory {
 	return &AppDirectory{
-		appPaths: make(map[string][]string),
+		appDirs:  make(map[string][]string),
 		appFiles: make(map[string][]string),
 		appsMap:  make(map[string]ApplicationStub),
 	}
@@ -31,7 +33,15 @@ func (d *AppDirectory) Count() int {
 	return len(d.appsMap)
 }
 
-func (d *AppDirectory) AddApp(app v1alpha1.Application) {
+func (d *AppDirectory) Union(other *AppDirectory) *AppDirectory {
+	var join AppDirectory
+	join.appsMap = mergeMaps(d.appsMap, other.appsMap, takeFirst[ApplicationStub])
+	join.appDirs = mergeMaps(d.appDirs, other.appDirs, mergeLists[string])
+	join.appFiles = mergeMaps(d.appFiles, other.appFiles, mergeLists[string])
+	return &join
+}
+
+func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 	appName := app.Name
 
 	src := app.Spec.Source
@@ -41,19 +51,18 @@ func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 
 	// common data
 	srcPath := src.Path
-	d.appsMap[appName] = ApplicationStub{Name: appName, Path: srcPath}
-	d.appPaths[srcPath] = append(d.appPaths[srcPath], appName)
+	d.AddAppStub(appName, srcPath, src.IsHelm(), !src.Kustomize.IsZero())
 
 	// handle extra helm paths
 	if helm := src.Helm; helm != nil {
 		for _, param := range helm.FileParameters {
 			path := filepath.Join(srcPath, param.Path)
-			d.appFiles[path] = append(d.appFiles[path], appName)
+			d.AddFile(appName, path)
 		}
 
 		for _, valueFilePath := range helm.ValueFiles {
 			path := filepath.Join(srcPath, valueFilePath)
-			d.appFiles[path] = append(d.appFiles[path], appName)
+			d.AddFile(appName, path)
 		}
 	}
 }
@@ -66,7 +75,7 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string) []Applicat
 	for _, changePath := range changeList {
 		log.Debug().Msgf("change: %s", changePath)
 
-		for dir, appNames := range d.appPaths {
+		for dir, appNames := range d.appDirs {
 			log.Debug().Msgf("- app path: %s", dir)
 			if strings.HasPrefix(changePath, dir) {
 				log.Debug().Msg("dir match!")
@@ -97,4 +106,57 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string) []Applicat
 
 	log.Debug().Msgf("matched %d files into %d apps", len(appsMap), len(appsSet))
 	return appsSlice
+}
+
+func (d *AppDirectory) GetApps(filter func(stub ApplicationStub) bool) []ApplicationStub {
+	var result []ApplicationStub
+	for _, value := range d.appsMap {
+		if filter != nil && !filter(value) {
+			continue
+		}
+		result = append(result, value)
+	}
+	return result
+}
+
+func (d *AppDirectory) AddAppStub(appName, srcPath string, isHelm, isKustomize bool) {
+	d.appsMap[appName] = ApplicationStub{
+		Name:        appName,
+		Path:        srcPath,
+		IsHelm:      isHelm,
+		IsKustomize: isKustomize,
+	}
+	d.AddDir(appName, srcPath)
+}
+
+func (d *AppDirectory) AddDir(appName, path string) {
+	d.appDirs[path] = append(d.appDirs[path], appName)
+}
+
+func (d *AppDirectory) AddFile(appName, path string) {
+	d.appFiles[path] = append(d.appFiles[path], appName)
+}
+
+func mergeMaps[T any](first map[string]T, second map[string]T, combine func(T, T) T) map[string]T {
+	result := make(map[string]T)
+	for key, value := range first {
+		result[key] = value
+	}
+	for key, value := range second {
+		exist, ok := result[key]
+		if ok {
+			result[key] = combine(exist, value)
+		} else {
+			result[key] = value
+		}
+	}
+	return result
+}
+
+func mergeLists[T any](a []T, b []T) []T {
+	return append(a, b...)
+}
+
+func takeFirst[T any](a, _ T) T {
+	return a
 }

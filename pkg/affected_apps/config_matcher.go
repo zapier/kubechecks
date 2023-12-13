@@ -7,9 +7,8 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/app_directory"
-
 	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 )
 
@@ -40,9 +39,9 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (
 		appSetList = append(appSetList, ApplicationSet{appset.Name})
 	}
 
-	var appsSlice []app_directory.ApplicationStub
+	var appsSlice []config.ApplicationStub
 	for name, appPath := range appsMap {
-		appsSlice = append(appsSlice, app_directory.ApplicationStub{Name: name, Path: appPath})
+		appsSlice = append(appsSlice, config.ApplicationStub{Name: name, Path: appPath})
 	}
 
 	return AffectedItems{Applications: appsSlice, ApplicationSets: appSetList}, nil

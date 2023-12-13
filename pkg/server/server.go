@@ -16,6 +16,7 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 const KubeChecksHooksPathPrefix = "/hooks"
@@ -23,10 +24,10 @@ const KubeChecksHooksPathPrefix = "/hooks"
 var singleton *Server
 
 type Server struct {
-	cfg *pkg.ServerConfig
+	cfg *config.ServerConfig
 }
 
-func NewServer(cfg *pkg.ServerConfig) *Server {
+func NewServer(cfg *config.ServerConfig) *Server {
 	singleton = &Server{cfg: cfg}
 	return singleton
 }
@@ -128,7 +129,7 @@ func (s *Server) buildVcsToArgoMap() error {
 
 	ctx := context.TODO()
 
-	result := pkg.NewVcsToArgoMap()
+	result := config.NewVcsToArgoMap()
 
 	argoClient := argo_client.GetArgoClient()
 
