@@ -73,14 +73,13 @@ func init() {
 	RootCmd.AddCommand(ControllerCmd)
 
 	flags := ControllerCmd.Flags()
-	stringFlag(flags, "fallback-k8s-version", "Fallback target Kubernetes version for schema / upgrade checks. (KUBECHECKS_FALLBACK_K8S_VERSION)",
-		newStringOpts().
-			withDefault("1.23.0"))
+	stringFlag(flags, "fallback-k8s-version", "Fallback target Kubernetes version for schema / upgrade checks (KUBECHECKS_FALLBACK_K8S_VERSION).",
+		newStringOpts().withDefault("1.23.0"))
 	boolFlag(flags, "show-debug-info", "Set to true to print debug info to the footer of MR comments (KUBECHECKS_SHOW_DEBUG_INFO).")
 	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests (KUBECHECKS_ENABLE_CONFTEST).")
 	stringFlag(flags, "label-filter", `(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook (KUBECHECKS_LABEL_FILTER).`)
 	stringFlag(flags, "openai-api-token", "OpenAI API Token.")
-	stringFlag(flags, "argocd-namespace", "The namespace to watch for Application resources (KUBECHECKS_ARGOCD_NAMESPACE)", newStringOpts().withDefault("argocd"))
+	stringFlag(flags, "argocd-namespace", "The namespace to watch for Application resources (KUBECHECKS_ARGOCD_NAMESPACE).", newStringOpts().withDefault("argocd"))
 	stringFlag(flags, "webhook-url-base", "The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.")
 	stringFlag(flags, "webhook-url-prefix", "If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.")
 	stringFlag(flags, "webhook-secret", "Optional secret key for validating the source of incoming webhooks.")

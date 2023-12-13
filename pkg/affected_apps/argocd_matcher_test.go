@@ -5,14 +5,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/config"
 	repo2 "github.com/zapier/kubechecks/pkg/repo"
 )
 
 func TestCreateNewMatcherWithNilVcsMap(t *testing.T) {
 	// setup
 	var (
-		vcsMap pkg.VcsToArgoMap
+		vcsMap config.VcsToArgoMap
 		repo   repo2.Repo
 	)
 
