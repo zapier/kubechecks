@@ -103,14 +103,9 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 
 		if !shouldInclude(app, targetBranch) {
 			log.Debug().Msgf("target revision of %s is %s and does not match '%s'", appName, app.TargetRevision, targetBranch)
-		}
-		if app.TargetRevision == "HEAD" && (targetBranch != "main" && targetBranch != "master") {
 			continue
 		}
 
-		if app.TargetRevision != "" && app.TargetRevision != targetBranch {
-			continue
-		}
 		appsSlice = append(appsSlice, app)
 	}
 
