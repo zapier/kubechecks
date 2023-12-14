@@ -172,7 +172,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 
 	var fileList = []string{}
 
-	cmd := execCommand("git", "diff", "--name-only", r.BaseRef)
+	cmd := execCommand("git", "diff", "--name-only", fmt.Sprintf("%s/%s", r.Remote, r.BaseRef))
 	cmd.Dir = r.RepoDir
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
