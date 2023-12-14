@@ -111,8 +111,8 @@ func (c *Client) CreateRepo(_ context.Context, payload interface{}) (*repo.Repo,
 	switch p := payload.(type) {
 	case *github.PullRequestEvent:
 		switch p.GetAction() {
-		case "opened", "synchronize", "reopened":
-			log.Info().Str("action", p.GetAction()).Msg("handling Github open, sync event from PR")
+		case "opened", "synchronize", "reopened", "edited":
+			log.Info().Str("action", p.GetAction()).Msg("handling Github event from PR")
 			return buildRepoFromEvent(p), nil
 		default:
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
