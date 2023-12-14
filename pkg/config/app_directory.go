@@ -100,7 +100,7 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 			log.Warn().Msgf("failed to find matched app named '%s'", appName)
 			continue
 		}
-		if app.TargetRevision == "HEAD" && (targetBranch == "main" || targetBranch == "master") {
+		if app.TargetRevision == "HEAD" && targetBranch != "main" && targetBranch != "master" {
 			log.Debug().Msgf("target revision of %s is HEAD and '%s' is not main or master", appName, targetBranch)
 			continue
 		}
