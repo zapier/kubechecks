@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -48,4 +49,50 @@ func TestPathsAreJoinedProperly(t *testing.T) {
 		"/test1/test2/two.yaml": {"test-app"},
 		"/test1/three.yaml":     {"test-app"},
 	}, rad.appFiles)
+}
+
+func TestShouldInclude(t *testing.T) {
+	testcases := []struct {
+		vcsMergeTarget  string
+		argocdAppBranch string
+		expected        bool
+	}{
+		{
+			vcsMergeTarget:  "some-branch",
+			argocdAppBranch: "some-branch",
+			expected:        true,
+		},
+		{
+			vcsMergeTarget:  "some-branch",
+			argocdAppBranch: "some-other-branch",
+			expected:        false,
+		},
+		{
+			argocdAppBranch: "HEAD",
+			vcsMergeTarget:  "main",
+			expected:        true,
+		},
+		{
+			argocdAppBranch: "HEAD",
+			vcsMergeTarget:  "master",
+			expected:        true,
+		},
+		{
+			argocdAppBranch: "HEAD",
+			vcsMergeTarget:  "other",
+			expected:        false,
+		},
+		{
+			argocdAppBranch: "",
+			vcsMergeTarget:  "branch",
+			expected:        true,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(fmt.Sprintf("%v", tc), func(t *testing.T) {
+			actual := shouldInclude(ApplicationStub{TargetRevision: tc.argocdAppBranch}, tc.vcsMergeTarget)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
 }

@@ -100,13 +100,15 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 			log.Warn().Msgf("failed to find matched app named '%s'", appName)
 			continue
 		}
-		if app.TargetRevision == "HEAD" && targetBranch != "main" && targetBranch != "master" {
-			log.Debug().Msgf("target revision of %s is HEAD and '%s' is not main or master", appName, targetBranch)
+
+		if !shouldInclude(app, targetBranch) {
+			log.Debug().Msgf("target revision of %s is %s and does not match '%s'", appName, app.TargetRevision, targetBranch)
+		}
+		if app.TargetRevision == "HEAD" && (targetBranch != "main" && targetBranch != "master") {
 			continue
 		}
 
 		if app.TargetRevision != "" && app.TargetRevision != targetBranch {
-			log.Debug().Msgf("target revision of %s is %s and does not match '%s'", appName, app.TargetRevision, targetBranch)
 			continue
 		}
 		appsSlice = append(appsSlice, app)
@@ -114,6 +116,28 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 
 	log.Debug().Msgf("matched %d files into %d apps", len(changeList), len(appsSet))
 	return appsSlice
+}
+
+func shouldInclude(app ApplicationStub, targetBranch string) bool {
+	if app.TargetRevision == "" {
+		return true
+	}
+
+	if app.TargetRevision == targetBranch {
+		return true
+	}
+
+	if app.TargetRevision == "HEAD" {
+		if targetBranch == "main" {
+			return true
+		}
+
+		if targetBranch == "master" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (d *AppDirectory) GetApps(filter func(stub ApplicationStub) bool) []ApplicationStub {
