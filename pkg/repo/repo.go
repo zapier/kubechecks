@@ -109,14 +109,6 @@ func (r *Repo) MergeIntoTarget(ctx context.Context) error {
 		))
 	defer span.End()
 
-	if r.DefaultBranch != "" {
-		if r.BaseRef != r.DefaultBranch {
-			err := fmt.Errorf("target branch (%s) is not default branch (%s)\nfor kubechecks to run target branch must be default branch", r.HeadRef, r.DefaultBranch)
-			telemetry.SetError(span, err, "MergeIntoTarget")
-			return err
-		}
-	}
-
 	log.Debug().Msgf("Merging MR commit %s into a tmp branch off of %s for manifest generation...", r.SHA, r.BaseRef)
 	cmd := exec.Command("git", "fetch", r.Remote, r.BaseRef)
 	cmd.Dir = r.RepoDir
