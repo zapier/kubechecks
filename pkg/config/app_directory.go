@@ -9,7 +9,7 @@ import (
 )
 
 type ApplicationStub struct {
-	Name, Path string
+	Name, Path, TargetRevision string
 
 	IsHelm, IsKustomize bool
 }
@@ -51,7 +51,7 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 
 	// common data
 	srcPath := src.Path
-	d.AddAppStub(appName, srcPath, src.IsHelm(), !src.Kustomize.IsZero())
+	d.AddAppStub(appName, srcPath, app.Spec.Source.TargetRevision, src.IsHelm(), !src.Kustomize.IsZero())
 
 	// handle extra helm paths
 	if helm := src.Helm; helm != nil {
@@ -67,10 +67,9 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 	}
 }
 
-func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string) []ApplicationStub {
+func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []ApplicationStub {
 	log.Debug().Msgf("checking %d changes", len(changeList))
 
-	appsMap := make(map[string]string)
 	appsSet := make(map[string]struct{})
 	for _, changePath := range changeList {
 		log.Debug().Msgf("change: %s", changePath)
@@ -101,10 +100,19 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string) []Applicat
 			log.Warn().Msgf("failed to find matched app named '%s'", appName)
 			continue
 		}
+		if app.TargetRevision == "HEAD" && (targetBranch == "main" || targetBranch == "master") {
+			log.Debug().Msgf("target revision of %s is HEAD and '%s' is not main or master", appName, targetBranch)
+			continue
+		}
+
+		if app.TargetRevision != "" && app.TargetRevision != targetBranch {
+			log.Debug().Msgf("target revision of %s is %s and does not match '%s'", appName, app.TargetRevision, targetBranch)
+			continue
+		}
 		appsSlice = append(appsSlice, app)
 	}
 
-	log.Debug().Msgf("matched %d files into %d apps", len(appsMap), len(appsSet))
+	log.Debug().Msgf("matched %d files into %d apps", len(changeList), len(appsSet))
 	return appsSlice
 }
 
@@ -119,12 +127,13 @@ func (d *AppDirectory) GetApps(filter func(stub ApplicationStub) bool) []Applica
 	return result
 }
 
-func (d *AppDirectory) AddAppStub(appName, srcPath string, isHelm, isKustomize bool) {
+func (d *AppDirectory) AddAppStub(appName, srcPath, targetRevision string, isHelm, isKustomize bool) {
 	d.appsMap[appName] = ApplicationStub{
-		Name:        appName,
-		Path:        srcPath,
-		IsHelm:      isHelm,
-		IsKustomize: isKustomize,
+		Name:           appName,
+		TargetRevision: targetRevision,
+		Path:           srcPath,
+		IsHelm:         isHelm,
+		IsKustomize:    isKustomize,
 	}
 	d.AddDir(appName, srcPath)
 }

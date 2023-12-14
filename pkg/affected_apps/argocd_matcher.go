@@ -53,12 +53,12 @@ func getArgocdApps(vcsToArgoMap config.VcsToArgoMap, repo *repo.Repo) *config.Ap
 	return repoApps
 }
 
-func (a *ArgocdMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
+func (a *ArgocdMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
 	if a.appsDirectory == nil {
 		return AffectedItems{}, nil
 	}
 
-	appsSlice := a.appsDirectory.FindAppsBasedOnChangeList(changeList)
+	appsSlice := a.appsDirectory.FindAppsBasedOnChangeList(changeList, targetBranch)
 	return AffectedItems{Applications: appsSlice}, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/repo_config"
@@ -22,7 +23,7 @@ func NewConfigMatcher(cfg *repo_config.Config) *ConfigMatcher {
 	return &ConfigMatcher{cfg: cfg, argoClient: argoClient}
 }
 
-func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
+func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
 	appsMap := make(map[string]string)
 	var appSetList []ApplicationSet
 

@@ -178,7 +178,7 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	}
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
-	err = cEvent.GenerateListOfAffectedApps(ctx)
+	err = cEvent.GenerateListOfAffectedApps(ctx, repo.BaseRef)
 	if err != nil {
 		// TODO: Cancel if gitlab etc
 		//mEvent.CancelEvent(ctx, err, "Generate List of Affected Apps")

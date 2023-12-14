@@ -74,9 +74,9 @@ resources:
 	)
 
 	appdir := NewAppDirectory()
-	appdir.AddAppStub(kustomizeApp1Name, kustomizeApp1Path, false, true)
-	appdir.AddAppStub(kustomizeApp2Name, kustomizeApp2Path, false, true)
-	appdir.AddAppStub(kustomizeBaseName, kustomizeBasePath, false, true)
+	appdir.AddAppStub(kustomizeApp1Name, kustomizeApp1Path, "HEAD", false, true)
+	appdir.AddAppStub(kustomizeApp2Name, kustomizeApp2Path, "HEAD", false, true)
+	appdir.AddAppStub(kustomizeBaseName, kustomizeBasePath, "HEAD", false, true)
 
 	err = walkKustomizeFiles(appdir, fs, kustomizeApp1Name, kustomizeApp1Path)
 	require.NoError(t, err)
