@@ -78,7 +78,7 @@ jobs:
             +docker \
               --GIT_TAG=${GIT_TAG} \
               --GIT_COMMIT=${GIT_COMMIT} \
-              --IMAGE_NAME=${{ env.FS_IMAGE }}:${{ env.GIT_TAG }}
+              --IMAGE_NAME=${{ env.FS_IMAGE }}:${GIT_TAG}
 
   release-multiarch:
     runs-on: ubuntu-22.04
@@ -126,7 +126,7 @@ jobs:
       - uses: earthly/actions-setup@v1
         with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
-      - name: Build and push the Docker image
+      - name: Build and push the helm charts
         run: |
           earthly \
             --push \
