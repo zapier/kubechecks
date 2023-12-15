@@ -78,7 +78,7 @@ jobs:
             +docker \
               --GIT_TAG=${GIT_TAG} \
               --GIT_COMMIT=${GIT_COMMIT} \
-              --IMAGE_NAME=${{ env.FS_IMAGE }}:${GIT_TAG}
+              --IMAGE_NAME=${{ env.FS_IMAGE }}:${GIT_TAG}-${{ matrix.platform.suffix }}
 
   release-multiarch:
     runs-on: ubuntu-22.04
@@ -102,11 +102,14 @@ jobs:
           name: vars.sh
 
       - name: extract sha
-        run: source vars.sh
+        run: |
+          source vars.sh
+          echo "GIT_TAG=${GIT_TAG}" >> "$GITHUB_OUTPUT"
+        id: vars
 
       - uses: int128/docker-manifest-create-action@v1
         with:
-          tags: ghcr.io/${{ github.repository_owner }}/kubechecks:${env.GIT_TAG}
+          tags: ghcr.io/${{ github.repository_owner }}/kubechecks:${{ steps.vars.outputs.GIT_TAG }}
           suffixes: |
             -linux-amd64
 #            -linux-arm64
