@@ -73,6 +73,7 @@ build-binary:
 
 docker:
     FROM ubuntu:20.04
+    ARG --required IMAGE_NAME
     ARG TARGETVARIANT
 
     RUN apt update && apt install -y ca-certificates curl git
@@ -114,19 +115,7 @@ docker:
 
     CMD ["./kubechecks", "controller"]
 
-docker-dev:
-    FROM +docker
-
-    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:dev
-
-docker-tag:
-    FROM +docker
-
-    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
-    ARG --required GIT_TAG
-
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_TAG
+    SAVE IMAGE --push $IMAGE_NAME
 
 dlv:
     FROM golang:1.19
@@ -137,14 +126,14 @@ dlv:
     SAVE ARTIFACT /go/bin/dlv
 
 docker-debug:
-    ARG CI_REGISTRY_IMAGE="kubechecks"
+    ARG IMAGE_NAME="kubechecks:debug"
     FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef
 
     COPY (+dlv/dlv --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
 
     CMD ["/usr/local/bin/dlv", "--listen=:2345", "--api-version=2", "--headless=true", "--accept-multiclient", "exec", "--continue", "./kubechecks", "controller"]
 
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE
+    SAVE IMAGE --push $IMAGE_NAME
 
 fmt-golang:
     FROM +go-deps

@@ -67,8 +67,7 @@ jobs:
             +docker-tag \
               --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
               --GIT_TAG=${{ env.FS_TAG }} \
-              --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }} \
-              --CI_REGISTRY_IMAGE=${{ env.FS_IMAGE }}
+              --IMAGE_NAME=${{ env.FS_IMAGE }}
 
       - uses: mshick/add-pr-comment@v2
         with:

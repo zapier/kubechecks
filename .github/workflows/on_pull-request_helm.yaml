@@ -19,7 +19,4 @@ jobs:
 
       - run: |
           earthly \
-            +ci-helm \
-            --HELM_VERSION=${{ env.HELM_TOOL_VERSION }} \
-            --CHART_TESTING_VERSION=${{ env.HELM-CT_TOOL_VERSION }} \
-            --KUBECONFORM_VERSION=${{ env.KUBECONFORM_TOOL_VERSION }}
+            +ci-helm

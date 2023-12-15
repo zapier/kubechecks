@@ -38,7 +38,7 @@ jobs:
       - name: extract tag and sha
         run: |
           echo "GIT_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "GIT_RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+          echo "GIT_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
       - name: login to registry
         uses: docker/login-action@v1
@@ -52,12 +52,10 @@ jobs:
           earthly \
             --platform ${{ matrix.platform.earthly }} \
             --push \
-            +docker-tag \
-              --HELM_VERSION=${{ env.HELM_TOOL_VERSION }} \
-              --KUSTOMIZE_VERSION=${{ env.KUSTOMIZE_TOOL_VERSION }} \
-              --GIT_TAG=${{ env.GIT_RELEASE_TAG }}-${{ matrix.platform.suffix }} \
+            +docker \
+              --GIT_TAG=${{ env.GIT_TAG }} \
               --GIT_COMMIT=${{ env.GIT_COMMIT }} \
-              --CI_REGISTRY_IMAGE=ghcr.io/${{ github.repository_owner }}/kubechecks
+              --IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/kubechecks:${{ env.GIT_TAG }}-${{ matrix.platform.suffix }}
 
   release-multiarch:
     runs-on: ubuntu-22.04
