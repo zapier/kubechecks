@@ -28,6 +28,9 @@ jobs:
   release-docker:
     runs-on: ubuntu-22.04
 
+    needs:
+      - set-version
+
     permissions:
       contents: read
       packages: write
