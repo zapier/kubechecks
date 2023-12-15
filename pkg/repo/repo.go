@@ -48,14 +48,14 @@ func (r *Repo) CloneRepoLocal(ctx context.Context, repoDir string) error {
 	// TODO: Look if this is still needed
 	r.RepoDir = repoDir
 
-	cmd := exec.Command("git", "clone", r.CloneURL, repoDir)
+	cmd := execCommand("git", "clone", r.CloneURL, repoDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to clone repository, %s", out)
 		return err
 	}
 
-	cmd = exec.Command("git", "remote")
+	cmd = execCommand("git", "remote")
 	cmd.Dir = repoDir
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
@@ -109,16 +109,8 @@ func (r *Repo) MergeIntoTarget(ctx context.Context) error {
 		))
 	defer span.End()
 
-	if r.DefaultBranch != "" {
-		if r.BaseRef != r.DefaultBranch {
-			err := fmt.Errorf("target branch (%s) is not default branch (%s)\nfor kubechecks to run target branch must be default branch", r.HeadRef, r.DefaultBranch)
-			telemetry.SetError(span, err, "MergeIntoTarget")
-			return err
-		}
-	}
-
 	log.Debug().Msgf("Merging MR commit %s into a tmp branch off of %s for manifest generation...", r.SHA, r.BaseRef)
-	cmd := exec.Command("git", "fetch", r.Remote, r.BaseRef)
+	cmd := execCommand("git", "fetch", r.Remote, r.BaseRef)
 	cmd.Dir = r.RepoDir
 	err := cmd.Run()
 	if err != nil {
@@ -127,7 +119,7 @@ func (r *Repo) MergeIntoTarget(ctx context.Context) error {
 		return err
 	}
 
-	cmd = exec.Command("git", "checkout", "-b", "tmp", fmt.Sprintf("%s/%s", r.Remote, r.BaseRef))
+	cmd = execCommand("git", "checkout", "-b", "tmp", fmt.Sprintf("%s/%s", r.Remote, r.BaseRef))
 	cmd.Dir = r.RepoDir
 	_, err = cmd.Output()
 	if err != nil {
@@ -136,7 +128,7 @@ func (r *Repo) MergeIntoTarget(ctx context.Context) error {
 		return err
 	}
 
-	cmd = exec.Command("git", "merge", r.SHA)
+	cmd = execCommand("git", "merge", r.SHA)
 	cmd.Dir = r.RepoDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -180,7 +172,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 
 	var fileList = []string{}
 
-	cmd := exec.Command("git", "diff", "--name-only", r.BaseRef)
+	cmd := execCommand("git", "diff", "--name-only", fmt.Sprintf("%s/%s", r.Remote, r.BaseRef))
 	cmd.Dir = r.RepoDir
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
@@ -220,13 +212,13 @@ func walk(s string, d fs.DirEntry, err error) error {
 
 // InitializeGitSettings ensures Git auth is set up for cloning
 func InitializeGitSettings(user string, email string) error {
-	cmd := exec.Command("git", "config", "--global", "user.email", email)
+	cmd := execCommand("git", "config", "--global", "user.email", email)
 	err := cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git email address")
 	}
 
-	cmd = exec.Command("git", "config", "--global", "user.name", user)
+	cmd = execCommand("git", "config", "--global", "user.name", user)
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git user name")
@@ -249,14 +241,14 @@ func InitializeGitSettings(user string, email string) error {
 	}
 	defer outfile.Close()
 
-	cmd = exec.Command("echo", cloneUrl)
+	cmd = execCommand("echo", cloneUrl)
 	cmd.Stdout = outfile
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "unable to set git credentials")
 	}
 
-	cmd = exec.Command("git", "config", "--global", "credential.helper", "store")
+	cmd = execCommand("git", "config", "--global", "credential.helper", "store")
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "unable to set git credential usage")
@@ -286,4 +278,9 @@ func getCloneUrl(user string, cfg *viper.Viper) (string, error) {
 		scheme = parts.Scheme
 	}
 	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, vcsToken, hostname), nil
+}
+
+func execCommand(name string, args ...string) *exec.Cmd {
+	log.Debug().Strs("args", args).Msg("building command")
+	return exec.Command(name, args...)
 }

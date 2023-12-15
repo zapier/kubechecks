@@ -142,7 +142,7 @@ func (ce *CheckEvent) GetListOfChangedFiles(ctx context.Context) ([]string, erro
 }
 
 // Walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
-func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) error {
+func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, targetBranch string) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 	var err error
@@ -170,7 +170,7 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) error {
 		}
 		matcher = affected_apps.NewBestEffortMatcher(ce.repo.Name, ce.repoFiles)
 	}
-	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList)
+	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList, targetBranch)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Affected Apps")
 		ce.logger.Error().Err(err).Msg("could not get list of affected apps and appsets")

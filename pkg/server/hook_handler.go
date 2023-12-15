@@ -165,6 +165,7 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	err = cEvent.MergeIntoTarget(ctx)
 	if err != nil {
 		// TODO: Cancel if gitlab etc
+		log.Error().Err(err).Msg("failed to merge into target")
 		return
 	}
 
@@ -172,14 +173,16 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	_, err = cEvent.GetListOfChangedFiles(ctx)
 	if err != nil {
 		// TODO: Cancel if gitlab etc
+		log.Error().Err(err).Msg("failed to get list of changed files")
 		return
 	}
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
-	err = cEvent.GenerateListOfAffectedApps(ctx)
+	err = cEvent.GenerateListOfAffectedApps(ctx, repo.BaseRef)
 	if err != nil {
 		// TODO: Cancel if gitlab etc
 		//mEvent.CancelEvent(ctx, err, "Generate List of Affected Apps")
+		log.Error().Err(err).Msg("failed to generate a list of affected apps")
 		return
 	}
 

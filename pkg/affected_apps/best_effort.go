@@ -25,7 +25,7 @@ func NewBestEffortMatcher(repoName string, repoFileList []string) *BestEffort {
 	}
 }
 
-func (b *BestEffort) AffectedApps(_ context.Context, changeList []string) (AffectedItems, error) {
+func (b *BestEffort) AffectedApps(_ context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
 	appsMap := make(map[string]string)
 
 	for _, file := range changeList {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/zapier/kubechecks/pkg/config"
 )
 
@@ -158,7 +159,7 @@ func TestBestEffortMatcher(t *testing.T) {
 			var err error
 
 			matcher := NewBestEffortMatcher(tt.args.repoName, testRepoFiles)
-			got, err = matcher.AffectedApps(context.TODO(), tt.args.fileList)
+			got, err = matcher.AffectedApps(context.TODO(), tt.args.fileList, "master")
 			require.NoError(t, err)
 
 			assert.Equal(t, len(tt.want.Applications), len(got.Applications))

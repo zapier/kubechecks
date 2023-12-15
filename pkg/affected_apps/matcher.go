@@ -17,7 +17,7 @@ type ApplicationSet struct {
 }
 
 type Matcher interface {
-	AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error)
+	AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error)
 }
 
 // modifiedDirs filters a list of changed files down to a list
