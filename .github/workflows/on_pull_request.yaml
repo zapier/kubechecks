@@ -64,10 +64,10 @@ jobs:
           earthly \
             --push \
             --platform ${{ matrix.platform }} \
-            +docker-tag \
+            +docker \
               --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
               --GIT_TAG=${{ env.FS_TAG }} \
-              --IMAGE_NAME=${{ env.FS_IMAGE }}
+              --IMAGE_NAME=${{ env.FS_IMAGE }}:${{ env.FS_TAG }}
 
       - uses: mshick/add-pr-comment@v2
         with:
