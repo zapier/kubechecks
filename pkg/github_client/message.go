@@ -16,9 +16,16 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
+const MaxCommentLength = 64 * 1024
+
 func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, prID int, msg string) *pkg.Message {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
+
+	if len(msg) > MaxCommentLength {
+		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
+		msg = msg[:MaxCommentLength]
+	}
 
 	log.Debug().Msgf("Posting message to PR %d in repo %s", prID, repo.FullName)
 	comment, _, err := c.Issues.CreateComment(
@@ -40,6 +47,11 @@ func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, prID int, msg
 func (c *Client) UpdateMessage(ctx context.Context, m *pkg.Message, msg string) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "UpdateMessage")
 	defer span.End()
+
+	if len(msg) > MaxCommentLength {
+		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
+		msg = msg[:MaxCommentLength]
+	}
 
 	log.Info().Msgf("Updating message for PR %d in repo %s", m.CheckID, m.Name)
 

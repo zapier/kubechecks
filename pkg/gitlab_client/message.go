@@ -15,9 +15,16 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
+const MaxCommentLength = 1_000_000
+
 func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, mergeRequestID int, msg string) *pkg.Message {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
+
+	if len(msg) > MaxCommentLength {
+		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
+		msg = msg[:MaxCommentLength]
+	}
 
 	n, _, err := c.Notes.CreateMergeRequestNote(
 		repo.FullName, mergeRequestID,
@@ -57,6 +64,11 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 </details>
 			`, note.Body)
 
+		if len(newBody) > MaxCommentLength {
+			log.Warn().Int("original_length", len(newBody)).Msg("trimming the comment size")
+			newBody = newBody[:MaxCommentLength]
+		}
+
 		log.Debug().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
 
 		_, _, err := c.Notes.UpdateMergeRequestNote(projectName, mergeRequestID, note.ID, &gitlab.UpdateMergeRequestNoteOptions{
@@ -74,6 +86,11 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 
 func (c *Client) UpdateMessage(ctx context.Context, m *pkg.Message, msg string) error {
 	log.Debug().Msgf("Updating message %d for %s", m.NoteID, m.Name)
+
+	if len(msg) > MaxCommentLength {
+		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
+		msg = msg[:MaxCommentLength]
+	}
 
 	n, _, err := c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
 		Body: pkg.Pointer(msg),
