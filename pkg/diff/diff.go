@@ -147,12 +147,12 @@ func GetDiff(ctx context.Context, name string, manifests []string) (pkg.CheckRes
 				return pkg.CheckResult{}, "", err
 			}
 			switch {
-			case diffRes.Modified:
-				modified++
 			case item.target == nil:
 				removed++
 			case item.live == nil:
 				added++
+			case diffRes.Modified:
+				modified++
 			}
 		}
 	}
