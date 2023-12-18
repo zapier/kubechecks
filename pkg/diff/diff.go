@@ -62,12 +62,14 @@ func GetDiff(ctx context.Context, name string, manifests []string, app *argoappv
 	var err error
 
 	appName := name
-	app, err = appClient.Get(ctx, &application.ApplicationQuery{
-		Name: &appName,
-	})
-	if err != nil {
-		telemetry.SetError(span, err, "Get Argo App")
-		return pkg.CheckResult{}, "", err
+	if app == nil {
+		app, err = appClient.Get(ctx, &application.ApplicationQuery{
+			Name: &appName,
+		})
+		if err != nil {
+			telemetry.SetError(span, err, "Get Argo App")
+			return pkg.CheckResult{}, "", err
+		}
 	}
 
 	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
