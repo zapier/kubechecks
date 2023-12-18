@@ -217,6 +217,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	}
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
+	ce.addedAppsSet = make(map[string]struct{})
 	ce.appChannel = make(chan appStruct, len(ce.affectedItems.Applications))
 	ce.doneChannel = make(chan bool, len(ce.affectedItems.Applications))
 
