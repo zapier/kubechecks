@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -44,6 +45,7 @@ type CheckEvent struct {
 
 	cfg *config.ServerConfig
 
+	createdApps  map[string]*argoappv1.Application
 	addedAppsSet map[string]struct{}
 	appChannel   chan appStruct
 	doneChannel  chan bool
@@ -53,9 +55,10 @@ var inFlight int32
 
 func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig) *CheckEvent {
 	ce := &CheckEvent{
-		cfg:    cfg,
-		client: client,
-		repo:   repo,
+		cfg:         cfg,
+		client:      client,
+		createdApps: make(map[string]*argoappv1.Application),
+		repo:        repo,
 	}
 
 	ce.logger = log.Logger.With().Str("repo", repo.Name).Int("event_id", repo.CheckID).Logger()
@@ -267,9 +270,9 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.CommitStatus(ctx, pkg.StateSuccess)
 }
 
-func (ce *CheckEvent) queueApp(name, path string) {
+func (ce *CheckEvent) queueApp(appName, path string) {
 	a := appStruct{
-		name: name,
+		name: appName,
 		dir:  path,
 	}
 
@@ -309,9 +312,9 @@ func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
 // It takes a context (ctx), application name (app), directory (dir) as input and returns an error if any check fails.
 // The processing is performed concurrently using Go routines and error groups. Any check results are sent through
 // the returnChan. The function also manages the inFlight atomic counter to track active processing routines.
-func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) bool {
+func (ce *CheckEvent) processApp(ctx context.Context, appName, dir string) bool {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "processApp", trace.WithAttributes(
-		attribute.String("app", app),
+		attribute.String("app", appName),
 		attribute.String("dir", dir),
 	))
 	defer span.End()
@@ -320,16 +323,16 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) bool {
 	defer atomic.AddInt32(&inFlight, -1)
 
 	start := time.Now()
-	ce.logger.Info().Str("app", app).Msg("Adding new app")
+	ce.logger.Info().Str("app", appName).Msg("Adding new app")
 	// Build a new section for this app in the parent comment
-	ce.vcsNote.AddNewApp(ctx, app)
+	ce.vcsNote.AddNewApp(ctx, appName)
 
-	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", app, ce.TempWorkingDir, dir)
-	manifests, err := argo_client.GetManifestsLocal(ctx, app, ce.TempWorkingDir, dir)
+	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", appName, ce.TempWorkingDir, dir)
+	manifests, err := argo_client.GetManifestsLocal(ctx, appName, ce.TempWorkingDir, dir, ce.createdApps[appName])
 	if err != nil {
-		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", app, dir)
+		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", appName, dir)
 		cr := pkg.CheckResult{State: pkg.StateError, Summary: "Unable to get manifests", Details: fmt.Sprintf("```\n%s\n```", ce.cleanupGetManifestsError(err))}
-		ce.vcsNote.AddToAppMessage(ctx, app, cr)
+		ce.vcsNote.AddToAppMessage(ctx, appName, cr)
 		return false
 	}
 
@@ -337,7 +340,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) bool {
 	formattedManifests := argo_client.FormatManifestsYAML(manifests)
 	ce.logger.Trace().Msgf("Manifests:\n%+v\n", formattedManifests)
 
-	k8sVersion, err := argo_client.GetArgoClient().GetKubernetesVersionByApplicationName(ctx, app)
+	k8sVersion, err := argo_client.GetArgoClient().GetKubernetesVersionByApplicationName(ctx, appName)
 	if err != nil {
 		ce.logger.Error().Err(err).Msg("Error retrieving the Kubernetes version")
 		k8sVersion = viper.GetString("fallback-k8s-version")
@@ -348,16 +351,19 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) bool {
 
 	var wg sync.WaitGroup
 
-	run := ce.createRunner(span, ctx, app, &wg)
+	run := ce.createRunner(span, ctx, appName, &wg)
 
-	run("validating app against schema", ce.validateSchemas(ctx, app, k8sVersion, ce.TempWorkingDir, formattedManifests))
-	run("generating diff for app", ce.generateDiff(ctx, app, manifests, ce.queueApp))
+	run("validating app against schema", ce.validateSchemas(ctx, appName, k8sVersion, ce.TempWorkingDir, formattedManifests))
+	run("generating diff for app", ce.generateDiff(ctx, appName, manifests, func(app *argoappv1.Application) {
+		ce.createdApps[app.Name] = app
+		ce.queueApp(app.Name, app.Spec.GetSource().Path)
+	}))
 
 	if viper.GetBool("enable-conftest") {
-		run("validation policy", ce.validatePolicy(ctx, app))
+		run("validation policy", ce.validatePolicy(ctx, appName))
 	}
 
-	run("running pre-upgrade check", ce.runPreupgradeCheck(ctx, app, k8sVersion, formattedManifests))
+	run("running pre-upgrade check", ce.runPreupgradeCheck(ctx, appName, k8sVersion, formattedManifests))
 
 	wg.Wait()
 
@@ -441,14 +447,14 @@ func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (pk
 	}
 }
 
-func (ce *CheckEvent) generateDiff(ctx context.Context, app string, manifests []string, addApp func(name, path string)) func() (pkg.CheckResult, error) {
+func (ce *CheckEvent) generateDiff(ctx context.Context, appName string, manifests []string, addApp func(app *argoappv1.Application)) func() (pkg.CheckResult, error) {
 	return func() (pkg.CheckResult, error) {
-		cr, rawDiff, err := diff.GetDiff(ctx, app, manifests, addApp)
+		cr, rawDiff, err := diff.GetDiff(ctx, appName, manifests, ce.createdApps[appName], addApp)
 		if err != nil {
 			return pkg.CheckResult{}, err
 		}
 
-		diff.AIDiffSummary(ctx, ce.vcsNote, app, manifests, rawDiff)
+		diff.AIDiffSummary(ctx, ce.vcsNote, appName, manifests, rawDiff)
 
 		return cr, nil
 	}
