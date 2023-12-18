@@ -13,6 +13,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/reposerver/repository"
 	"github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/ghodss/yaml"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -51,7 +52,7 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get App")
 		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get application")
 	}
 	log.Trace().Msgf("Argo App: %+v", app)
 
@@ -59,14 +60,14 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Cluster")
 		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get cluster")
 	}
 
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Settings")
 		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get settings")
 	}
 
 	// Code is commented out until Argo fixes the server side manifest generation
@@ -98,7 +99,7 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	}, true, &git.NoopCredsStore{}, resource.MustParse("0"), nil)
 	if err != nil {
 		telemetry.SetError(span, err, "Generate Manifests")
-		return nil, err
+		return nil, errors.Wrap(err, "failed to generate manifests")
 	}
 
 	if res.Manifests == nil {
