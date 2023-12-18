@@ -46,7 +46,7 @@ changedFilePath should be the root of the changed folder
 from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
 */
 func GetDiff(ctx context.Context, name string, manifests []string, app *argoappv1.Application, addApp func(*argoappv1.Application)) (pkg.CheckResult, string, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "Diff")
+	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetDiff")
 	defer span.End()
 
 	argoClient := argo_client.GetArgoClient()
