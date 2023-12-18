@@ -45,7 +45,7 @@ changedFilePath should be the root of the changed folder
 
 from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
 */
-func GetDiff(ctx context.Context, name string, manifests []string) (pkg.CheckResult, string, error) {
+func GetDiff(ctx context.Context, name string, manifests []string, addApp func(name, path string)) (pkg.CheckResult, string, error) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "Diff")
 	defer span.End()
 
@@ -151,6 +151,9 @@ func GetDiff(ctx context.Context, name string, manifests []string) (pkg.CheckRes
 				removed++
 			case item.live == nil:
 				added++
+				if app, ok := isApp(item, diffRes.PredictedLive); ok {
+					addApp(app.Name, app.Spec.GetSource().Path)
+				}
 			case diffRes.Modified:
 				modified++
 			}
@@ -170,6 +173,23 @@ func GetDiff(ctx context.Context, name string, manifests []string) (pkg.CheckRes
 	cr.Details = fmt.Sprintf("```diff\n%s\n```", diff)
 
 	return cr, diff, nil
+}
+
+func isApp(item objKeyLiveTarget, manifests []byte) (*argoappv1.Application, bool) {
+	if item.key.Group != "argoproj.io/v1alpha1" {
+		return nil, false
+	}
+	if item.key.Kind != "Application" {
+		return nil, false
+	}
+
+	var app argoappv1.Application
+	if err := json.Unmarshal(manifests, &app); err != nil {
+		log.Warn().Err(err).Msg("failed to deserialize application")
+		return nil, false
+	}
+
+	return &app, true
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879

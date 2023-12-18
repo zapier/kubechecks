@@ -43,6 +43,10 @@ type CheckEvent struct {
 	affectedItems affected_apps.AffectedItems
 
 	cfg *config.ServerConfig
+
+	addedAppsSet map[string]struct{}
+	appChannel   chan appStruct
+	doneChannel  chan bool
 }
 
 var inFlight int32
@@ -213,8 +217,8 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	}
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
-	appChannel := make(chan appStruct, len(ce.affectedItems.Applications))
-	doneChannel := make(chan bool, len(ce.affectedItems.Applications))
+	ce.appChannel = make(chan appStruct, len(ce.affectedItems.Applications))
+	ce.doneChannel = make(chan bool, len(ce.affectedItems.Applications))
 
 	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
 	if ce.workerLimits > len(ce.affectedItems.Applications) {
@@ -225,31 +229,26 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.vcsNote = ce.createNote(ctx)
 
 	for w := 0; w <= ce.workerLimits; w++ {
-		go ce.appWorkers(ctx, w, appChannel, doneChannel)
+		go ce.appWorkers(ctx, w)
 	}
 
 	// Produce apps onto channel
 	for _, app := range ce.affectedItems.Applications {
-		a := appStruct{
-			name: app.Name,
-			dir:  app.Path,
-		}
-		ce.logger.Trace().Str("app", a.name).Str("dir", a.dir).Msg("producing app on channel")
-		appChannel <- a
+		ce.queueApp(app.Name, app.Path)
 	}
 
 	returnCount := 0
 	commitStatus := true
-	for appStatus := range doneChannel {
+	for appStatus := range ce.doneChannel {
 		if !appStatus {
 			commitStatus = false
 		}
 
 		returnCount++
-		if returnCount == len(ce.affectedItems.Applications) {
+		if returnCount == len(ce.addedAppsSet) {
 			ce.logger.Debug().Msg("Closing channels")
-			close(appChannel)
-			close(doneChannel)
+			close(ce.appChannel)
+			close(ce.doneChannel)
 		}
 	}
 	ce.logger.Info().Msg("Finished")
@@ -267,6 +266,23 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.CommitStatus(ctx, pkg.StateSuccess)
 }
 
+func (ce *CheckEvent) queueApp(name, path string) {
+	a := appStruct{
+		name: name,
+		dir:  path,
+	}
+
+	ce.logger.Trace().Str("app", a.name).Str("dir", a.dir).Msg("producing app on channel")
+
+	key := fmt.Sprintf("%s::%s", a.name, a.dir)
+	if _, ok := ce.addedAppsSet[key]; ok {
+		return
+	}
+
+	ce.addedAppsSet[key] = struct{}{}
+	ce.appChannel <- a
+}
+
 // CommitStatus sets the commit status on the MR
 // To set the PR/MR status
 func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) {
@@ -279,11 +295,11 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 }
 
 // Process all apps on the provided channel
-func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int, appChannel chan appStruct, resultChannel chan bool) {
-	for app := range appChannel {
+func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
+	for app := range ce.appChannel {
 		ce.logger.Info().Int("workerID", workerID).Str("app", app.name).Msg("Processing App")
 		isSuccess := ce.processApp(ctx, app.name, app.dir)
-		resultChannel <- isSuccess
+		ce.doneChannel <- isSuccess
 	}
 }
 
@@ -334,7 +350,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) bool {
 	run := ce.createRunner(span, ctx, app, &wg)
 
 	run("validating app against schema", ce.validateSchemas(ctx, app, k8sVersion, ce.TempWorkingDir, formattedManifests))
-	run("generating diff for app", ce.generateDiff(ctx, app, manifests))
+	run("generating diff for app", ce.generateDiff(ctx, app, manifests, ce.queueApp))
 
 	if viper.GetBool("enable-conftest") {
 		run("validation policy", ce.validatePolicy(ctx, app))
@@ -424,9 +440,9 @@ func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (pk
 	}
 }
 
-func (ce *CheckEvent) generateDiff(ctx context.Context, app string, manifests []string) func() (pkg.CheckResult, error) {
+func (ce *CheckEvent) generateDiff(ctx context.Context, app string, manifests []string, addApp func(name, path string)) func() (pkg.CheckResult, error) {
 	return func() (pkg.CheckResult, error) {
-		cr, rawDiff, err := diff.GetDiff(ctx, app, manifests)
+		cr, rawDiff, err := diff.GetDiff(ctx, app, manifests, addApp)
 		if err != nil {
 			return pkg.CheckResult{}, err
 		}

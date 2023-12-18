@@ -14,9 +14,10 @@ import (
 	"github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/ghodss/yaml"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/zapier/kubechecks/telemetry"
 )
 
 func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, changedAppFilePath string) ([]string, error) {
@@ -108,7 +109,7 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 }
 
 func FormatManifestsYAML(manifestBytes []string) []string {
-	manifests := []string{}
+	var manifests []string
 	for _, manifest := range manifestBytes {
 		ret, err := yaml.JSONToYAML([]byte(manifest))
 		if err != nil {

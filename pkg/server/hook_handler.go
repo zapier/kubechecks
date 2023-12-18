@@ -152,6 +152,7 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 		log.Error().Err(err).Msg("unable to initialize git")
 		return
 	}
+
 	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
 	err = cEvent.CloneRepoLocal(ctx)
 	if err != nil {
