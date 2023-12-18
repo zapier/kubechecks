@@ -273,7 +273,7 @@ func (ce *CheckEvent) queueApp(name, path string) {
 		dir:  path,
 	}
 
-	ce.logger.Trace().Str("app", a.name).Str("dir", a.dir).Msg("producing app on channel")
+	ce.logger.Debug().Str("app", a.name).Str("dir", a.dir).Msg("producing app on channel")
 
 	key := fmt.Sprintf("%s::%s", a.name, a.dir)
 	if _, ok := ce.addedAppsSet[key]; ok {
