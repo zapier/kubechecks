@@ -1,4 +1,4 @@
-earthly 0.7.22
+earthly 0.7.23
 golang 1.19.11
 helm 3.12.2
 helm-cr 1.6.1
