@@ -22,6 +22,8 @@ import (
 )
 
 func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, changedAppFilePath string, app *argoappv1.Application) ([]string, error) {
+	var err error
+
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetManifestsLocal")
 	defer span.End()
 
@@ -47,7 +49,7 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 
 	if app == nil {
 		appName := name
-		app, err := appClient.Get(ctx, &application.ApplicationQuery{
+		app, err = appClient.Get(ctx, &application.ApplicationQuery{
 			Name: &appName,
 		})
 		if err != nil {
