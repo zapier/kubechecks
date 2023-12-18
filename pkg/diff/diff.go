@@ -59,7 +59,10 @@ func GetDiff(ctx context.Context, name string, manifests []string, app *argoappv
 	settingsCloser, settingsClient := argoClient.GetSettingsClient()
 	defer settingsCloser.Close()
 
-	var err error
+	var (
+		err       error
+		resources *application.ManagedResourcesResponse
+	)
 
 	appName := name
 	if app == nil {
@@ -70,14 +73,16 @@ func GetDiff(ctx context.Context, name string, manifests []string, app *argoappv
 			telemetry.SetError(span, err, "Get Argo App")
 			return pkg.CheckResult{}, "", err
 		}
-	}
 
-	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
-		ApplicationName: &appName,
-	})
-	if err != nil {
-		telemetry.SetError(span, err, "Get Argo Managed Resources")
-		return pkg.CheckResult{}, "", err
+		resources, err = appClient.ManagedResources(ctx, &application.ResourcesQuery{
+			ApplicationName: &appName,
+		})
+		if err != nil {
+			telemetry.SetError(span, err, "Get Argo Managed Resources")
+			return pkg.CheckResult{}, "", err
+		}
+	} else {
+		resources = new(application.ManagedResourcesResponse)
 	}
 
 	errors.CheckError(err)
