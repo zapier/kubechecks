@@ -176,10 +176,12 @@ func GetDiff(ctx context.Context, name string, manifests []string, addApp func(n
 }
 
 func isApp(item objKeyLiveTarget, manifests []byte) (*argoappv1.Application, bool) {
-	if item.key.Group != "argoproj.io/v1alpha1" {
+	if strings.ToLower(item.key.Group) != "argoproj.io/v1alpha1" {
+		log.Debug().Str("group", item.key.Group).Msg("group is not correct")
 		return nil, false
 	}
-	if item.key.Kind != "Application" {
+	if strings.ToLower(item.key.Kind) != "application" {
+		log.Debug().Str("kind", item.key.Kind).Msg("kind is not correct")
 		return nil, false
 	}
 
