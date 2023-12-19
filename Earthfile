@@ -23,7 +23,10 @@ release:
 
 go-deps:
     ARG GOLANG_VERSION="1.19.3"
-    FROM golang:$GOLANG_VERSION-bullseye
+    ARG GOOS=linux
+    ARG GOARCH=amd64
+
+    FROM --platform=linux/amd64 golang:$GOLANG_VERSION-bullseye
 
     ENV GO111MODULE=on
     ENV CGO_ENABLED=0
@@ -58,13 +61,13 @@ test-golang:
     RUN go test ./...
 
 build-binary:
-    FROM +go-deps
-
     ARG GOOS=linux
     ARG GOARCH=amd64
     ARG VARIANT
     ARG --required GIT_TAG
     ARG --required GIT_COMMIT
+
+    FROM --platform=linux/amd64 +go-deps
 
     WORKDIR /src
     COPY . /src
@@ -72,10 +75,12 @@ build-binary:
     SAVE ARTIFACT kubechecks
 
 docker:
-    FROM ubuntu:20.04
     ARG --required IMAGE_NAME
+    ARG TARGETPLATFORM
+    ARG TARGETARCH
     ARG TARGETVARIANT
 
+    FROM --platform=$TARGETPLATFORM ubuntu:20.04
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
@@ -110,7 +115,7 @@ docker:
     VOLUME /app/policies
     VOLUME /app/schemas
 
-    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
+    COPY (+build-binary/kubechecks --platform=linux/amd64 --GOARCH=$TARGETARCH --VARIANT=$TARGETVARIANT) .
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
