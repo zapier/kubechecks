@@ -44,7 +44,6 @@ type CheckEvent struct {
 
 	cfg *config.ServerConfig
 
-	createdApps  map[string]v1alpha1.Application
 	addedAppsSet map[string]struct{}
 	appChannel   chan *v1alpha1.Application
 	doneChannel  chan bool
@@ -54,10 +53,9 @@ var inFlight int32
 
 func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig) *CheckEvent {
 	ce := &CheckEvent{
-		cfg:         cfg,
-		client:      client,
-		createdApps: make(map[string]v1alpha1.Application),
-		repo:        repo,
+		cfg:    cfg,
+		client: client,
+		repo:   repo,
 	}
 
 	ce.logger = log.Logger.With().Str("repo", repo.Name).Int("event_id", repo.CheckID).Logger()
@@ -257,14 +255,18 @@ func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
 	name := app.Name
 	dir := app.Spec.GetSource().Path
 
-	ce.logger.Debug().Str("app", name).Str("dir", dir).Msg("producing app on channel")
+	ce.logger.Debug().
+		Str("app", name).
+		Str("dir", dir).
+		Str("cluster-name", app.Spec.Destination.Name).
+		Str("cluster-server", app.Spec.Destination.Server).
+		Msg("producing app on channel")
 
-	key := fmt.Sprintf("%s::%s", name, dir)
-	if _, ok := ce.addedAppsSet[key]; ok {
+	if _, ok := ce.addedAppsSet[name]; ok {
 		return
 	}
 
-	ce.addedAppsSet[key] = struct{}{}
+	ce.addedAppsSet[name] = struct{}{}
 	ce.appChannel <- &app
 }
 
@@ -317,7 +319,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	ce.vcsNote.AddNewApp(ctx, appName)
 
 	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", appName, ce.TempWorkingDir, dir)
-	manifests, err := argo_client.GetManifestsLocal(ctx, appName, ce.TempWorkingDir, dir, ce.createdApps[appName])
+	manifests, err := argo_client.GetManifestsLocal(ctx, appName, ce.TempWorkingDir, dir, app)
 	if err != nil {
 		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", appName, dir)
 		cr := pkg.CheckResult{State: pkg.StateError, Summary: "Unable to get manifests", Details: fmt.Sprintf("```\n%s\n```", ce.cleanupGetManifestsError(err))}
@@ -343,10 +345,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	run := ce.createRunner(span, ctx, appName, &wg)
 
 	run("validating app against schema", ce.validateSchemas(ctx, appName, k8sVersion, ce.TempWorkingDir, formattedManifests))
-	run("generating diff for app", ce.generateDiff(ctx, appName, manifests, func(app v1alpha1.Application) {
-		ce.createdApps[app.Name] = app
-		ce.queueApp(app)
-	}))
+	run("generating diff for app", ce.generateDiff(ctx, app, manifests, ce.queueApp))
 
 	if viper.GetBool("enable-conftest") {
 		run("validation policy", ce.validatePolicy(ctx, appName))
@@ -436,14 +435,14 @@ func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (pk
 	}
 }
 
-func (ce *CheckEvent) generateDiff(ctx context.Context, appName string, manifests []string, addApp func(app v1alpha1.Application)) func() (pkg.CheckResult, error) {
+func (ce *CheckEvent) generateDiff(ctx context.Context, app v1alpha1.Application, manifests []string, addApp func(app v1alpha1.Application)) func() (pkg.CheckResult, error) {
 	return func() (pkg.CheckResult, error) {
-		cr, rawDiff, err := diff.GetDiff(ctx, appName, manifests, ce.createdApps[appName], addApp)
+		cr, rawDiff, err := diff.GetDiff(ctx, manifests, app, addApp)
 		if err != nil {
 			return pkg.CheckResult{}, err
 		}
 
-		diff.AIDiffSummary(ctx, ce.vcsNote, appName, manifests, rawDiff)
+		diff.AIDiffSummary(ctx, ce.vcsNote, app.Name, manifests, rawDiff)
 
 		return cr, nil
 	}

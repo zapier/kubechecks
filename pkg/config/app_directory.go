@@ -66,7 +66,6 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 		log.Debug().Msgf("change: %s", changePath)
 
 		for dir, appNames := range d.appDirs {
-			log.Debug().Msgf("- app path: %s", dir)
 			if strings.HasPrefix(changePath, dir) {
 				log.Debug().Msg("dir match!")
 				for _, appName := range appNames {
@@ -147,6 +146,11 @@ func (d *AppDirectory) GetApps(filter func(stub v1alpha1.Application) bool) []v1
 }
 
 func (d *AppDirectory) AddApp(app v1alpha1.Application) {
+	log.Debug().
+		Str("appName", app.Name).
+		Str("cluster-name", app.Spec.Destination.Name).
+		Str("cluster-server", app.Spec.Destination.Server).
+		Msg("found app")
 	d.appsMap[app.Name] = app
 	d.AddDir(app.Name, getSourcePath(app))
 }
