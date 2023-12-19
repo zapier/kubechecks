@@ -6,10 +6,11 @@ import (
 	"path"
 	"strings"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
 	"github.com/zapier/kubechecks/pkg/argo_client"
-	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 )
 
@@ -40,9 +41,18 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, t
 		appSetList = append(appSetList, ApplicationSet{appset.Name})
 	}
 
-	var appsSlice []config.ApplicationStub
-	for name, appPath := range appsMap {
-		appsSlice = append(appsSlice, config.ApplicationStub{Name: name, Path: appPath})
+	argoApps, err := b.argoClient.GetApplications(ctx)
+	if err != nil {
+		return AffectedItems{}, errors.Wrap(err, "failed to list applications")
+	}
+
+	var appsSlice []v1alpha1.Application
+	for _, app := range argoApps.Items {
+		if _, ok := appsMap[app.Name]; !ok {
+			continue
+		}
+
+		appsSlice = append(appsSlice, app)
 	}
 
 	return AffectedItems{Applications: appsSlice, ApplicationSets: appSetList}, nil

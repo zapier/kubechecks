@@ -43,8 +43,9 @@ func (v2a *VcsToArgoMap) WalkKustomizeApps(repo *repo.Repo, fs fs.FS) *AppDirect
 	)
 
 	for _, app := range apps {
-		if err = walkKustomizeFiles(result, fs, app.Name, app.Path); err != nil {
-			log.Error().Err(err).Msgf("failed to parse kustomize.yaml in %s", app.Path)
+		appPath := app.Spec.GetSource().Path
+		if err = walkKustomizeFiles(result, fs, app.Name, appPath); err != nil {
+			log.Error().Err(err).Msgf("failed to parse kustomize.yaml in %s", appPath)
 		}
 	}
 

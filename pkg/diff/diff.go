@@ -45,16 +45,13 @@ changedFilePath should be the root of the changed folder
 
 from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
 */
-func GetDiff(ctx context.Context, name string, manifests []string, app *argoappv1.Application, addApp func(*argoappv1.Application)) (pkg.CheckResult, string, error) {
+func GetDiff(ctx context.Context, name string, manifests []string, app argoappv1.Application, addApp func(argoappv1.Application)) (pkg.CheckResult, string, error) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetDiff")
 	defer span.End()
 
 	argoClient := argo_client.GetArgoClient()
-	closer, appClient := argoClient.GetApplicationClient()
 
 	log.Debug().Str("name", name).Msg("generating diff for application...")
-
-	defer closer.Close()
 
 	settingsCloser, settingsClient := argoClient.GetSettingsClient()
 	defer settingsCloser.Close()
@@ -64,26 +61,7 @@ func GetDiff(ctx context.Context, name string, manifests []string, app *argoappv
 		resources *application.ManagedResourcesResponse
 	)
 
-	appName := name
-	if app == nil {
-		app, err = appClient.Get(ctx, &application.ApplicationQuery{
-			Name: &appName,
-		})
-		if err != nil {
-			telemetry.SetError(span, err, "Get Argo App")
-			return pkg.CheckResult{}, "", err
-		}
-
-		resources, err = appClient.ManagedResources(ctx, &application.ResourcesQuery{
-			ApplicationName: &appName,
-		})
-		if err != nil {
-			telemetry.SetError(span, err, "Get Argo Managed Resources")
-			return pkg.CheckResult{}, "", err
-		}
-	} else {
-		resources = new(application.ManagedResourcesResponse)
-	}
+	resources = new(application.ManagedResourcesResponse)
 
 	errors.CheckError(err)
 	items := make([]objKeyLiveTarget, 0)
@@ -182,23 +160,25 @@ func GetDiff(ctx context.Context, name string, manifests []string, app *argoappv
 	return cr, diff, nil
 }
 
-func isApp(item objKeyLiveTarget, manifests []byte) (*argoappv1.Application, bool) {
+var nilApp = argoappv1.Application{}
+
+func isApp(item objKeyLiveTarget, manifests []byte) (argoappv1.Application, bool) {
 	if strings.ToLower(item.key.Group) != "argoproj.io" {
 		log.Debug().Str("group", item.key.Group).Msg("group is not correct")
-		return nil, false
+		return nilApp, false
 	}
 	if strings.ToLower(item.key.Kind) != "application" {
 		log.Debug().Str("kind", item.key.Kind).Msg("kind is not correct")
-		return nil, false
+		return nilApp, false
 	}
 
 	var app argoappv1.Application
 	if err := json.Unmarshal(manifests, &app); err != nil {
 		log.Warn().Err(err).Msg("failed to deserialize application")
-		return nil, false
+		return nilApp, false
 	}
 
-	return &app, true
+	return app, true
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879

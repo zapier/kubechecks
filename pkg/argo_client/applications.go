@@ -12,8 +12,9 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/pkg/errors"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
+
+	"github.com/zapier/kubechecks/telemetry"
 )
 
 // GetApplicationByName takes a context and a name, then queries the Argo Application client to retrieve the Application with the specified name.
@@ -35,23 +36,16 @@ func (argo *ArgoClient) GetApplicationByName(ctx context.Context, name string) (
 	return resp, nil
 }
 
-// GetKubernetesVersionByApplicationName is a method on the ArgoClient struct that takes a context and an application name as parameters,
+// GetKubernetesVersionByApplication is a method on the ArgoClient struct that takes a context and an application name as parameters,
 // and returns the Kubernetes version of the destination cluster where the specified application is running.
 // It returns an error if the application or cluster information cannot be retrieved.
-func (argo *ArgoClient) GetKubernetesVersionByApplicationName(ctx context.Context, appName string) (string, error) {
+func (argo *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, app v1alpha1.Application) (string, error) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetKubernetesVersionByApplicationName")
 	defer span.End()
 
-	// Get application
-	app, err := argo.GetApplicationByName(ctx, appName)
-	if err != nil {
-		telemetry.SetError(span, err, "Argo Get Application By Name error")
-		return "", err
-	}
-
 	// Get destination cluster
 	// Some app specs have a Name defined, some have a Server defined, some have both, take a valid one and use it
-	log.Debug().Msgf("for appname %s, server dest says: %s and name dest says: %s", appName, app.Spec.Destination.Server, app.Spec.Destination.Name)
+	log.Debug().Msgf("for appname %s, server dest says: %s and name dest says: %s", app.Name, app.Spec.Destination.Server, app.Spec.Destination.Name)
 	var clusterRequest *cluster.ClusterQuery
 	if app.Spec.Destination.Server != "" {
 		clusterRequest = &cluster.ClusterQuery{Server: app.Spec.Destination.Server}

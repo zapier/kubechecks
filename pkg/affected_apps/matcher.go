@@ -4,11 +4,11 @@ import (
 	"context"
 	"path"
 
-	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
 
 type AffectedItems struct {
-	Applications    []config.ApplicationStub
+	Applications    []v1alpha1.Application
 	ApplicationSets []ApplicationSet
 }
 

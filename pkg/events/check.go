@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -34,7 +34,6 @@ import (
 type CheckEvent struct {
 	client         pkg.Client // Client exposing methods to communicate with platform of user choice
 	fileList       []string   // What files have changed in this PR/MR
-	repoFiles      []string   // All files in this repository
 	TempWorkingDir string     // Location of the local repo
 	repo           *repo.Repo
 	logger         zerolog.Logger
@@ -45,9 +44,9 @@ type CheckEvent struct {
 
 	cfg *config.ServerConfig
 
-	createdApps  map[string]*argoappv1.Application
+	createdApps  map[string]v1alpha1.Application
 	addedAppsSet map[string]struct{}
-	appChannel   chan appStruct
+	appChannel   chan *v1alpha1.Application
 	doneChannel  chan bool
 }
 
@@ -57,7 +56,7 @@ func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig)
 	ce := &CheckEvent{
 		cfg:         cfg,
 		client:      client,
-		createdApps: make(map[string]*argoappv1.Application),
+		createdApps: make(map[string]v1alpha1.Application),
 		repo:        repo,
 	}
 
@@ -159,23 +158,12 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, targetBran
 	if cfg != nil {
 		log.Debug().Msg("using the config matcher")
 		matcher = affected_apps.NewConfigMatcher(cfg)
-	} else if viper.GetBool("monitor-all-applications") {
+	} else {
 		log.Debug().Msg("using an argocd matcher")
 		matcher, err = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo, ce.TempWorkingDir)
 		if err != nil {
 			return errors.Wrap(err, "failed to create argocd matcher")
 		}
-	} else {
-		log.Debug().Msg("using best effort matcher")
-		ce.repoFiles, err = ce.repo.GetListOfRepoFiles()
-		if err != nil {
-			telemetry.SetError(span, err, "Get List of Repo Files")
-
-			ce.logger.Error().Err(err).Msg("could not get list of repo files")
-			// continue with an empty list
-			ce.repoFiles = []string{}
-		}
-		matcher = affected_apps.NewBestEffortMatcher(ce.repo.Name, ce.repoFiles)
 	}
 	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList, targetBranch)
 	if err != nil {
@@ -192,11 +180,6 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, targetBran
 	ce.logger.Debug().Msgf("Affected appSets: %+v", ce.affectedItems.ApplicationSets)
 
 	return err
-}
-
-type appStruct struct {
-	name string
-	dir  string
 }
 
 func (ce *CheckEvent) ProcessApps(ctx context.Context) {
@@ -221,7 +204,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
 	ce.addedAppsSet = make(map[string]struct{})
-	ce.appChannel = make(chan appStruct, len(ce.affectedItems.Applications))
+	ce.appChannel = make(chan *v1alpha1.Application)
 	ce.doneChannel = make(chan bool, len(ce.affectedItems.Applications))
 
 	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
@@ -238,7 +221,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 
 	// Produce apps onto channel
 	for _, app := range ce.affectedItems.Applications {
-		ce.queueApp(app.Name, app.Path)
+		ce.queueApp(app)
 	}
 
 	returnCount := 0
@@ -270,21 +253,19 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.CommitStatus(ctx, pkg.StateSuccess)
 }
 
-func (ce *CheckEvent) queueApp(appName, path string) {
-	a := appStruct{
-		name: appName,
-		dir:  path,
-	}
+func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
+	name := app.Name
+	dir := app.Spec.GetSource().Path
 
-	ce.logger.Debug().Str("app", a.name).Str("dir", a.dir).Msg("producing app on channel")
+	ce.logger.Debug().Str("app", name).Str("dir", dir).Msg("producing app on channel")
 
-	key := fmt.Sprintf("%s::%s", a.name, a.dir)
+	key := fmt.Sprintf("%s::%s", name, dir)
 	if _, ok := ce.addedAppsSet[key]; ok {
 		return
 	}
 
 	ce.addedAppsSet[key] = struct{}{}
-	ce.appChannel <- a
+	ce.appChannel <- &app
 }
 
 // CommitStatus sets the commit status on the MR
@@ -301,8 +282,13 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 // Process all apps on the provided channel
 func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
 	for app := range ce.appChannel {
-		ce.logger.Info().Int("workerID", workerID).Str("app", app.name).Msg("Processing App")
-		isSuccess := ce.processApp(ctx, app.name, app.dir)
+		if app == nil {
+			log.Warn().Msg("appWorkers received a nil app")
+			continue
+		}
+
+		ce.logger.Info().Int("workerID", workerID).Str("app", app.Name).Msg("Processing App")
+		isSuccess := ce.processApp(ctx, *app)
 		ce.doneChannel <- isSuccess
 	}
 }
@@ -312,7 +298,10 @@ func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
 // It takes a context (ctx), application name (app), directory (dir) as input and returns an error if any check fails.
 // The processing is performed concurrently using Go routines and error groups. Any check results are sent through
 // the returnChan. The function also manages the inFlight atomic counter to track active processing routines.
-func (ce *CheckEvent) processApp(ctx context.Context, appName, dir string) bool {
+func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) bool {
+	appName := app.Name
+	dir := app.Spec.GetSource().Path
+
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "processApp", trace.WithAttributes(
 		attribute.String("app", appName),
 		attribute.String("dir", dir),
@@ -340,7 +329,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, appName, dir string) bool 
 	formattedManifests := argo_client.FormatManifestsYAML(manifests)
 	ce.logger.Trace().Msgf("Manifests:\n%+v\n", formattedManifests)
 
-	k8sVersion, err := argo_client.GetArgoClient().GetKubernetesVersionByApplicationName(ctx, appName)
+	k8sVersion, err := argo_client.GetArgoClient().GetKubernetesVersionByApplication(ctx, app)
 	if err != nil {
 		ce.logger.Error().Err(err).Msg("Error retrieving the Kubernetes version")
 		k8sVersion = viper.GetString("fallback-k8s-version")
@@ -354,9 +343,9 @@ func (ce *CheckEvent) processApp(ctx context.Context, appName, dir string) bool 
 	run := ce.createRunner(span, ctx, appName, &wg)
 
 	run("validating app against schema", ce.validateSchemas(ctx, appName, k8sVersion, ce.TempWorkingDir, formattedManifests))
-	run("generating diff for app", ce.generateDiff(ctx, appName, manifests, func(app *argoappv1.Application) {
+	run("generating diff for app", ce.generateDiff(ctx, appName, manifests, func(app v1alpha1.Application) {
 		ce.createdApps[app.Name] = app
-		ce.queueApp(app.Name, app.Spec.GetSource().Path)
+		ce.queueApp(app)
 	}))
 
 	if viper.GetBool("enable-conftest") {
@@ -447,7 +436,7 @@ func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (pk
 	}
 }
 
-func (ce *CheckEvent) generateDiff(ctx context.Context, appName string, manifests []string, addApp func(app *argoappv1.Application)) func() (pkg.CheckResult, error) {
+func (ce *CheckEvent) generateDiff(ctx context.Context, appName string, manifests []string, addApp func(app v1alpha1.Application)) func() (pkg.CheckResult, error) {
 	return func() (pkg.CheckResult, error) {
 		cr, rawDiff, err := diff.GetDiff(ctx, appName, manifests, ce.createdApps[appName], addApp)
 		if err != nil {

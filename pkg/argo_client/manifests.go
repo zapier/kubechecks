@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
 	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -21,7 +20,7 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, changedAppFilePath string, app *argoappv1.Application) ([]string, error) {
+func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
 	var err error
 
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetManifestsLocal")
@@ -36,9 +35,6 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	}()
 	argoClient := GetArgoClient()
 
-	appCloser, appClient := argoClient.GetApplicationClient()
-	defer appCloser.Close()
-
 	clusterCloser, clusterIf := argoClient.GetClusterClient()
 	defer clusterCloser.Close()
 
@@ -46,19 +42,6 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	defer settingsCloser.Close()
 
 	log.Debug().Str("name", name).Msg("generating diff for application...")
-
-	if app == nil {
-		appName := name
-		app, err = appClient.Get(ctx, &application.ApplicationQuery{
-			Name: &appName,
-		})
-		if err != nil {
-			telemetry.SetError(span, err, "Argo Get App")
-			getManifestsFailed.WithLabelValues(name).Inc()
-			return nil, errors.Wrap(err, "failed to get application")
-		}
-		log.Trace().Msgf("Argo App: %+v", app)
-	}
 
 	cluster, err := clusterIf.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
 	if err != nil {
