@@ -35,15 +35,17 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	}()
 	argoClient := GetArgoClient()
 
-	clusterCloser, clusterIf := argoClient.GetClusterClient()
+	clusterCloser, clusterClient := argoClient.GetClusterClient()
 	defer clusterCloser.Close()
 
 	settingsCloser, settingsClient := argoClient.GetSettingsClient()
 	defer settingsCloser.Close()
 
-	log.Debug().Str("name", name).Msg("generating diff for application...")
-
-	cluster, err := clusterIf.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
+	log.Debug().
+		Str("clusterName", app.Spec.Destination.Name).
+		Str("clusterServer", app.Spec.Destination.Server).
+		Msg("getting cluster")
+	cluster, err := clusterClient.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Cluster")
 		getManifestsFailed.WithLabelValues(name).Inc()
@@ -70,8 +72,8 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	*/
 
 	source := app.Spec.GetSource()
-	log.Debug().Msgf("App source: %+v", source)
 
+	log.Debug().Str("name", name).Msg("generating diff for application...")
 	res, err := repository.GenerateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, source.TargetRevision, &repoapiclient.ManifestRequest{
 		Repo:              &argoappv1.Repository{Repo: source.RepoURL},
 		AppLabelKey:       argoSettings.AppLabelKey,
