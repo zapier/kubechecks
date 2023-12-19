@@ -202,8 +202,8 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
 	ce.addedAppsSet = make(map[string]struct{})
-	ce.appChannel = make(chan *v1alpha1.Application, len(ce.affectedItems.Applications))
-	ce.doneChannel = make(chan bool, len(ce.affectedItems.Applications))
+	ce.appChannel = make(chan *v1alpha1.Application, len(ce.affectedItems.Applications)*2)
+	ce.doneChannel = make(chan bool, len(ce.affectedItems.Applications)*2)
 
 	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
 	if ce.workerLimits > len(ce.affectedItems.Applications) {
