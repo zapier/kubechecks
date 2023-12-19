@@ -225,11 +225,15 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	returnCount := 0
 	commitStatus := true
 	for appStatus := range ce.doneChannel {
+		ce.logger.Debug().Msg("finished an app")
 		if !appStatus {
+			ce.logger.Debug().Msg("app failed, commit status = false")
 			commitStatus = false
 		}
 
 		returnCount++
+		ce.logger.Debug().Int("done apps", returnCount).Int("all apps", len(ce.addedAppsSet)).Msg("completed apps")
+
 		if returnCount == len(ce.addedAppsSet) {
 			ce.logger.Debug().Msg("Closing channels")
 			close(ce.appChannel)
@@ -284,13 +288,15 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 // Process all apps on the provided channel
 func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
 	for app := range ce.appChannel {
-		if app == nil {
+		var isSuccess bool
+
+		if app != nil {
+			ce.logger.Info().Int("workerID", workerID).Str("app", app.Name).Msg("Processing App")
+			isSuccess = ce.processApp(ctx, *app)
+		} else {
 			log.Warn().Msg("appWorkers received a nil app")
-			continue
 		}
 
-		ce.logger.Info().Int("workerID", workerID).Str("app", app.Name).Msg("Processing App")
-		isSuccess := ce.processApp(ctx, *app)
 		ce.doneChannel <- isSuccess
 	}
 }
