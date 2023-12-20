@@ -206,27 +206,32 @@ func walk(s string, d fs.DirEntry, err error) error {
 }
 
 func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
-	log.Debug().Strs("args", args).Msg("building command")
-	cmd := exec.Command(name, args...)
+	cmd := execCommand(name, args...)
 	cmd.Dir = r.RepoDir
 	return cmd
 }
 
+func execCommand(name string, args ...string) *exec.Cmd {
+	log.Debug().Strs("args", args).Msg("building command")
+	cmd := exec.Command(name, args...)
+	return cmd
+}
+
 // InitializeGitSettings ensures Git auth is set up for cloning
-func (r *Repo) InitializeGitSettings() error {
-	cmd := r.execCommand("git", "config", "user.email", r.Email)
+func InitializeGitSettings(username, email string) error {
+	cmd := execCommand("git", "config", "--global", "user.email", email)
 	err := cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git email address")
 	}
 
-	cmd = r.execCommand("git", "config", "user.name", r.Username)
+	cmd = execCommand("git", "config", "--global", "user.name", username)
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git user name")
 	}
 
-	cloneUrl, err := getCloneUrl(r.Username, viper.GetViper())
+	cloneUrl, err := getCloneUrl(username, viper.GetViper())
 	if err != nil {
 		return errors.Wrap(err, "failed to get clone url")
 	}
@@ -243,14 +248,14 @@ func (r *Repo) InitializeGitSettings() error {
 	}
 	defer outfile.Close()
 
-	cmd = r.execCommand("echo", cloneUrl)
+	cmd = execCommand("echo", cloneUrl)
 	cmd.Stdout = outfile
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "unable to set git credentials")
 	}
 
-	cmd = r.execCommand("git", "config", "credential.helper", "store")
+	cmd = execCommand("git", "config", "credential.helper", "store")
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "unable to set git credential usage")

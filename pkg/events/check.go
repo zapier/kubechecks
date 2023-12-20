@@ -28,11 +28,12 @@ import (
 	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 	"github.com/zapier/kubechecks/pkg/validate"
+	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
 type CheckEvent struct {
-	client         pkg.Client // Client exposing methods to communicate with platform of user choice
+	client         vcs.Client // Client exposing methods to communicate with platform of user choice
 	fileList       []string   // What files have changed in this PR/MR
 	TempWorkingDir string     // Location of the local repo
 	repo           *repo.Repo
@@ -51,10 +52,10 @@ type CheckEvent struct {
 
 var inFlight int32
 
-func NewCheckEvent(repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig) *CheckEvent {
+func NewCheckEvent(repo *repo.Repo, cfg *config.ServerConfig) *CheckEvent {
 	ce := &CheckEvent{
 		cfg:    cfg,
-		client: client,
+		client: cfg.VcsClient,
 		repo:   repo,
 	}
 
@@ -95,14 +96,6 @@ func (ce *CheckEvent) Cleanup(ctx context.Context) {
 			log.Warn().Err(err).Msgf("failed to remove %s", ce.TempWorkingDir)
 		}
 	}
-}
-
-// InitializeGit sets the username and email for a git repo
-func (ce *CheckEvent) InitializeGit(ctx context.Context) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "InitializeGit")
-	defer span.End()
-
-	return ce.repo.InitializeGitSettings()
 }
 
 // CloneRepoLocal takes the repo inside the Check Event and try to clone it locally
@@ -242,7 +235,8 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	}
 	ce.logger.Info().Msg("Finished")
 
-	if err = ce.vcsNote.PushComment(ctx, ce.client); err != nil {
+	comment := ce.vcsNote.BuildComment(ctx)
+	if err = ce.client.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
 		ce.logger.Error().Err(err).Msg("failed to push comment")
 	}
 

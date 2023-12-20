@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/ziflex/lecho/v3"
 
-	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 const KubeChecksHooksPathPrefix = "/hooks"
@@ -96,7 +96,7 @@ func (s *Server) ensureWebhooks() error {
 	log.Info().Msg("ensuring all webhooks are created correctly")
 
 	ctx := context.TODO()
-	vcsClient, _ := GetVCSClient()
+	vcsClient := s.cfg.VcsClient
 
 	fullUrl, err := url.JoinPath(urlBase, s.hooksPrefix(), vcsClient.GetName(), "project")
 	if err != nil {
@@ -107,7 +107,7 @@ func (s *Server) ensureWebhooks() error {
 
 	for _, repo := range s.cfg.GetVcsRepos() {
 		wh, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
-		if err != nil && !errors.Is(err, pkg.ErrHookNotFound) {
+		if err != nil && !errors.Is(err, vcs.ErrHookNotFound) {
 			log.Error().Err(err).Msgf("failed to get hook for %s:", repo)
 			continue
 		}

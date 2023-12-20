@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -14,60 +12,27 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/events"
-	"github.com/zapier/kubechecks/pkg/github_client"
-	"github.com/zapier/kubechecks/pkg/gitlab_client"
 	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
 type VCSHookHandler struct {
-	client    pkg.Client
-	tokenUser string
-	cfg       *config.ServerConfig
+	client vcs.Client
+	cfg    *config.ServerConfig
 	// labelFilter is a string specifying the required label name to filter merge events by; if empty, all merge events will pass the filter.
 	labelFilter string
 }
 
-var once sync.Once
-var vcsClient pkg.Client // Currently, only allow one client at a time
-var tokenUser string
-var ProjectHookPath = "/gitlab/project"
-
-// High level type representing the fields we care about from an arbitrary Git repository
-func GetVCSClient() (pkg.Client, string) {
-	once.Do(func() {
-		vcsClient, tokenUser = createVCSClient()
-	})
-	return vcsClient, tokenUser
-}
-
-func createVCSClient() (pkg.Client, string) {
-	// Determine what client to use based on set config (default Gitlab)
-	clientType := viper.GetString("vcs-type")
-	// All hooks set up follow the convention /VCS_PROVIDER/project
-	ProjectHookPath = fmt.Sprintf("/%s/project", clientType)
-	switch clientType {
-	case "gitlab":
-		return gitlab_client.GetGitlabClient()
-	case "github":
-		return github_client.GetGithubClient()
-	default:
-		log.Fatal().Msgf("Unknown VCS type: %s", clientType)
-		return nil, ""
-	}
-
-}
+var ProjectHookPath string
 
 func NewVCSHookHandler(cfg *config.ServerConfig) *VCSHookHandler {
-	client, tokenUser := GetVCSClient()
 	labelFilter := viper.GetString("label-filter")
 
 	return &VCSHookHandler{
-		client:      client,
-		tokenUser:   tokenUser,
+		client:      cfg.VcsClient,
 		cfg:         cfg,
 		labelFilter: labelFilter,
 	}
@@ -88,10 +53,10 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 
-	repo, err := h.client.ParseHook(c.Request(), payload)
+	r, err := h.client.ParseHook(c.Request(), payload)
 	if err != nil {
 		switch err {
-		case pkg.ErrInvalidType:
+		case vcs.ErrInvalidType:
 			log.Debug().Msg("Ignoring event, not a merge request")
 			return c.String(http.StatusOK, "Skipped")
 		default:
@@ -102,7 +67,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	}
 
 	// We now have a generic repo with all the info we need to start processing an event. Hand off to the event processor
-	go h.processCheckEvent(ctx, repo)
+	go h.processCheckEvent(ctx, r)
 	return c.String(http.StatusAccepted, "Accepted")
 }
 
@@ -114,25 +79,25 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 		return
 	}
 
-	ProcessCheckEvent(ctx, repo, h.client, h.cfg)
+	ProcessCheckEvent(ctx, repo, h.cfg)
 }
 
-func ProcessCheckEvent(ctx context.Context, repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig) {
+func ProcessCheckEvent(ctx context.Context, r *repo.Repo, cfg *config.ServerConfig) {
 	var span trace.Span
 	ctx, span = otel.Tracer("Kubechecks").Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
-			attribute.Int("mr_id", repo.CheckID),
-			attribute.String("project", repo.Name),
-			attribute.String("sha", repo.SHA),
-			attribute.String("source", repo.HeadRef),
-			attribute.String("target", repo.BaseRef),
-			attribute.String("default_branch", repo.DefaultBranch),
+			attribute.Int("mr_id", r.CheckID),
+			attribute.String("project", r.Name),
+			attribute.String("sha", r.SHA),
+			attribute.String("source", r.HeadRef),
+			attribute.String("target", r.BaseRef),
+			attribute.String("default_branch", r.DefaultBranch),
 		),
 	)
 	defer span.End()
 
 	// If we've gotten here, we can now begin running checks (or trying to)
-	cEvent := events.NewCheckEvent(repo, client, cfg)
+	cEvent := events.NewCheckEvent(r, cfg)
 
 	err := cEvent.CreateTempDir()
 	if err != nil {
@@ -141,19 +106,19 @@ func ProcessCheckEvent(ctx context.Context, repo *repo.Repo, client pkg.Client, 
 	}
 	defer cEvent.Cleanup(ctx)
 
+	err = repo.InitializeGitSettings(cfg.VcsClient.Username(), cfg.VcsClient.Email())
+	if err != nil {
+		telemetry.SetError(span, err, "Initialize Git")
+		log.Error().Err(err).Msg("unable to initialize git")
+		return
+	}
+
 	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
 	err = cEvent.CloneRepoLocal(ctx)
 	if err != nil {
 		// TODO: Cancel event if gitlab etc
 		telemetry.SetError(span, err, "Clone Repo Local")
 		log.Error().Err(err).Msg("unable to clone repo locally")
-		return
-	}
-
-	err = cEvent.InitializeGit(ctx)
-	if err != nil {
-		telemetry.SetError(span, err, "Initialize Git")
-		log.Error().Err(err).Msg("unable to initialize git")
 		return
 	}
 
@@ -174,7 +139,7 @@ func ProcessCheckEvent(ctx context.Context, repo *repo.Repo, client pkg.Client, 
 	}
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
-	err = cEvent.GenerateListOfAffectedApps(ctx, repo.BaseRef)
+	err = cEvent.GenerateListOfAffectedApps(ctx, r.BaseRef)
 	if err != nil {
 		// TODO: Cancel if gitlab etc
 		//mEvent.CancelEvent(ctx, err, "Generate List of Affected Apps")

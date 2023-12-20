@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -16,31 +15,20 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs"
 )
-
-var gitlabClient *Client
-var gitlabTokenUser string
-var gitlabTokenEmail string
-var once sync.Once
 
 const GitlabTokenHeader = "X-Gitlab-Token"
 
 type Client struct {
 	*gitlab.Client
+
+	username, email string
 }
 
-var _ pkg.Client = new(Client)
+var _ vcs.Client = new(Client)
 
-func GetGitlabClient() (*Client, string) {
-	once.Do(func() {
-		gitlabClient = createGitlabClient()
-		gitlabTokenUser, gitlabTokenEmail = gitlabClient.getTokenUser()
-	})
-
-	return gitlabClient, gitlabTokenUser
-}
-
-func createGitlabClient() *Client {
+func CreateGitlabClient() (*Client, error) {
 	// Initialize the GitLab client with access token
 	gitlabToken := viper.GetString("vcs-token")
 	if gitlabToken == "" {
@@ -60,7 +48,12 @@ func createGitlabClient() *Client {
 		log.Fatal().Err(err).Msg("could not create Gitlab client")
 	}
 
-	return &Client{c}
+	user, _, err := c.Users.CurrentUser()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get current user")
+	}
+
+	return &Client{Client: c, username: user.Username, email: user.Email}, nil
 }
 
 func (c *Client) getTokenUser() (string, string) {
@@ -72,6 +65,8 @@ func (c *Client) getTokenUser() (string, string) {
 	return user.Username, user.Email
 }
 
+func (c *Client) Email() string    { return c.email }
+func (c *Client) Username() string { return c.username }
 func (c *Client) GetName() string {
 	return "gitlab"
 }
@@ -100,20 +95,20 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (*repo.Repo, error) 
 		switch event.ObjectAttributes.Action {
 		case "update":
 			if event.ObjectAttributes.OldRev != "" && event.ObjectAttributes.OldRev != event.ObjectAttributes.LastCommit.ID {
-				return buildRepoFromEvent(event), nil
+				return c.buildRepoFromEvent(event), nil
 			}
 			log.Trace().Msgf("Skipping update event sha didn't change")
 		case "open", "reopen":
-			return buildRepoFromEvent(event), nil
+			return c.buildRepoFromEvent(event), nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
-			return nil, pkg.ErrInvalidType
+			return nil, vcs.ErrInvalidType
 		}
 	default:
 		log.Trace().Msgf("Unhandled Event: %T", event)
-		return nil, pkg.ErrInvalidType
+		return nil, vcs.ErrInvalidType
 	}
-	return nil, pkg.ErrInvalidType
+	return nil, vcs.ErrInvalidType
 }
 
 func parseRepoName(url string) (string, error) {
@@ -128,7 +123,7 @@ func parseRepoName(url string) (string, error) {
 	return path, nil
 }
 
-func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*pkg.WebHookConfig, error) {
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs.WebHookConfig, error) {
 	pid, err := parseRepoName(repoName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse repo url")
@@ -145,14 +140,14 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 			if hook.MergeRequestsEvents {
 				events = append(events, string(gitlab.MergeRequestEventTargetType))
 			}
-			return &pkg.WebHookConfig{
+			return &vcs.WebHookConfig{
 				Url:    hook.URL,
 				Events: events,
 			}, nil
 		}
 	}
 
-	return nil, pkg.ErrHookNotFound
+	return nil, vcs.ErrHookNotFound
 }
 
 func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {
@@ -179,7 +174,7 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
 	panic("implement me")
 }
 
-func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
+func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
 	// Convert all labels from this MR to a string array of label names
 	var labels []string
 	for _, label := range event.Labels {
@@ -195,8 +190,8 @@ func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
 		Name:          event.Project.Name,
 		CheckID:       event.ObjectAttributes.IID,
 		SHA:           event.ObjectAttributes.LastCommit.ID,
-		Username:      gitlabTokenUser,
-		Email:         gitlabTokenEmail,
+		Username:      c.username,
+		Email:         c.email,
 		Labels:        labels,
 	}
 }

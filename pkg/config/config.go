@@ -8,6 +8,8 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
 	giturls "github.com/whilp/git-urls"
+
+	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 type repoURL struct {
@@ -55,6 +57,7 @@ type ServerConfig struct {
 	UrlPrefix     string
 	WebhookSecret string
 	VcsToArgoMap  VcsToArgoMap
+	VcsClient     vcs.Client
 }
 
 func (cfg *ServerConfig) GetVcsRepos() []string {

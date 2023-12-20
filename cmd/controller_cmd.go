@@ -16,6 +16,7 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/events"
+	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/server"
 )
 
@@ -25,12 +26,25 @@ var ControllerCmd = &cobra.Command{
 	Short: "Start the VCS Webhook handler.",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
+		clientType := viper.GetString("vcs-type")
+		client, err := createVCSClient(clientType)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create vcs client")
+		}
 
-		server := server.NewServer(&config.ServerConfig{
+		cfg := config.ServerConfig{
 			UrlPrefix:     viper.GetString("webhook-url-prefix"),
 			WebhookSecret: viper.GetString("webhook-secret"),
-		})
+			VcsClient:     client,
+		}
+
+		log.Info().Msg("Initializing git settings")
+		if err := repo.InitializeGitSettings(cfg.VcsClient.Username(), cfg.VcsClient.Email()); err != nil {
+			log.Fatal().Err(err).Msg("failed to initialize git settings")
+		}
+
+		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
+		server := server.NewServer(&cfg)
 
 		ctx := context.Background()
 		go server.Start(ctx)

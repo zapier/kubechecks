@@ -52,7 +52,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 		// note user is not the gitlabTokenUser
 		// note is an internal system note such as notes on commit messages
 		// note is already hidden
-		if note.Author.Username != gitlabTokenUser || note.System || strings.Contains(note.Body, "<summary><i>OUTDATED: Kubechecks Report</i></summary>") {
+		if note.Author.Username != c.username || note.System || strings.Contains(note.Body, "<summary><i>OUTDATED: Kubechecks Report</i></summary>") {
 			continue
 		}
 
@@ -114,7 +114,7 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 	log.Debug().Msg("deleting outdated comments")
 
 	for _, note := range notes {
-		if note.Author.Username == gitlabTokenUser {
+		if note.Author.Username == c.username {
 			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
 			_, err := c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
 			if err != nil {

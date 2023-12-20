@@ -5,6 +5,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/server"
@@ -23,13 +24,18 @@ var processCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to build apps map")
 		}
 
+		clientType := viper.GetString("vcs-type")
+		client, err := createVCSClient(clientType)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create vcs client")
+		}
+
 		cfg := config.ServerConfig{
 			UrlPrefix:     "--unused--",
 			WebhookSecret: "--unused--",
 			VcsToArgoMap:  result,
+			VcsClient:     client,
 		}
-
-		client, _ := server.GetVCSClient()
 
 		repo, err := client.LoadHook(ctx, args[0])
 		if err != nil {
@@ -37,7 +43,7 @@ var processCmd = &cobra.Command{
 			return
 		}
 
-		server.ProcessCheckEvent(ctx, repo, client, &cfg)
+		server.ProcessCheckEvent(ctx, repo, &cfg)
 	},
 }
 
