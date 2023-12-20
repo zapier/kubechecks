@@ -255,7 +255,7 @@ func InitializeGitSettings(username, email string) error {
 		return errors.Wrap(err, "unable to set git credentials")
 	}
 
-	cmd = execCommand("git", "config", "credential.helper", "store")
+	cmd = execCommand("git", "config", "--global", "credential.helper", "store")
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "unable to set git credential usage")
