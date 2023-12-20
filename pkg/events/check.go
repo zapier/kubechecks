@@ -102,7 +102,7 @@ func (ce *CheckEvent) InitializeGit(ctx context.Context) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "InitializeGit")
 	defer span.End()
 
-	return repo.InitializeGitSettings(ce.repo.Username, ce.repo.Email)
+	return ce.repo.InitializeGitSettings()
 }
 
 // CloneRepoLocal takes the repo inside the Check Event and try to clone it locally
@@ -259,19 +259,21 @@ func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
 	name := app.Name
 	dir := app.Spec.GetSource().Path
 
-	ce.logger.Debug().
-		Str("app", name).
-		Str("dir", dir).
-		Str("cluster-name", app.Spec.Destination.Name).
-		Str("cluster-server", app.Spec.Destination.Server).
-		Msg("producing app on channel")
-
 	if _, ok := ce.addedAppsSet[name]; ok {
 		return
 	}
 
 	ce.addedAppsSet[name] = struct{}{}
+
+	logger := ce.logger.Debug().
+		Str("app", name).
+		Str("dir", dir).
+		Str("cluster-name", app.Spec.Destination.Name).
+		Str("cluster-server", app.Spec.Destination.Server)
+
+	logger.Msg("producing app on channel")
 	ce.appChannel <- &app
+	logger.Msg("finished producing app")
 }
 
 // CommitStatus sets the commit status on the MR

@@ -29,9 +29,7 @@ type Client interface {
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
 	VerifyHook(*http.Request, string) ([]byte, error)
 	// ParseHook parses webook payload for valid events
-	ParseHook(*http.Request, []byte) (interface{}, error)
-	// CreateRepo handles valid events
-	CreateRepo(context.Context, interface{}) (*repo.Repo, error)
+	ParseHook(*http.Request, []byte) (*repo.Repo, error)
 	// CommitStatus sets a status for a specific commit on the remote VCS
 	CommitStatus(context.Context, *repo.Repo, CommitState) error
 	// GetHookByUrl gets a webhook by url
@@ -42,4 +40,6 @@ type Client interface {
 	GetName() string
 	// Tidy outdated comments either by hiding or deleting them
 	TidyOutdatedComments(context.Context, *repo.Repo) error
+	// LoadHook creates an EventRequest from the ID of an actual request
+	LoadHook(ctx context.Context, repoAndId string) (*repo.Repo, error)
 }

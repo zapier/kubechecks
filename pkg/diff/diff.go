@@ -17,7 +17,6 @@ import (
 	"github.com/argoproj/gitops-engine/pkg/sync/hook"
 	"github.com/argoproj/gitops-engine/pkg/sync/ignore"
 	"github.com/argoproj/gitops-engine/pkg/utils/kube"
-	"github.com/argoproj/pkg/errors"
 	"github.com/ghodss/yaml"
 	"github.com/go-logr/zerologr"
 	"github.com/pmezard/go-difflib/difflib"
@@ -38,6 +37,14 @@ type objKeyLiveTarget struct {
 	target *unstructured.Unstructured
 }
 
+func isAppMissingErr(err error) bool {
+	if strings.Contains(err.Error(), "PermissionDenied") {
+		return true
+	}
+
+	return false
+}
+
 /*
 Take cli output and return as a string or an array of strings instead of printing
 
@@ -56,19 +63,30 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 	settingsCloser, settingsClient := argoClient.GetSettingsClient()
 	defer settingsCloser.Close()
 
-	var (
-		err       error
-		resources *application.ManagedResourcesResponse
-	)
+	closer, appClient := argoClient.GetApplicationClient()
+	defer closer.Close()
 
-	resources = new(application.ManagedResourcesResponse)
+	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
+		ApplicationName: &app.Name,
+	})
+	if err != nil {
+		if !isAppMissingErr(err) {
+			telemetry.SetError(span, err, "Get Argo Managed Resources")
+			return pkg.CheckResult{}, "", err
+		}
 
-	errors.CheckError(err)
+		resources = new(application.ManagedResourcesResponse)
+	}
+
 	items := make([]objKeyLiveTarget, 0)
 	var unstructureds []*unstructured.Unstructured
 	for _, mfst := range manifests {
 		obj, err := argoappv1.UnmarshalToUnstructured(mfst)
-		errors.CheckError(err)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to unmarshal to unstructured")
+			continue
+		}
+
 		unstructureds = append(unstructureds, obj)
 	}
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
@@ -83,8 +101,15 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 		return pkg.CheckResult{}, "", err
 	}
 
-	groupedObjs := groupObjsByKey(unstructureds, liveObjs, app.Spec.Destination.Namespace)
-	items = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name)
+	groupedObjs, err := groupObjsByKey(unstructureds, liveObjs, app.Spec.Destination.Namespace)
+	if err != nil {
+		return pkg.CheckResult{}, "", err
+	}
+
+	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name); err != nil {
+		return pkg.CheckResult{}, "", err
+	}
+
 	diffBuffer := &strings.Builder{}
 	var added, modified, removed int
 	for _, item := range items {
@@ -108,9 +133,16 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 			WithTracking(argoSettings.AppLabelKey, argoSettings.TrackingMethod).
 			WithNoCache().
 			Build()
-		errors.CheckError(err)
+		if err != nil {
+			telemetry.SetError(span, err, "Build Diff")
+			return pkg.CheckResult{}, "failed to build diff", err
+		}
+
 		diffRes, err := argodiff.StateDiff(item.live, item.target, diffConfig)
-		errors.CheckError(err)
+		if err != nil {
+			telemetry.SetError(span, err, "State Diff")
+			return pkg.CheckResult{}, "failed to state diff", err
+		}
 
 		if diffRes.Modified || item.target == nil || item.live == nil {
 			diffBuffer.WriteString(fmt.Sprintf("===== %s ======\n", resourceId))
@@ -119,8 +151,10 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 			if item.target != nil && item.live != nil {
 				target = &unstructured.Unstructured{}
 				live = item.live
-				err = json.Unmarshal(diffRes.PredictedLive, target)
-				errors.CheckError(err)
+				if err = json.Unmarshal(diffRes.PredictedLive, target); err != nil {
+					telemetry.SetError(span, err, "JSON Unmarshall")
+					log.Warn().Err(err).Msg("failed to unmarshall json")
+				}
 			} else {
 				live = item.live
 				target = item.target
@@ -182,7 +216,7 @@ func isApp(item objKeyLiveTarget, manifests []byte) (argoappv1.Application, bool
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
-func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructured.Unstructured, appNamespace string) map[kube.ResourceKey]*unstructured.Unstructured {
+func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructured.Unstructured, appNamespace string) (map[kube.ResourceKey]*unstructured.Unstructured, error) {
 	namespacedByGk := make(map[schema.GroupKind]bool)
 	for i := range liveObjs {
 		if liveObjs[i] != nil {
@@ -191,7 +225,10 @@ func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructu
 		}
 	}
 	localObs, _, err := controller.DeduplicateTargetObjects(appNamespace, localObs, &resourceInfoProvider{namespacedByGk: namespacedByGk})
-	errors.CheckError(err)
+	if err != nil {
+		return nil, err
+	}
+
 	objByKey := make(map[kube.ResourceKey]*unstructured.Unstructured)
 	for i := range localObs {
 		obj := localObs[i]
@@ -199,16 +236,17 @@ func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructu
 			objByKey[kube.GetResourceKey(obj)] = obj
 		}
 	}
-	return objByKey
+	return objByKey, nil
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
-func groupObjsForDiff(resources *application.ManagedResourcesResponse, objs map[kube.ResourceKey]*unstructured.Unstructured, items []objKeyLiveTarget, argoSettings *settings.Settings, appName string) []objKeyLiveTarget {
+func groupObjsForDiff(resources *application.ManagedResourcesResponse, objs map[kube.ResourceKey]*unstructured.Unstructured, items []objKeyLiveTarget, argoSettings *settings.Settings, appName string) ([]objKeyLiveTarget, error) {
 	resourceTracking := argo.NewResourceTracking()
 	for _, res := range resources.Items {
 		var live = &unstructured.Unstructured{}
-		err := json.Unmarshal([]byte(res.NormalizedLiveState), &live)
-		errors.CheckError(err)
+		if err := json.Unmarshal([]byte(res.NormalizedLiveState), &live); err != nil {
+			return nil, err
+		}
 
 		key := kube.ResourceKey{Name: res.Name, Namespace: res.Namespace, Group: res.Group, Kind: res.Kind}
 		if key.Kind == kube.SecretKind && key.Group == "" {
@@ -218,8 +256,9 @@ func groupObjsForDiff(resources *application.ManagedResourcesResponse, objs map[
 		}
 		if local, ok := objs[key]; ok || live != nil {
 			if local != nil && !kube.IsCRD(local) {
-				err = resourceTracking.SetAppInstance(local, argoSettings.AppLabelKey, appName, "", argoappv1.TrackingMethod(argoSettings.GetTrackingMethod()))
-				errors.CheckError(err)
+				if err := resourceTracking.SetAppInstance(local, argoSettings.AppLabelKey, appName, "", argoappv1.TrackingMethod(argoSettings.GetTrackingMethod())); err != nil {
+					return nil, err
+				}
 			}
 
 			items = append(items, objKeyLiveTarget{key, live, local})
@@ -234,7 +273,8 @@ func groupObjsForDiff(resources *application.ManagedResourcesResponse, objs map[
 		}
 		items = append(items, objKeyLiveTarget{key, nil, local})
 	}
-	return items
+
+	return items, nil
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879

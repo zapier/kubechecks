@@ -88,16 +88,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 
-	eventRequest, err := h.client.ParseHook(c.Request(), payload)
-	if err != nil {
-		// TODO: do something w/ error
-		log.Error().Err(err).Msg("Failed to parse hook payload. Are you using the right client?")
-		return echo.ErrBadRequest
-	}
-
-	// At this point, our client has validated the secret, and parsed a valid event.
-	// We try to build a generic Repo from this data, to construct our CheckEvent
-	repo, err := h.client.CreateRepo(ctx, eventRequest)
+	repo, err := h.client.ParseHook(c.Request(), payload)
 	if err != nil {
 		switch err {
 		case pkg.ErrInvalidType:
@@ -118,6 +109,15 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 // Takes a constructed Repo, and attempts to run the Kubechecks processing suite against it.
 // If the Repo is not yet populated, this will fail.
 func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo) {
+	if !h.passesLabelFilter(repo) {
+		log.Warn().Str("label-filter", h.labelFilter).Msg("ignoring event, did not have matching label")
+		return
+	}
+
+	ProcessCheckEvent(ctx, repo, h.client, h.cfg)
+}
+
+func ProcessCheckEvent(ctx context.Context, repo *repo.Repo, client pkg.Client, cfg *config.ServerConfig) {
 	var span trace.Span
 	ctx, span = otel.Tracer("Kubechecks").Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
@@ -131,13 +131,8 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	)
 	defer span.End()
 
-	if !h.passesLabelFilter(repo) {
-		log.Warn().Str("label-filter", h.labelFilter).Msg("ignoring event, did not have matching label")
-		return
-	}
-
 	// If we've gotten here, we can now begin running checks (or trying to)
-	cEvent := events.NewCheckEvent(repo, h.client, h.cfg)
+	cEvent := events.NewCheckEvent(repo, client, cfg)
 
 	err := cEvent.CreateTempDir()
 	if err != nil {
@@ -146,19 +141,19 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo)
 	}
 	defer cEvent.Cleanup(ctx)
 
-	err = cEvent.InitializeGit(ctx)
-	if err != nil {
-		telemetry.SetError(span, err, "Initialize Git")
-		log.Error().Err(err).Msg("unable to initialize git")
-		return
-	}
-
 	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
 	err = cEvent.CloneRepoLocal(ctx)
 	if err != nil {
 		// TODO: Cancel event if gitlab etc
 		telemetry.SetError(span, err, "Clone Repo Local")
 		log.Error().Err(err).Msg("unable to clone repo locally")
+		return
+	}
+
+	err = cEvent.InitializeGit(ctx)
+	if err != nil {
+		telemetry.SetError(span, err, "Initialize Git")
+		log.Error().Err(err).Msg("unable to initialize git")
 		return
 	}
 

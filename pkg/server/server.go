@@ -15,7 +15,6 @@ import (
 	"github.com/ziflex/lecho/v3"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/config"
 )
 
@@ -36,9 +35,11 @@ func GetServer() *Server {
 	return singleton
 }
 
-func (s *Server) Start() {
-	if err := s.buildVcsToArgoMap(); err != nil {
+func (s *Server) Start(ctx context.Context) {
+	if argoMap, err := s.buildVcsToArgoMap(ctx); err != nil {
 		log.Warn().Err(err).Msg("failed to build vcs app map from argo")
+	} else {
+		s.cfg.VcsToArgoMap = argoMap
 	}
 
 	if err := s.ensureWebhooks(); err != nil {
@@ -121,26 +122,12 @@ func (s *Server) ensureWebhooks() error {
 	return nil
 }
 
-func (s *Server) buildVcsToArgoMap() error {
-	log.Debug().Msg("building VCS to Application Map")
+func (s *Server) buildVcsToArgoMap(ctx context.Context) (config.VcsToArgoMap, error) {
 	if !viper.GetBool("monitor-all-applications") {
-		return nil
+		return config.NewVcsToArgoMap(), nil
 	}
 
-	ctx := context.TODO()
+	log.Debug().Msg("building VCS to Application Map")
 
-	result := config.NewVcsToArgoMap()
-
-	argoClient := argo_client.GetArgoClient()
-
-	apps, err := argoClient.GetApplications(ctx)
-	if err != nil {
-		return errors.Wrap(err, "failed to list applications")
-	}
-	for _, app := range apps.Items {
-		result.AddApp(app)
-	}
-
-	s.cfg.VcsToArgoMap = result
-	return nil
+	return config.BuildAppsMap(ctx)
 }

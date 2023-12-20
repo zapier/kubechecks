@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -101,13 +103,12 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	}
 }
 
-func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error) {
-	return github.ParseWebHook(github.WebHookType(r), payload)
-}
+func (c *Client) ParseHook(r *http.Request, request []byte) (*repo.Repo, error) {
+	payload, err := github.ParseWebHook(github.WebHookType(r), request)
+	if err != nil {
+		return nil, err
+	}
 
-// CreateRepo creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
-// Has already occured previously, so we expect a valid event type for the GitHub client in the payload arg
-func (c *Client) CreateRepo(_ context.Context, payload interface{}) (*repo.Repo, error) {
 	switch p := payload.(type) {
 	case *github.PullRequestEvent:
 		switch p.GetAction() {
@@ -256,4 +257,92 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 	}
 
 	return nil
+}
+
+var rePullRequest = regexp.MustCompile(`(.*)/(.*)#(\d+)`)
+
+func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
+	m := rePullRequest.FindStringSubmatch(id)
+	if len(m) != 4 {
+		return nil, errors.New("must be in format OWNER/REPO#PR")
+	}
+
+	ownerName := m[1]
+	repoName := m[2]
+	prNumber, err := strconv.ParseInt(m[3], 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse int")
+	}
+
+	repoInfo, _, err := c.Repositories.Get(ctx, ownerName, repoName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get repo")
+	}
+
+	pullRequest, _, err := c.PullRequests.Get(ctx, ownerName, repoName, int(prNumber))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get pull request")
+	}
+
+	var labels []string
+	for _, label := range pullRequest.Labels {
+		labels = append(labels, label.GetName())
+	}
+
+	var (
+		baseRef                    string
+		headRef, headSha           string
+		login, userName, userEmail string
+	)
+
+	if pullRequest.Base != nil {
+		baseRef = unPtr(pullRequest.Base.Ref)
+		headRef = unPtr(pullRequest.Head.Ref)
+	}
+
+	if repoInfo.Owner != nil {
+		login = unPtr(repoInfo.Owner.Login)
+	} else {
+		login = "kubechecks"
+	}
+
+	if pullRequest.Head != nil {
+		headSha = unPtr(pullRequest.Head.SHA)
+	}
+
+	if pullRequest.User != nil {
+		userName = unPtr(pullRequest.User.Name)
+		userEmail = unPtr(pullRequest.User.Email)
+	}
+
+	// these are required for `git merge` later on
+	if userName == "" {
+		userName = "kubechecks"
+	}
+	if userEmail == "" {
+		userEmail = "kubechecks@github.com"
+	}
+
+	return &repo.Repo{
+		BaseRef:       baseRef,
+		HeadRef:       headRef,
+		DefaultBranch: unPtr(repoInfo.DefaultBranch),
+		CloneURL:      unPtr(repoInfo.CloneURL),
+		FullName:      repoInfo.GetFullName(),
+		Owner:         login,
+		Name:          repoInfo.GetName(),
+		CheckID:       int(prNumber),
+		SHA:           headSha,
+		Username:      userName,
+		Email:         userEmail,
+		Labels:        labels,
+	}, nil
+}
+
+func unPtr[T interface{ string | int }](ps *T) T {
+	if ps == nil {
+		var t T
+		return t
+	}
+	return *ps
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -30,7 +31,9 @@ var ControllerCmd = &cobra.Command{
 			UrlPrefix:     viper.GetString("webhook-url-prefix"),
 			WebhookSecret: viper.GetString("webhook-secret"),
 		})
-		go server.Start()
+
+		ctx := context.Background()
+		go server.Start(ctx)
 
 		// graceful termination handler.
 		// when we receive a SIGTERM from kubernetes, check for in-flight requests before exiting.

@@ -89,13 +89,12 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 }
 
 // ParseHook parses and validates a webhook event; return an err if this isn't valid
-func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error) {
-	return gitlab.ParseHook(gitlab.HookEventType(r), payload)
-}
+func (c *Client) ParseHook(r *http.Request, request []byte) (*repo.Repo, error) {
+	eventRequest, err := gitlab.ParseHook(gitlab.HookEventType(r), request)
+	if err != nil {
+		return nil, err
+	}
 
-// CreateRepo takes a valid gitlab webhook event request, and determines if we should process it
-// Returns a generic Repo with all info kubechecks needs on success, err if not
-func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*repo.Repo, error) {
 	switch event := eventRequest.(type) {
 	case *gitlab.MergeEvent:
 		switch event.ObjectAttributes.Action {
@@ -173,6 +172,11 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 	}
 
 	return nil
+}
+
+func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
