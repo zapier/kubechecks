@@ -25,7 +25,6 @@ type VCSHookHandler struct {
 	cfg    *config.ServerConfig
 	// labelFilter is a string specifying the required label name to filter merge events by; if empty, all merge events will pass the filter.
 	labelFilter string
-	hooksPrefix string
 }
 
 func NewVCSHookHandler(cfg *config.ServerConfig) *VCSHookHandler {
