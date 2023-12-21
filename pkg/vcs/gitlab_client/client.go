@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -160,9 +162,46 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 	return nil
 }
 
+var reMergeRequest = regexp.MustCompile(`(.*)!(\d+)`)
+
 func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
-	//TODO implement me
-	panic("implement me")
+	m := reMergeRequest.FindStringSubmatch(id)
+	if len(m) != 3 {
+		return nil, errors.New("must be in format REPOPATH!MR")
+	}
+
+	repoPath := m[1]
+	mrNumber, err := strconv.ParseInt(m[2], 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse merge request number")
+	}
+
+	project, _, err := c.Projects.GetProject(repoPath, nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get project '%s'", repoPath)
+	}
+
+	mergeRequest, _, err := c.MergeRequests.GetMergeRequest(repoPath, int(mrNumber), nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get merge request '%s' in project '%s'", mrNumber, repoPath)
+	}
+
+	return &repo.Repo{
+		BaseRef:       mergeRequest.TargetBranch,
+		HeadRef:       mergeRequest.SourceBranch,
+		DefaultBranch: project.DefaultBranch,
+		RepoDir:       "",
+		Remote:        "",
+		CloneURL:      project.HTTPURLToRepo,
+		Name:          project.Name,
+		Owner:         "",
+		CheckID:       mergeRequest.IID,
+		SHA:           mergeRequest.SHA,
+		FullName:      project.PathWithNamespace,
+		Username:      c.username,
+		Email:         c.email,
+		Labels:        mergeRequest.Labels,
+	}, nil
 }
 
 func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {

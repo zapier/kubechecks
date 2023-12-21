@@ -25,7 +25,7 @@ func NewConfigMatcher(cfg *repo_config.Config) *ConfigMatcher {
 }
 
 func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
-	appsMap := make(map[string]string)
+	triggeredAppsMap := make(map[string]string)
 	var appSetList []ApplicationSet
 
 	triggeredApps, triggeredAppsets, err := b.triggeredApps(ctx, changeList)
@@ -34,28 +34,28 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, t
 	}
 
 	for _, app := range triggeredApps {
-		appsMap[app.Name] = app.Path
+		triggeredAppsMap[app.Name] = app.Path
 	}
 
 	for _, appset := range triggeredAppsets {
 		appSetList = append(appSetList, ApplicationSet{appset.Name})
 	}
 
-	argoApps, err := b.argoClient.GetApplications(ctx)
+	allArgoApps, err := b.argoClient.GetApplications(ctx)
 	if err != nil {
 		return AffectedItems{}, errors.Wrap(err, "failed to list applications")
 	}
 
-	var appsSlice []v1alpha1.Application
-	for _, app := range argoApps.Items {
-		if _, ok := appsMap[app.Name]; !ok {
+	var triggeredAppsSlice []v1alpha1.Application
+	for _, app := range allArgoApps.Items {
+		if _, ok := triggeredAppsMap[app.Name]; !ok {
 			continue
 		}
 
-		appsSlice = append(appsSlice, app)
+		triggeredAppsSlice = append(triggeredAppsSlice, app)
 	}
 
-	return AffectedItems{Applications: appsSlice, ApplicationSets: appSetList}, nil
+	return AffectedItems{Applications: triggeredAppsSlice, ApplicationSets: appSetList}, nil
 }
 
 func (b *ConfigMatcher) triggeredApps(ctx context.Context, modifiedFiles []string) ([]*repo_config.ArgoCdApplicationConfig, []*repo_config.ArgocdApplicationSetConfig, error) {
