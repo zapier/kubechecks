@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -20,19 +21,12 @@ import (
 
 const KubeChecksHooksPathPrefix = "/hooks"
 
-var singleton *Server
-
 type Server struct {
 	cfg *config.ServerConfig
 }
 
 func NewServer(cfg *config.ServerConfig) *Server {
-	singleton = &Server{cfg: cfg}
-	return singleton
-}
-
-func GetServer() *Server {
-	return singleton
+	return &Server{cfg: cfg}
 }
 
 func (s *Server) Start(ctx context.Context) {
@@ -63,6 +57,11 @@ func (s *Server) Start(ctx context.Context) {
 
 	ghHooks := NewVCSHookHandler(s.cfg)
 	ghHooks.AttachHandlers(hooksGroup)
+
+	fmt.Println("Method\tPath")
+	for _, r := range e.Routes() {
+		fmt.Printf("%s\t%s\n", r.Method, r.Path)
+	}
 
 	if err := e.Start(":8080"); err != nil {
 		log.Fatal().Err(err).Msg("could not start hooks server")

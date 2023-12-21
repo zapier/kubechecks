@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -24,9 +25,8 @@ type VCSHookHandler struct {
 	cfg    *config.ServerConfig
 	// labelFilter is a string specifying the required label name to filter merge events by; if empty, all merge events will pass the filter.
 	labelFilter string
+	hooksPrefix string
 }
-
-var ProjectHookPath string
 
 func NewVCSHookHandler(cfg *config.ServerConfig) *VCSHookHandler {
 	labelFilter := viper.GetString("label-filter")
@@ -38,9 +38,8 @@ func NewVCSHookHandler(cfg *config.ServerConfig) *VCSHookHandler {
 	}
 }
 func (h *VCSHookHandler) AttachHandlers(grp *echo.Group) {
-	log.Info().Str("path", GetServer().hooksPrefix()).Msg("setting up hook handler")
-	grp.POST(ProjectHookPath, h.groupHandler)
-	log.Info().Str("path", GetServer().hooksPrefix()).Str("projectPath", ProjectHookPath).Msg("hook handler setup complete")
+	projectHookPath := fmt.Sprintf("/%s/project", h.cfg.VcsClient.GetName())
+	grp.POST(projectHookPath, h.groupHandler)
 }
 
 func (h *VCSHookHandler) groupHandler(c echo.Context) error {
