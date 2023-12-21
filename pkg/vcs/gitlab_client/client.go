@@ -56,15 +56,6 @@ func CreateGitlabClient() (*Client, error) {
 	return &Client{Client: c, username: user.Username, email: user.Email}, nil
 }
 
-func (c *Client) getTokenUser() (string, string) {
-	user, _, err := c.Users.CurrentUser()
-	if err != nil {
-		log.Fatal().Err(err).Msg("could not create Gitlab token user")
-	}
-
-	return user.Username, user.Email
-}
-
 func (c *Client) Email() string    { return c.email }
 func (c *Client) Username() string { return c.username }
 func (c *Client) GetName() string {

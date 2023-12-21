@@ -116,24 +116,6 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (*repo.Repo, error) 
 	}
 }
 
-// We need an email and username for authenticating our local git repository
-// Grab the current authenticated client login and email
-func (c *Client) getUserDetails() (string, string, error) {
-	user, _, err := c.Users.Get(context.Background(), "")
-	if err != nil {
-		return "", "", err
-	}
-
-	// Some users on GitHub don't have an email listed; if so, catch that and return empty string
-	if user.Email == nil {
-		log.Error().Msg("could not load Github user email")
-		return *user.Login, "", nil
-	}
-
-	return *user.Login, *user.Email, nil
-
-}
-
 func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 	var labels []string
 	for _, label := range event.PullRequest.Labels {

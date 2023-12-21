@@ -38,11 +38,7 @@ type objKeyLiveTarget struct {
 }
 
 func isAppMissingErr(err error) bool {
-	if strings.Contains(err.Error(), "PermissionDenied") {
-		return true
-	}
-
-	return false
+	return strings.Contains(err.Error(), "PermissionDenied")
 }
 
 /*
