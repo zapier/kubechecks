@@ -48,15 +48,14 @@ func (r *Repo) CloneRepoLocal(ctx context.Context, repoDir string) error {
 	// TODO: Look if this is still needed
 	r.RepoDir = repoDir
 
-	cmd := execCommand("git", "clone", r.CloneURL, repoDir)
+	cmd := r.execCommand("git", "clone", r.CloneURL, repoDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to clone repository, %s", out)
 		return err
 	}
 
-	cmd = execCommand("git", "remote")
-	cmd.Dir = repoDir
+	cmd = r.execCommand("git", "remote")
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
 	scanner := bufio.NewScanner(pipe)
@@ -110,8 +109,7 @@ func (r *Repo) MergeIntoTarget(ctx context.Context) error {
 	defer span.End()
 
 	log.Debug().Msgf("Merging MR commit %s into a tmp branch off of %s for manifest generation...", r.SHA, r.BaseRef)
-	cmd := execCommand("git", "fetch", r.Remote, r.BaseRef)
-	cmd.Dir = r.RepoDir
+	cmd := r.execCommand("git", "fetch", r.Remote, r.BaseRef)
 	err := cmd.Run()
 	if err != nil {
 		telemetry.SetError(span, err, "git fetch remote into target branch")
@@ -119,8 +117,7 @@ func (r *Repo) MergeIntoTarget(ctx context.Context) error {
 		return err
 	}
 
-	cmd = execCommand("git", "checkout", "-b", "tmp", fmt.Sprintf("%s/%s", r.Remote, r.BaseRef))
-	cmd.Dir = r.RepoDir
+	cmd = r.execCommand("git", "checkout", "-b", "tmp", fmt.Sprintf("%s/%s", r.Remote, r.BaseRef))
 	_, err = cmd.Output()
 	if err != nil {
 		telemetry.SetError(span, err, "git checkout tmp branch")
@@ -128,8 +125,7 @@ func (r *Repo) MergeIntoTarget(ctx context.Context) error {
 		return err
 	}
 
-	cmd = execCommand("git", "merge", r.SHA)
-	cmd.Dir = r.RepoDir
+	cmd = r.execCommand("git", "merge", r.SHA)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		telemetry.SetError(span, err, "merge last commit id into tmp branch")
@@ -172,8 +168,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 
 	var fileList = []string{}
 
-	cmd := execCommand("git", "diff", "--name-only", fmt.Sprintf("%s/%s", r.Remote, r.BaseRef))
-	cmd.Dir = r.RepoDir
+	cmd := r.execCommand("git", "diff", "--name-only", fmt.Sprintf("%s/%s", r.Remote, r.BaseRef))
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
 	scanner := bufio.NewScanner(pipe)
@@ -210,21 +205,33 @@ func walk(s string, d fs.DirEntry, err error) error {
 	return nil
 }
 
+func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
+	cmd := execCommand(name, args...)
+	cmd.Dir = r.RepoDir
+	return cmd
+}
+
+func execCommand(name string, args ...string) *exec.Cmd {
+	log.Debug().Strs("args", args).Msg("building command")
+	cmd := exec.Command(name, args...)
+	return cmd
+}
+
 // InitializeGitSettings ensures Git auth is set up for cloning
-func InitializeGitSettings(user string, email string) error {
+func InitializeGitSettings(username, email string) error {
 	cmd := execCommand("git", "config", "--global", "user.email", email)
 	err := cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git email address")
 	}
 
-	cmd = execCommand("git", "config", "--global", "user.name", user)
+	cmd = execCommand("git", "config", "--global", "user.name", username)
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git user name")
 	}
 
-	cloneUrl, err := getCloneUrl(user, viper.GetViper())
+	cloneUrl, err := getCloneUrl(username, viper.GetViper())
 	if err != nil {
 		return errors.Wrap(err, "failed to get clone url")
 	}
@@ -278,9 +285,4 @@ func getCloneUrl(user string, cfg *viper.Viper) (string, error) {
 		scheme = parts.Scheme
 	}
 	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, vcsToken, hostname), nil
-}
-
-func execCommand(name string, args ...string) *exec.Cmd {
-	log.Debug().Strs("args", args).Msg("building command")
-	return exec.Command(name, args...)
 }

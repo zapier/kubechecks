@@ -32,11 +32,8 @@ func TestPathsAreJoinedProperly(t *testing.T) {
 
 	rad.ProcessApp(app1)
 
-	assert.Equal(t, map[string]ApplicationStub{
-		"test-app": {
-			Name: "test-app",
-			Path: "/test1/test2",
-		},
+	assert.Equal(t, map[string]v1alpha1.Application{
+		"test-app": app1,
 	}, rad.appsMap)
 	assert.Equal(t, map[string][]string{
 		"/test1/test2": {"test-app"},
@@ -91,7 +88,13 @@ func TestShouldInclude(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(fmt.Sprintf("%v", tc), func(t *testing.T) {
-			actual := shouldInclude(ApplicationStub{TargetRevision: tc.argocdAppBranch}, tc.vcsMergeTarget)
+			actual := shouldInclude(v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						TargetRevision: tc.argocdAppBranch,
+					},
+				},
+			}, tc.vcsMergeTarget)
 			assert.Equal(t, tc.expected, actual)
 		})
 	}

@@ -6,10 +6,11 @@ import (
 	"path"
 	"strings"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
 	"github.com/zapier/kubechecks/pkg/argo_client"
-	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 )
 
@@ -24,7 +25,7 @@ func NewConfigMatcher(cfg *repo_config.Config) *ConfigMatcher {
 }
 
 func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
-	appsMap := make(map[string]string)
+	triggeredAppsMap := make(map[string]string)
 	var appSetList []ApplicationSet
 
 	triggeredApps, triggeredAppsets, err := b.triggeredApps(ctx, changeList)
@@ -33,19 +34,28 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, t
 	}
 
 	for _, app := range triggeredApps {
-		appsMap[app.Name] = app.Path
+		triggeredAppsMap[app.Name] = app.Path
 	}
 
 	for _, appset := range triggeredAppsets {
 		appSetList = append(appSetList, ApplicationSet{appset.Name})
 	}
 
-	var appsSlice []config.ApplicationStub
-	for name, appPath := range appsMap {
-		appsSlice = append(appsSlice, config.ApplicationStub{Name: name, Path: appPath})
+	allArgoApps, err := b.argoClient.GetApplications(ctx)
+	if err != nil {
+		return AffectedItems{}, errors.Wrap(err, "failed to list applications")
 	}
 
-	return AffectedItems{Applications: appsSlice, ApplicationSets: appSetList}, nil
+	var triggeredAppsSlice []v1alpha1.Application
+	for _, app := range allArgoApps.Items {
+		if _, ok := triggeredAppsMap[app.Name]; !ok {
+			continue
+		}
+
+		triggeredAppsSlice = append(triggeredAppsSlice, app)
+	}
+
+	return AffectedItems{Applications: triggeredAppsSlice, ApplicationSets: appSetList}, nil
 }
 
 func (b *ConfigMatcher) triggeredApps(ctx context.Context, modifiedFiles []string) ([]*repo_config.ArgoCdApplicationConfig, []*repo_config.ArgocdApplicationSetConfig, error) {

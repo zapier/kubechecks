@@ -8,24 +8,18 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type ApplicationStub struct {
-	Name, Path, TargetRevision string
-
-	IsHelm, IsKustomize bool
-}
-
 type AppDirectory struct {
 	appDirs  map[string][]string // directory -> array of app names
 	appFiles map[string][]string // file path -> array of app names
 
-	appsMap map[string]ApplicationStub // app name -> app stub
+	appsMap map[string]v1alpha1.Application // app name -> app stub
 }
 
 func NewAppDirectory() *AppDirectory {
 	return &AppDirectory{
 		appDirs:  make(map[string][]string),
 		appFiles: make(map[string][]string),
-		appsMap:  make(map[string]ApplicationStub),
+		appsMap:  make(map[string]v1alpha1.Application),
 	}
 }
 
@@ -35,7 +29,7 @@ func (d *AppDirectory) Count() int {
 
 func (d *AppDirectory) Union(other *AppDirectory) *AppDirectory {
 	var join AppDirectory
-	join.appsMap = mergeMaps(d.appsMap, other.appsMap, takeFirst[ApplicationStub])
+	join.appsMap = mergeMaps(d.appsMap, other.appsMap, takeFirst[v1alpha1.Application])
 	join.appDirs = mergeMaps(d.appDirs, other.appDirs, mergeLists[string])
 	join.appFiles = mergeMaps(d.appFiles, other.appFiles, mergeLists[string])
 	return &join
@@ -44,14 +38,11 @@ func (d *AppDirectory) Union(other *AppDirectory) *AppDirectory {
 func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 	appName := app.Name
 
-	src := app.Spec.Source
-	if src == nil {
-		return
-	}
+	src := app.Spec.GetSource()
 
 	// common data
 	srcPath := src.Path
-	d.AddAppStub(appName, srcPath, app.Spec.Source.TargetRevision, src.IsHelm(), !src.Kustomize.IsZero())
+	d.AddApp(app)
 
 	// handle extra helm paths
 	if helm := src.Helm; helm != nil {
@@ -67,7 +58,7 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 	}
 }
 
-func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []ApplicationStub {
+func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []v1alpha1.Application {
 	log.Debug().Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})
@@ -75,7 +66,6 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 		log.Debug().Msgf("change: %s", changePath)
 
 		for dir, appNames := range d.appDirs {
-			log.Debug().Msgf("- app path: %s", dir)
 			if strings.HasPrefix(changePath, dir) {
 				log.Debug().Msg("dir match!")
 				for _, appName := range appNames {
@@ -93,7 +83,7 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 		}
 	}
 
-	var appsSlice []ApplicationStub
+	var appsSlice []v1alpha1.Application
 	for appName := range appsSet {
 		app, ok := d.appsMap[appName]
 		if !ok {
@@ -102,7 +92,7 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 		}
 
 		if !shouldInclude(app, targetBranch) {
-			log.Debug().Msgf("target revision of %s is %s and does not match '%s'", appName, app.TargetRevision, targetBranch)
+			log.Debug().Msgf("target revision of %s is %s and does not match '%s'", appName, getTargetRevision(app), targetBranch)
 			continue
 		}
 
@@ -113,16 +103,25 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 	return appsSlice
 }
 
-func shouldInclude(app ApplicationStub, targetBranch string) bool {
-	if app.TargetRevision == "" {
+func getTargetRevision(app v1alpha1.Application) string {
+	return app.Spec.GetSource().TargetRevision
+}
+
+func getSourcePath(app v1alpha1.Application) string {
+	return app.Spec.GetSource().Path
+}
+
+func shouldInclude(app v1alpha1.Application, targetBranch string) bool {
+	targetRevision := getTargetRevision(app)
+	if targetRevision == "" {
 		return true
 	}
 
-	if app.TargetRevision == targetBranch {
+	if targetRevision == targetBranch {
 		return true
 	}
 
-	if app.TargetRevision == "HEAD" {
+	if targetRevision == "HEAD" {
 		if targetBranch == "main" {
 			return true
 		}
@@ -135,8 +134,8 @@ func shouldInclude(app ApplicationStub, targetBranch string) bool {
 	return false
 }
 
-func (d *AppDirectory) GetApps(filter func(stub ApplicationStub) bool) []ApplicationStub {
-	var result []ApplicationStub
+func (d *AppDirectory) GetApps(filter func(stub v1alpha1.Application) bool) []v1alpha1.Application {
+	var result []v1alpha1.Application
 	for _, value := range d.appsMap {
 		if filter != nil && !filter(value) {
 			continue
@@ -146,15 +145,14 @@ func (d *AppDirectory) GetApps(filter func(stub ApplicationStub) bool) []Applica
 	return result
 }
 
-func (d *AppDirectory) AddAppStub(appName, srcPath, targetRevision string, isHelm, isKustomize bool) {
-	d.appsMap[appName] = ApplicationStub{
-		Name:           appName,
-		TargetRevision: targetRevision,
-		Path:           srcPath,
-		IsHelm:         isHelm,
-		IsKustomize:    isKustomize,
-	}
-	d.AddDir(appName, srcPath)
+func (d *AppDirectory) AddApp(app v1alpha1.Application) {
+	log.Debug().
+		Str("appName", app.Name).
+		Str("cluster-name", app.Spec.Destination.Name).
+		Str("cluster-server", app.Spec.Destination.Server).
+		Msg("found app")
+	d.appsMap[app.Name] = app
+	d.AddDir(app.Name, getSourcePath(app))
 }
 
 func (d *AppDirectory) AddDir(appName, path string) {

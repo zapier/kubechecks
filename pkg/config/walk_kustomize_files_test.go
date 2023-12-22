@@ -4,8 +4,10 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestKustomizeWalking(t *testing.T) {
@@ -73,10 +75,32 @@ resources:
 		}
 	)
 
+	newApp := func(name, path, revision string, isHelm, isKustomize bool) v1alpha1.Application {
+		app := v1alpha1.Application{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Path:           path,
+					TargetRevision: revision,
+				},
+			},
+		}
+
+		if isHelm {
+			app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{}
+		}
+		if isKustomize {
+			app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{}
+		}
+		return app
+	}
+
 	appdir := NewAppDirectory()
-	appdir.AddAppStub(kustomizeApp1Name, kustomizeApp1Path, "HEAD", false, true)
-	appdir.AddAppStub(kustomizeApp2Name, kustomizeApp2Path, "HEAD", false, true)
-	appdir.AddAppStub(kustomizeBaseName, kustomizeBasePath, "HEAD", false, true)
+	appdir.AddApp(newApp(kustomizeApp1Name, kustomizeApp1Path, "HEAD", false, true))
+	appdir.AddApp(newApp(kustomizeApp2Name, kustomizeApp2Path, "HEAD", false, true))
+	appdir.AddApp(newApp(kustomizeBaseName, kustomizeBasePath, "HEAD", false, true))
 
 	err = walkKustomizeFiles(appdir, fs, kustomizeApp1Name, kustomizeApp1Path)
 	require.NoError(t, err)

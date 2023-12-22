@@ -86,7 +86,7 @@ func (c *Client) pruneOldComments(ctx context.Context, repo *repo.Repo, comments
 	log.Debug().Msgf("Pruning messages from PR %d in repo %s", repo.CheckID, repo.FullName)
 
 	for _, comment := range comments {
-		if strings.EqualFold(comment.GetUser().GetLogin(), githubTokenUser) {
+		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) {
 			_, err := c.Issues.DeleteComment(ctx, repo.Owner, repo.Name, *comment.ID)
 			if err != nil {
 				return fmt.Errorf("failed to delete comment: %w", err)
@@ -104,7 +104,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, repo *repo.Repo, comm
 	log.Debug().Msgf("Hiding kubecheck messages in PR %d in repo %s", repo.CheckID, repo.FullName)
 
 	for _, comment := range comments {
-		if strings.EqualFold(comment.GetUser().GetLogin(), githubTokenUser) {
+		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) {
 			// Github API does not expose minimizeComment API. IT's only available from the GraphQL API
 			// https://docs.github.com/en/graphql/reference/mutations#minimizecomment
 			var m struct {

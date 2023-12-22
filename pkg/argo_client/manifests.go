@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
 	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -13,13 +12,17 @@ import (
 	"github.com/argoproj/argo-cd/v2/reposerver/repository"
 	"github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/ghodss/yaml"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/zapier/kubechecks/telemetry"
 )
 
-func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, changedAppFilePath string) ([]string, error) {
+func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
+	var err error
+
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetManifestsLocal")
 	defer span.End()
 
@@ -32,40 +35,28 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	}()
 	argoClient := GetArgoClient()
 
-	appCloser, appClient := argoClient.GetApplicationClient()
-	defer appCloser.Close()
-
-	clusterCloser, clusterIf := argoClient.GetClusterClient()
+	clusterCloser, clusterClient := argoClient.GetClusterClient()
 	defer clusterCloser.Close()
 
 	settingsCloser, settingsClient := argoClient.GetSettingsClient()
 	defer settingsCloser.Close()
 
-	log.Debug().Str("name", name).Msg("generating diff for application...")
-
-	appName := name
-	app, err := appClient.Get(ctx, &application.ApplicationQuery{
-		Name: &appName,
-	})
-	if err != nil {
-		telemetry.SetError(span, err, "Argo Get App")
-		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
-	}
-	log.Trace().Msgf("Argo App: %+v", app)
-
-	cluster, err := clusterIf.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
+	log.Debug().
+		Str("clusterName", app.Spec.Destination.Name).
+		Str("clusterServer", app.Spec.Destination.Server).
+		Msg("getting cluster")
+	cluster, err := clusterClient.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Cluster")
 		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get cluster")
 	}
 
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Settings")
 		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get settings")
 	}
 
 	// Code is commented out until Argo fixes the server side manifest generation
@@ -81,8 +72,8 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	*/
 
 	source := app.Spec.GetSource()
-	log.Debug().Msgf("App source: %+v", source)
 
+	log.Debug().Str("name", name).Msg("generating diff for application...")
 	res, err := repository.GenerateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, source.TargetRevision, &repoapiclient.ManifestRequest{
 		Repo:              &argoappv1.Repository{Repo: source.RepoURL},
 		AppLabelKey:       argoSettings.AppLabelKey,
@@ -97,7 +88,7 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	}, true, &git.NoopCredsStore{}, resource.MustParse("0"), nil)
 	if err != nil {
 		telemetry.SetError(span, err, "Generate Manifests")
-		return nil, err
+		return nil, errors.Wrap(err, "failed to generate manifests")
 	}
 
 	if res.Manifests == nil {
@@ -108,7 +99,7 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 }
 
 func FormatManifestsYAML(manifestBytes []string) []string {
-	manifests := []string{}
+	var manifests []string
 	for _, manifest := range manifestBytes {
 		ret, err := yaml.JSONToYAML([]byte(manifest))
 		if err != nil {
