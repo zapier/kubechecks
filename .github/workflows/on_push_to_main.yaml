@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0  # necessary for 'git describe' to work
 
-      - run: echo "GIT_TAG=$(git describe)" >> $GITHUB_ENV
+      - run: echo "GIT_TAG=$(git describe --tags)" >> $GITHUB_ENV
 
       - uses: ./.github/actions/build-image
         with:
