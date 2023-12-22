@@ -1,21 +1,23 @@
-name: Maintenance
+# have to disable this, it's deleting untagged layers that are referenced by manifests
 
-# Deleting untagged images requires a Personal Access Token, it cannot
-# be done with a github action built in token. This is a known limitation.
-
-on:
-  schedule:
-    - cron: "0 0 * * SUN"
-  workflow_dispatch:
-
-jobs:
-  delete-untagged-images:
-    name: delete untagged images
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: Chizkiyahu/delete-untagged-ghcr-action@v3
-        with:
-          owner_type: org
-          package_name: kubechecks
-          token: ${{ secrets.MAINTENANCE_TOKEN }}
-          untagged_only: true
+#name: Maintenance
+#
+## Deleting untagged images requires a Personal Access Token, it cannot
+## be done with a github action built in token. This is a known limitation.
+#
+#on:
+#  schedule:
+#    - cron: "0 0 * * SUN"
+#  workflow_dispatch:
+#
+#jobs:
+#  delete-untagged-images:
+#    name: delete untagged images
+#    runs-on: ubuntu-22.04
+#    steps:
+#      - uses: Chizkiyahu/delete-untagged-ghcr-action@v3
+#        with:
+#          owner_type: org
+#          package_name: kubechecks
+#          token: ${{ secrets.MAINTENANCE_TOKEN }}
+#          untagged_only: true
