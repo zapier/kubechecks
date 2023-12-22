@@ -183,7 +183,7 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
 
 	mergeRequest, _, err := c.MergeRequests.GetMergeRequest(repoPath, int(mrNumber), nil)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get merge request '%s' in project '%s'", mrNumber, repoPath)
+		return nil, errors.Wrapf(err, "failed to get merge request '%d' in project '%s'", mrNumber, repoPath)
 	}
 
 	return &repo.Repo{
