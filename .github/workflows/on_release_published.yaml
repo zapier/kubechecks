@@ -18,5 +18,5 @@ jobs:
 
       - uses: ./.github/actions/build-image
         with:
-          image_tag: ${{ github.ref }}
+          image_tag: ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
