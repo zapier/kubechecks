@@ -69,12 +69,26 @@ func CreateGithubClient() (*Client, error) {
 		return nil, errors.Wrap(err, "failed to get user")
 	}
 
-	return &Client{
+	client := &Client{
 		Client:   googleClient,
 		v4Client: shurcoolClient,
-		username: *user.Login,
-		email:    *user.Email,
-	}, nil
+	}
+	if user != nil {
+		if user.Login != nil {
+			client.username = *user.Login
+		}
+		if user.Email != nil {
+			client.email = *user.Email
+		}
+	}
+
+	if client.username == "" {
+		client.username = vcs.DefaultVcsUsername
+	}
+	if client.email == "" {
+		client.email = vcs.DefaultVcsEmail
+	}
+	return client, nil
 }
 
 func (c *Client) Username() string { return c.username }
