@@ -150,3 +150,21 @@ tests:
           value:
             - name: test-volume
               path: /ghi
+  - it: can have new envFrom
+    set:
+      deployment:
+        envFrom:
+          - configMapRef:
+              name: new-configmap
+          - secretMap:
+              name: new-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom
+          value:
+            - configMapRef:
+                name: kubechecks
+            - configMapRef:
+                name: new-configmap
+            - secretMap:
+                name: new-secret

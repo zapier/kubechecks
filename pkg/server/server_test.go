@@ -1,8 +1,9 @@
 package server
 
 import (
-	"github.com/zapier/kubechecks/pkg/config"
 	"testing"
+
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 func TestHooksPrefix(t *testing.T) {

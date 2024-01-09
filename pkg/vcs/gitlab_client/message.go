@@ -15,9 +15,16 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
+const MaxCommentLength = 1_000_000
+
 func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, mergeRequestID int, msg string) *pkg.Message {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
+
+	if len(msg) > MaxCommentLength {
+		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
+		msg = msg[:MaxCommentLength]
+	}
 
 	n, _, err := c.Notes.CreateMergeRequestNote(
 		repo.FullName, mergeRequestID,
@@ -45,7 +52,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 		// note user is not the gitlabTokenUser
 		// note is an internal system note such as notes on commit messages
 		// note is already hidden
-		if note.Author.Username != gitlabTokenUser || note.System || strings.Contains(note.Body, "<summary><i>OUTDATED: Kubechecks Report</i></summary>") {
+		if note.Author.Username != c.username || note.System || strings.Contains(note.Body, "<summary><i>OUTDATED: Kubechecks Report</i></summary>") {
 			continue
 		}
 
@@ -56,6 +63,11 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 %s
 </details>
 			`, note.Body)
+
+		if len(newBody) > MaxCommentLength {
+			log.Warn().Int("original_length", len(newBody)).Msg("trimming the comment size")
+			newBody = newBody[:MaxCommentLength]
+		}
 
 		log.Debug().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
 
@@ -74,6 +86,11 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 
 func (c *Client) UpdateMessage(ctx context.Context, m *pkg.Message, msg string) error {
 	log.Debug().Msgf("Updating message %d for %s", m.NoteID, m.Name)
+
+	if len(msg) > MaxCommentLength {
+		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
+		msg = msg[:MaxCommentLength]
+	}
 
 	n, _, err := c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
 		Body: pkg.Pointer(msg),
@@ -97,7 +114,7 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 	log.Debug().Msg("deleting outdated comments")
 
 	for _, note := range notes {
-		if note.Author.Username == gitlabTokenUser {
+		if note.Author.Username == c.username {
 			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
 			_, err := c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
 			if err != nil {

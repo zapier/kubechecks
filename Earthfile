@@ -23,7 +23,10 @@ release:
 
 go-deps:
     ARG GOLANG_VERSION="1.19.3"
-    FROM golang:$GOLANG_VERSION-bullseye
+    ARG GOOS=linux
+    ARG GOARCH=amd64
+
+    FROM --platform=linux/amd64 golang:$GOLANG_VERSION-bullseye
 
     ENV GO111MODULE=on
     ENV CGO_ENABLED=0
@@ -58,13 +61,13 @@ test-golang:
     RUN go test ./...
 
 build-binary:
-    FROM +go-deps
-
     ARG GOOS=linux
     ARG GOARCH=amd64
     ARG VARIANT
     ARG --required GIT_TAG
     ARG --required GIT_COMMIT
+
+    FROM --platform=linux/amd64 +go-deps
 
     WORKDIR /src
     COPY . /src
@@ -80,9 +83,12 @@ build-debug-binary:
     SAVE ARTIFACT kubechecks
 
 docker:
-    FROM ubuntu:20.04
+    ARG --required IMAGE_NAME
+    ARG TARGETPLATFORM
+    ARG TARGETARCH
     ARG TARGETVARIANT
 
+    FROM --platform=$TARGETPLATFORM ubuntu:20.04
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
@@ -117,24 +123,12 @@ docker:
     VOLUME /app/policies
     VOLUME /app/schemas
 
-    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
+    COPY (+build-binary/kubechecks --platform=linux/amd64 --GOARCH=$TARGETARCH --VARIANT=$TARGETVARIANT) .
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
 
-docker-dev:
-    FROM +docker
-
-    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:dev
-
-docker-tag:
-    FROM +docker
-
-    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
-    ARG --required GIT_TAG
-
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_TAG
+    SAVE IMAGE --push $IMAGE_NAME
 
 dlv:
     FROM golang:1.19
@@ -145,16 +139,21 @@ dlv:
     SAVE ARTIFACT /go/bin/dlv
 
 docker-debug:
+<<<<<<< HEAD
     ARG GOARCH="amd64"
     ARG CI_REGISTRY_IMAGE="kubechecks"
     FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef --CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE --GOARCH=$GOARCH
+=======
+    ARG IMAGE_NAME="kubechecks:debug"
+    FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef
+>>>>>>> origin/main
 
     COPY (+dlv/dlv --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
     COPY (+build-debug-binary/kubechecks --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) .
 
     CMD ["/usr/local/bin/dlv", "--listen=:2345", "--api-version=2", "--headless=true", "--accept-multiclient", "exec", "--continue", "./kubechecks", "controller"]
 
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE
+    SAVE IMAGE --push $IMAGE_NAME
 
 fmt-golang:
     FROM +go-deps

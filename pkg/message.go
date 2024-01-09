@@ -57,7 +57,7 @@ func (m *Message) IsSuccess() bool {
 	for _, r := range m.apps {
 		for _, result := range r.results {
 			switch result.State {
-			case StateSuccess, StateWarning, StateNone:
+			case StateError, StateFailure, StatePanic, StateWarning:
 				isSuccess = false
 			}
 		}
@@ -94,8 +94,8 @@ func (m *Message) SetFooter(start time.Time, commitSha string) {
 	m.footer = buildFooter(start, commitSha)
 }
 
-func (m *Message) PushComment(ctx context.Context, client Client) error {
-	return client.UpdateMessage(ctx, m, buildComment(ctx, m.apps))
+func (m *Message) BuildComment(ctx context.Context) string {
+	return buildComment(ctx, m.apps)
 }
 
 func buildFooter(start time.Time, commitSHA string) string {

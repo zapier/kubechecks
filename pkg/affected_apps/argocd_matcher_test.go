@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.com/zapier/kubechecks/pkg/config"
 	repo2 "github.com/zapier/kubechecks/pkg/repo"
 )
@@ -12,15 +13,18 @@ import (
 func TestCreateNewMatcherWithNilVcsMap(t *testing.T) {
 	// setup
 	var (
-		vcsMap config.VcsToArgoMap
-		repo   repo2.Repo
+		repo repo2.Repo
+		path string
+
+		vcsMap = config.NewVcsToArgoMap()
 	)
 
 	// run test
-	matcher := NewArgocdMatcher(vcsMap, &repo)
+	matcher, err := NewArgocdMatcher(vcsMap, &repo, path)
+	require.NoError(t, err)
 
 	// verify results
-	require.Nil(t, matcher.appsDirectory)
+	require.NotNil(t, matcher.appsDirectory)
 }
 
 func TestFindAffectedAppsWithNilAppsDirectory(t *testing.T) {
@@ -31,7 +35,7 @@ func TestFindAffectedAppsWithNilAppsDirectory(t *testing.T) {
 	)
 
 	matcher := ArgocdMatcher{}
-	items, err := matcher.AffectedApps(ctx, changeList)
+	items, err := matcher.AffectedApps(ctx, changeList, "main")
 
 	// verify results
 	require.NoError(t, err)

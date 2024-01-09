@@ -1,21 +1,22 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/zapier/kubechecks/pkg/config"
-
-	"github.com/zapier/kubechecks/pkg/events"
-
 	_ "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/events"
+	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/server"
 )
 
@@ -25,14 +26,28 @@ var ControllerCmd = &cobra.Command{
 	Short: "Start the VCS Webhook handler.",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
+		clientType := viper.GetString("vcs-type")
+		client, err := createVCSClient(clientType)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create vcs client")
+		}
 
-		server := server.NewServer(&config.ServerConfig{
-			ArgoCdNamespace: viper.GetString("argocd-namespace"),
-			UrlPrefix:       viper.GetString("webhook-url-prefix"),
-			WebhookSecret:   viper.GetString("webhook-secret"),
-		})
-		go server.Start()
+		cfg := config.ServerConfig{
+			UrlPrefix:     viper.GetString("webhook-url-prefix"),
+			WebhookSecret: viper.GetString("webhook-secret"),
+			VcsClient:     client,
+		}
+
+		log.Info().Msg("Initializing git settings")
+		if err := repo.InitializeGitSettings(cfg.VcsClient.Username(), cfg.VcsClient.Email()); err != nil {
+			log.Fatal().Err(err).Msg("failed to initialize git settings")
+		}
+
+		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
+		server := server.NewServer(&cfg)
+
+		ctx := context.Background()
+		go server.Start(ctx)
 
 		// graceful termination handler.
 		// when we receive a SIGTERM from kubernetes, check for in-flight requests before exiting.

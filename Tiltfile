@@ -143,7 +143,7 @@ earthly_build(
     context='.',
     target="+docker-debug",
     ref='kubechecks',
-    image_arg='CI_REGISTRY_IMAGE',
+    image_arg='IMAGE_NAME',
     ignore='./dist',
     extra_args=[
         '--GOARCH={}'.format(arch),

@@ -6,8 +6,9 @@ import (
 	"path"
 	"strings"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/app_directory"
 
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/repo_config"
@@ -23,8 +24,8 @@ func NewConfigMatcher(cfg *repo_config.Config) *ConfigMatcher {
 	return &ConfigMatcher{cfg: cfg, argoClient: argoClient}
 }
 
-func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
-	appsMap := make(map[string]string)
+func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
+	triggeredAppsMap := make(map[string]string)
 	var appSetList []ApplicationSet
 
 	triggeredApps, triggeredAppsets, err := b.triggeredApps(ctx, changeList)
@@ -33,19 +34,28 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (
 	}
 
 	for _, app := range triggeredApps {
-		appsMap[app.Name] = app.Path
+		triggeredAppsMap[app.Name] = app.Path
 	}
 
 	for _, appset := range triggeredAppsets {
 		appSetList = append(appSetList, ApplicationSet{appset.Name})
 	}
 
-	var appsSlice []app_directory.ApplicationStub
-	for name, appPath := range appsMap {
-		appsSlice = append(appsSlice, app_directory.ApplicationStub{Name: name, Path: appPath})
+	allArgoApps, err := b.argoClient.GetApplications(ctx)
+	if err != nil {
+		return AffectedItems{}, errors.Wrap(err, "failed to list applications")
 	}
 
-	return AffectedItems{Applications: appsSlice, ApplicationSets: appSetList}, nil
+	var triggeredAppsSlice []v1alpha1.Application
+	for _, app := range allArgoApps.Items {
+		if _, ok := triggeredAppsMap[app.Name]; !ok {
+			continue
+		}
+
+		triggeredAppsSlice = append(triggeredAppsSlice, app)
+	}
+
+	return AffectedItems{Applications: triggeredAppsSlice, ApplicationSets: appSetList}, nil
 }
 
 func (b *ConfigMatcher) triggeredApps(ctx context.Context, modifiedFiles []string) ([]*repo_config.ArgoCdApplicationConfig, []*repo_config.ArgocdApplicationSetConfig, error) {

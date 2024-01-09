@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -16,31 +17,20 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs"
 )
-
-var gitlabClient *Client
-var gitlabTokenUser string
-var gitlabTokenEmail string
-var once sync.Once
 
 const GitlabTokenHeader = "X-Gitlab-Token"
 
 type Client struct {
 	*gitlab.Client
+
+	username, email string
 }
 
-var _ pkg.Client = new(Client)
+var _ vcs.Client = new(Client)
 
-func GetGitlabClient() (*Client, string) {
-	once.Do(func() {
-		gitlabClient = createGitlabClient()
-		gitlabTokenUser, gitlabTokenEmail = gitlabClient.getTokenUser()
-	})
-
-	return gitlabClient, gitlabTokenUser
-}
-
-func createGitlabClient() *Client {
+func CreateGitlabClient() (*Client, error) {
 	// Initialize the GitLab client with access token
 	gitlabToken := viper.GetString("vcs-token")
 	if gitlabToken == "" {
@@ -60,18 +50,16 @@ func createGitlabClient() *Client {
 		log.Fatal().Err(err).Msg("could not create Gitlab client")
 	}
 
-	return &Client{c}
-}
-
-func (c *Client) getTokenUser() (string, string) {
 	user, _, err := c.Users.CurrentUser()
 	if err != nil {
-		log.Fatal().Err(err).Msg("could not create Gitlab token user")
+		return nil, errors.Wrap(err, "failed to get current user")
 	}
 
-	return user.Username, user.Email
+	return &Client{Client: c, username: user.Username, email: user.Email}, nil
 }
 
+func (c *Client) Email() string    { return c.email }
+func (c *Client) Username() string { return c.username }
 func (c *Client) GetName() string {
 	return "gitlab"
 }
@@ -89,32 +77,31 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 }
 
 // ParseHook parses and validates a webhook event; return an err if this isn't valid
-func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error) {
-	return gitlab.ParseHook(gitlab.HookEventType(r), payload)
-}
+func (c *Client) ParseHook(r *http.Request, request []byte) (*repo.Repo, error) {
+	eventRequest, err := gitlab.ParseHook(gitlab.HookEventType(r), request)
+	if err != nil {
+		return nil, err
+	}
 
-// CreateRepo takes a valid gitlab webhook event request, and determines if we should process it
-// Returns a generic Repo with all info kubechecks needs on success, err if not
-func (c *Client) CreateRepo(ctx context.Context, eventRequest interface{}) (*repo.Repo, error) {
 	switch event := eventRequest.(type) {
 	case *gitlab.MergeEvent:
 		switch event.ObjectAttributes.Action {
 		case "update":
 			if event.ObjectAttributes.OldRev != "" && event.ObjectAttributes.OldRev != event.ObjectAttributes.LastCommit.ID {
-				return buildRepoFromEvent(event), nil
+				return c.buildRepoFromEvent(event), nil
 			}
 			log.Trace().Msgf("Skipping update event sha didn't change")
 		case "open", "reopen":
-			return buildRepoFromEvent(event), nil
+			return c.buildRepoFromEvent(event), nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
-			return nil, pkg.ErrInvalidType
+			return nil, vcs.ErrInvalidType
 		}
 	default:
 		log.Trace().Msgf("Unhandled Event: %T", event)
-		return nil, pkg.ErrInvalidType
+		return nil, vcs.ErrInvalidType
 	}
-	return nil, pkg.ErrInvalidType
+	return nil, vcs.ErrInvalidType
 }
 
 func parseRepoName(url string) (string, error) {
@@ -129,7 +116,7 @@ func parseRepoName(url string) (string, error) {
 	return path, nil
 }
 
-func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*pkg.WebHookConfig, error) {
+func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*vcs.WebHookConfig, error) {
 	pid, err := parseRepoName(repoName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse repo url")
@@ -146,14 +133,14 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 			if hook.MergeRequestsEvents {
 				events = append(events, string(gitlab.MergeRequestEventTargetType))
 			}
-			return &pkg.WebHookConfig{
+			return &vcs.WebHookConfig{
 				Url:    hook.URL,
 				Events: events,
 			}, nil
 		}
 	}
 
-	return nil, pkg.ErrHookNotFound
+	return nil, vcs.ErrHookNotFound
 }
 
 func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSecret string) error {
@@ -175,7 +162,49 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 	return nil
 }
 
-func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
+var reMergeRequest = regexp.MustCompile(`(.*)!(\d+)`)
+
+func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
+	m := reMergeRequest.FindStringSubmatch(id)
+	if len(m) != 3 {
+		return nil, errors.New("must be in format REPOPATH!MR")
+	}
+
+	repoPath := m[1]
+	mrNumber, err := strconv.ParseInt(m[2], 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse merge request number")
+	}
+
+	project, _, err := c.Projects.GetProject(repoPath, nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get project '%s'", repoPath)
+	}
+
+	mergeRequest, _, err := c.MergeRequests.GetMergeRequest(repoPath, int(mrNumber), nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get merge request '%d' in project '%s'", mrNumber, repoPath)
+	}
+
+	return &repo.Repo{
+		BaseRef:       mergeRequest.TargetBranch,
+		HeadRef:       mergeRequest.SourceBranch,
+		DefaultBranch: project.DefaultBranch,
+		RepoDir:       "",
+		Remote:        "",
+		CloneURL:      project.HTTPURLToRepo,
+		Name:          project.Name,
+		Owner:         "",
+		CheckID:       mergeRequest.IID,
+		SHA:           mergeRequest.SHA,
+		FullName:      project.PathWithNamespace,
+		Username:      c.username,
+		Email:         c.email,
+		Labels:        mergeRequest.Labels,
+	}, nil
+}
+
+func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
 	// Convert all labels from this MR to a string array of label names
 	var labels []string
 	for _, label := range event.Labels {
@@ -191,8 +220,8 @@ func buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
 		Name:          event.Project.Name,
 		CheckID:       event.ObjectAttributes.IID,
 		SHA:           event.ObjectAttributes.LastCommit.ID,
-		Username:      gitlabTokenUser,
-		Email:         gitlabTokenEmail,
+		Username:      c.username,
+		Email:         c.email,
 		Labels:        labels,
 	}
 }

@@ -4,8 +4,9 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/google/go-github/v53/github"
 	"github.com/pkg/errors"
@@ -16,41 +17,21 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
-var githubClient *Client
-var githubTokenUser string
-var once sync.Once // used to ensure we don't reauth this
-
 type Client struct {
-	v4Client *githubv4.Client
+	v4Client        *githubv4.Client
+	username, email string
+
 	*github.Client
 }
 
-var _ pkg.Client = new(Client)
+var _ vcs.Client = new(Client)
 
-func GetGithubClient() (*Client, string) {
-	once.Do(func() {
-		githubClient = createGithubClient()
-		githubTokenUser = getTokenUser()
-	})
-	return githubClient, githubTokenUser
-}
-
-// We require a username to use with git locally, so get the current auth'd user
-func getTokenUser() string {
-	user, _, err := githubClient.Users.Get(context.Background(), "")
-	if err != nil {
-		if err != nil {
-			log.Fatal().Err(err).Msg("could not get Github user")
-		}
-	}
-	return *user.Login
-}
-
-// Create a new GitHub client using the auth token provided. We
+// CreateGithubClient creates a new GitHub client using the auth token provided. We
 // can't validate the token at this point, so if it exists we assume it works
-func createGithubClient() *Client {
+func CreateGithubClient() (*Client, error) {
 	var (
 		err            error
 		googleClient   *github.Client
@@ -83,9 +64,21 @@ func createGithubClient() *Client {
 		shurcoolClient = githubv4.NewEnterpriseClient(githubUrl, tc)
 	}
 
-	return &Client{Client: googleClient, v4Client: shurcoolClient}
+	user, _, err := googleClient.Users.Get(ctx, "")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get user")
+	}
+
+	return &Client{
+		Client:   googleClient,
+		v4Client: shurcoolClient,
+		username: *user.Login,
+		email:    *user.Email,
+	}, nil
 }
 
+func (c *Client) Username() string { return c.username }
+func (c *Client) Email() string    { return c.email }
 func (c *Client) GetName() string {
 	return "github"
 }
@@ -101,55 +94,29 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	}
 }
 
-func (c *Client) ParseHook(r *http.Request, payload []byte) (interface{}, error) {
-	return github.ParseWebHook(github.WebHookType(r), payload)
-}
+func (c *Client) ParseHook(r *http.Request, request []byte) (*repo.Repo, error) {
+	payload, err := github.ParseWebHook(github.WebHookType(r), request)
+	if err != nil {
+		return nil, err
+	}
 
-// CreateRepo creates a new generic repo from the webhook payload. Assumes the secret validation/type validation
-// Has already occured previously, so we expect a valid event type for the GitHub client in the payload arg
-func (c *Client) CreateRepo(_ context.Context, payload interface{}) (*repo.Repo, error) {
 	switch p := payload.(type) {
 	case *github.PullRequestEvent:
 		switch p.GetAction() {
-		case "opened", "synchronize", "reopened":
-			log.Info().Str("action", p.GetAction()).Msg("handling Github open, sync event from PR")
-			return buildRepoFromEvent(p), nil
+		case "opened", "synchronize", "reopened", "edited":
+			log.Info().Str("action", p.GetAction()).Msg("handling Github event from PR")
+			return c.buildRepoFromEvent(p), nil
 		default:
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
-			return nil, pkg.ErrInvalidType
+			return nil, vcs.ErrInvalidType
 		}
 	default:
 		log.Error().Msg("invalid event provided to Github client")
-		return nil, pkg.ErrInvalidType
+		return nil, vcs.ErrInvalidType
 	}
 }
 
-// We need an email and username for authenticating our local git repository
-// Grab the current authenticated client login and email
-func (c *Client) getUserDetails() (string, string, error) {
-	user, _, err := c.Users.Get(context.Background(), "")
-	if err != nil {
-		return "", "", err
-	}
-
-	// Some users on GitHub don't have an email listed; if so, catch that and return empty string
-	if user.Email == nil {
-		log.Error().Msg("could not load Github user email")
-		return *user.Login, "", nil
-	}
-
-	return *user.Login, *user.Email, nil
-
-}
-
-func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
-	username, email, err := githubClient.getUserDetails()
-	if err != nil {
-		log.Fatal().Err(err).Msg("could not load Github user details")
-		username = ""
-		email = ""
-	}
-
+func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 	var labels []string
 	for _, label := range event.PullRequest.Labels {
 		labels = append(labels, label.GetName())
@@ -165,17 +132,34 @@ func buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		Name:          event.Repo.GetName(),
 		CheckID:       *event.PullRequest.Number,
 		SHA:           *event.PullRequest.Head.SHA,
-		Username:      username,
-		Email:         email,
+		Username:      c.username,
+		Email:         c.email,
 		Labels:        labels,
+	}
+}
+
+func toGithubCommitStatus(state pkg.CommitState) *string {
+	switch state {
+	case pkg.StateError, pkg.StatePanic:
+		return pkg.Pointer("error")
+	case pkg.StateFailure, pkg.StateWarning:
+		return pkg.Pointer("failure")
+	case pkg.StateRunning:
+		return pkg.Pointer("pending")
+	case pkg.StateSuccess:
+		return pkg.Pointer("success")
+
+	default: // maybe a different one? panic?
+		log.Warn().Str("state", state.String()).Msg("failed to convert to a github commit status")
+		return pkg.Pointer("failure")
 	}
 }
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status pkg.CommitState) error {
 	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.String()).Msg("setting Github commit status")
 	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repo.Owner, repo.Name, repo.SHA, &github.RepoStatus{
-		State:       pkg.Pointer(status.String()),
-		Description: pkg.Pointer(status.String()),
+		State:       toGithubCommitStatus(status),
+		Description: pkg.Pointer(status.BareString()),
 		ID:          pkg.Pointer(int64(repo.CheckID)),
 		Context:     pkg.Pointer("kubechecks"),
 	})
@@ -200,7 +184,7 @@ func parseRepo(cloneUrl string) (string, string) {
 	panic(cloneUrl)
 }
 
-func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*pkg.WebHookConfig, error) {
+func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*vcs.WebHookConfig, error) {
 	owner, repoName := parseRepo(ownerAndRepoName)
 	items, _, err := c.Repositories.ListHooks(ctx, owner, repoName, nil)
 	if err != nil {
@@ -209,14 +193,14 @@ func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl 
 
 	for _, item := range items {
 		if item.URL != nil && *item.URL == webhookUrl {
-			return &pkg.WebHookConfig{
+			return &vcs.WebHookConfig{
 				Url:    item.GetURL(),
 				Events: item.Events, // TODO: translate GH specific event names to VCS agnostic
 			}, nil
 		}
 	}
 
-	return nil, pkg.ErrHookNotFound
+	return nil, vcs.ErrHookNotFound
 }
 
 func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, webhookSecret string) error {
@@ -239,4 +223,92 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 	}
 
 	return nil
+}
+
+var rePullRequest = regexp.MustCompile(`(.*)/(.*)#(\d+)`)
+
+func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
+	m := rePullRequest.FindStringSubmatch(id)
+	if len(m) != 4 {
+		return nil, errors.New("must be in format OWNER/REPO#PR")
+	}
+
+	ownerName := m[1]
+	repoName := m[2]
+	prNumber, err := strconv.ParseInt(m[3], 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse int")
+	}
+
+	repoInfo, _, err := c.Repositories.Get(ctx, ownerName, repoName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get repo")
+	}
+
+	pullRequest, _, err := c.PullRequests.Get(ctx, ownerName, repoName, int(prNumber))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get pull request")
+	}
+
+	var labels []string
+	for _, label := range pullRequest.Labels {
+		labels = append(labels, label.GetName())
+	}
+
+	var (
+		baseRef                    string
+		headRef, headSha           string
+		login, userName, userEmail string
+	)
+
+	if pullRequest.Base != nil {
+		baseRef = unPtr(pullRequest.Base.Ref)
+		headRef = unPtr(pullRequest.Head.Ref)
+	}
+
+	if repoInfo.Owner != nil {
+		login = unPtr(repoInfo.Owner.Login)
+	} else {
+		login = "kubechecks"
+	}
+
+	if pullRequest.Head != nil {
+		headSha = unPtr(pullRequest.Head.SHA)
+	}
+
+	if pullRequest.User != nil {
+		userName = unPtr(pullRequest.User.Name)
+		userEmail = unPtr(pullRequest.User.Email)
+	}
+
+	// these are required for `git merge` later on
+	if userName == "" {
+		userName = "kubechecks"
+	}
+	if userEmail == "" {
+		userEmail = "kubechecks@github.com"
+	}
+
+	return &repo.Repo{
+		BaseRef:       baseRef,
+		HeadRef:       headRef,
+		DefaultBranch: unPtr(repoInfo.DefaultBranch),
+		CloneURL:      unPtr(repoInfo.CloneURL),
+		FullName:      repoInfo.GetFullName(),
+		Owner:         login,
+		Name:          repoInfo.GetName(),
+		CheckID:       int(prNumber),
+		SHA:           headSha,
+		Username:      userName,
+		Email:         userEmail,
+		Labels:        labels,
+	}, nil
+}
+
+func unPtr[T interface{ string | int }](ps *T) T {
+	if ps == nil {
+		var t T
+		return t
+	}
+	return *ps
 }

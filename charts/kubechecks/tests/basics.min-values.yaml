@@ -1,4 +1,5 @@
-deployment:
+configMap:
+  create: true
   env:
     KUBECHECKS_ARGOCD_API_INSECURE: "false"
     KUBECHECKS_TEST_VALUE: "Hello"

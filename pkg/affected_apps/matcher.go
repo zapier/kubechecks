@@ -4,11 +4,11 @@ import (
 	"context"
 	"path"
 
-	"github.com/zapier/kubechecks/pkg/app_directory"
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
 
 type AffectedItems struct {
-	Applications    []app_directory.ApplicationStub
+	Applications    []v1alpha1.Application
 	ApplicationSets []ApplicationSet
 }
 
@@ -17,7 +17,7 @@ type ApplicationSet struct {
 }
 
 type Matcher interface {
-	AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error)
+	AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error)
 }
 
 // modifiedDirs filters a list of changed files down to a list
