@@ -79,7 +79,7 @@ func (ctrl *ApplicationWatcher) onApplicationAdded(obj interface{}) {
 		log.Error().Err(err).Msg("appwatcher: could not get key for added application")
 	}
 	log.Trace().Str("key", key).Msg("appwatcher: onApplicationAdded")
-	ctrl.cfg.VcsToArgoMap.AddApp(obj.(*appv1alpha1.Application))
+	ctrl.cfg.VcsToArgoMap.AddApp(obj.(appv1alpha1.Application))
 }
 
 func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
@@ -114,10 +114,10 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister() (cache.SharedI
 	informer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (apiruntime.Object, error) {
-				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications(ctrl.cfg.ArgoCdNamespace).List(context.TODO(), options)
+				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications("").List(context.TODO(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications(ctrl.cfg.ArgoCdNamespace).Watch(context.TODO(), options)
+				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications("").Watch(context.TODO(), options)
 			},
 		},
 		&appv1alpha1.Application{},

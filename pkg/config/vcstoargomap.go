@@ -12,12 +12,12 @@ import (
 )
 
 type VcsToArgoMap struct {
-	appDirByRepo map[repoURL]*AppDirectory
+	appDirByRepo map[RepoURL]*AppDirectory
 }
 
 func NewVcsToArgoMap() VcsToArgoMap {
 	return VcsToArgoMap{
-		appDirByRepo: make(map[repoURL]*AppDirectory),
+		appDirByRepo: make(map[RepoURL]*AppDirectory),
 	}
 }
 
@@ -37,7 +37,7 @@ func BuildAppsMap(ctx context.Context) (VcsToArgoMap, error) {
 }
 
 func (v2a *VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *AppDirectory {
-	repoUrl, err := normalizeRepoUrl(repoCloneUrl)
+	repoUrl, err := NormalizeRepoUrl(repoCloneUrl)
 	if err != nil {
 		log.Warn().Err(err).Msgf("failed to parse %s", repoCloneUrl)
 	}

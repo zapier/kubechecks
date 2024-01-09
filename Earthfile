@@ -139,14 +139,8 @@ dlv:
     SAVE ARTIFACT /go/bin/dlv
 
 docker-debug:
-<<<<<<< HEAD
-    ARG GOARCH="amd64"
-    ARG CI_REGISTRY_IMAGE="kubechecks"
-    FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef --CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE --GOARCH=$GOARCH
-=======
     ARG IMAGE_NAME="kubechecks:debug"
     FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef
->>>>>>> origin/main
 
     COPY (+dlv/dlv --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
     COPY (+build-debug-binary/kubechecks --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) .

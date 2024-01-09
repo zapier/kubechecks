@@ -169,13 +169,15 @@ k8s_yaml(helm(
   namespace='kubechecks',
   name='kubechecks',
   values='./localdev/kubechecks/values.yaml',
-  set=['deployment.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg), 'deployment.env.NGROK_URL=' + get_ngrok_url(cfg),
-        'deployment.env.KUBECHECKS_ARGOCD_WEBHOOK_URL='+ get_ngrok_url(cfg) +'/argocd/api/webhook',
-        'deployment.env.KUBECHECKS_ENABLE_CONFTEST=true',
-        'deployment.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
-        'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
-        'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
-        'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),],
+  set=[
+    'deployment.env[0].name=KUBECHECKS_WEBHOOK_URL_BASE',  'deployment.env[0].value=' + get_ngrok_url(cfg), 
+    'deployment.env[1].name=NGROK_URL', 'deployment.env[1].value=' + get_ngrok_url(cfg),
+    'deployment.env[2].name=KUBECHECKS_ARGOCD_WEBHOOK_URL', 'deployment.env[2].value=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
+    'deployment.env[3].name=KUBECHECKS_VCS_TYPE', 'deployment.env[3].value=' + cfg.get('vcs-type', 'gitlab'),
+    'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
+    'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
+    'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
+  ],
 ))
 
 k8s_resource(
