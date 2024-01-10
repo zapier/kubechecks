@@ -23,7 +23,7 @@ func AIDiffSummary(ctx context.Context, mrNote *pkg.Message, name string, manife
 	if err != nil {
 		telemetry.SetError(span, err, "OpenAI SummarizeDiff")
 		log.Error().Err(err).Msg("failed to summarize diff")
-		cr := pkg.CheckResult{State: pkg.StateWarning, Summary: "failed to summarize diff", Details: err.Error()}
+		cr := pkg.CheckResult{State: pkg.StateNone, Summary: "failed to summarize diff", Details: err.Error()}
 		mrNote.AddToAppMessage(ctx, name, cr)
 		return
 	}
