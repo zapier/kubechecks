@@ -226,8 +226,6 @@ func execCommand(name string, args ...string) *exec.Cmd {
 
 	log.Debug().Strs("args", argsToLog).Msg("building command")
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stdout
 	return cmd
 }
 
