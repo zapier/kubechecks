@@ -67,3 +67,10 @@ func TestGetCloneUrl(t *testing.T) {
 		})
 	}
 }
+
+func TestCensorVcsToken(t *testing.T) {
+	v := viper.New()
+	v.Set("vcs-token", "hre")
+	result := censorVcsToken(v, []string{"one", "two", "three"})
+	assert.Equal(t, []string{"one", "two", "t********e"}, result)
+}

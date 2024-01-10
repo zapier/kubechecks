@@ -211,8 +211,20 @@ func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
 	return cmd
 }
 
+func censorVcsToken(v *viper.Viper, args []string) []string {
+	vcsToken := v.GetString("vcs-token")
+
+	var argsToLog []string
+	for _, arg := range args {
+		argsToLog = append(argsToLog, strings.Replace(arg, vcsToken, "********", 10))
+	}
+	return argsToLog
+}
+
 func execCommand(name string, args ...string) *exec.Cmd {
-	log.Debug().Strs("args", args).Msg("building command")
+	argsToLog := censorVcsToken(viper.GetViper(), args)
+
+	log.Debug().Strs("args", argsToLog).Msg("building command")
 	cmd := exec.Command(name, args...)
 	return cmd
 }
