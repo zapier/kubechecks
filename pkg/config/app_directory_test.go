@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -98,4 +99,32 @@ func TestShouldInclude(t *testing.T) {
 			assert.Equal(t, tc.expected, actual)
 		})
 	}
+}
+
+// TestRemoveFromSlice performs tests on the removeFromSlice function.
+func TestRemoveFromSlice(t *testing.T) {
+	// Test for integers
+	ints := []int{1, 2, 3, 4, 5}
+	intsAfterRemoval := []int{1, 2, 4, 5}
+	intsTest := func(t *testing.T) {
+		result := removeFromSlice(ints, 3, func(a, b int) bool { return a == b })
+		if !reflect.DeepEqual(result, intsAfterRemoval) {
+			t.Errorf("Expected %v, got %v", intsAfterRemoval, result)
+		}
+	}
+
+	// Test for strings
+	strings := []string{"apple", "banana", "cherry", "date"}
+	stringsAfterRemoval := []string{"apple", "cherry", "date"}
+	stringsTest := func(t *testing.T) {
+		result := removeFromSlice(strings, "banana", func(a, b string) bool { return a == b })
+		if !reflect.DeepEqual(result, stringsAfterRemoval) {
+			t.Errorf("Expected %v, got %v", stringsAfterRemoval, result)
+		}
+	}
+
+	// Execute subtests
+	t.Run("Integers", intsTest)
+	t.Run("Strings", stringsTest)
+	// Add more subtests for different generic types if necessary
 }

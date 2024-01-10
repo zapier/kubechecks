@@ -2,7 +2,6 @@ package app_watcher
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -37,7 +36,7 @@ func initTestObjects() *ApplicationWatcher {
 		},
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 5)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Millisecond * 500)
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
 
@@ -52,7 +51,7 @@ func TestApplicationAdded(t *testing.T) {
 
 	go ctrl.Run(ctx, 1)
 
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 1)
 
 	assert.Equal(t, len(ctrl.cfg.VcsToArgoMap.GetMap()), 2)
 
@@ -66,8 +65,7 @@ func TestApplicationAdded(t *testing.T) {
 		t.Error(err)
 	}
 
-	time.Sleep(time.Second * 5)
-	fmt.Println(ctrl.cfg.VcsToArgoMap.GetMap())
+	time.Sleep(time.Second * 1)
 	assert.Equal(t, len(ctrl.cfg.VcsToArgoMap.GetMap()), 3)
 }
 
@@ -79,7 +77,7 @@ func TestApplicationUpdated(t *testing.T) {
 
 	go ctrl.Run(ctx, 1)
 
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 1)
 
 	assert.Equal(t, len(ctrl.cfg.VcsToArgoMap.GetMap()), 2)
 
@@ -97,7 +95,7 @@ func TestApplicationUpdated(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	time.Sleep(time.Second * 6)
+	time.Sleep(time.Second * 1)
 	oldAppDirectory = ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	newAppDirectory = ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
 	assert.Equal(t, oldAppDirectory.Count(), 0)
@@ -112,7 +110,7 @@ func TestApplicationDeleted(t *testing.T) {
 
 	go ctrl.Run(ctx, 1)
 
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 1)
 
 	assert.Equal(t, len(ctrl.cfg.VcsToArgoMap.GetMap()), 2)
 
@@ -123,8 +121,30 @@ func TestApplicationDeleted(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	time.Sleep(time.Second * 6)
+	time.Sleep(time.Second * 1)
 
 	appDirectory = ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	assert.Equal(t, appDirectory.Count(), 0)
+}
+
+// TestIsGitRepo will test various URLs against the isGitRepo function.
+func TestIsGitRepo(t *testing.T) {
+	tests := []struct {
+		url      string
+		expected bool
+	}{
+		{"https://github.com/user/repo.git", true},
+		{"https://gitlab.com/user/repo.git", true},
+		{"ssh://gitlab.com/user/repo.git", true},
+		{"user@github.com:user/repo.git", true},
+		{"https://bitbucket.org/user/repo.git", false},
+		{"user@gitlab.invalid/user/repo.git", false},
+		{"http://myownserver.com/git/repo.git", false},
+	}
+
+	for _, test := range tests {
+		if result := isGitRepo(test.url); result != test.expected {
+			t.Errorf("isGitRepo(%q) = %v; want %v", test.url, result, test.expected)
+		}
+	}
 }

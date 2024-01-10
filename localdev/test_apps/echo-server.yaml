@@ -17,7 +17,6 @@ spec:
     helm:
       valueFiles:
         - values.yaml
-        - values-2.yaml
   sources: []
   project: default
   syncPolicy:
