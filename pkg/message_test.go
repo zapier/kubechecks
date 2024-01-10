@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,5 +91,63 @@ func TestMessageIsSuccess(t *testing.T) {
 			message.AddToAppMessage(ctx, "some-app", CheckResult{State: state})
 			assert.Equal(t, expected, message.IsSuccess())
 		})
+	}
+}
+
+func TestMultipleItemsWithNewlines(t *testing.T) {
+	var (
+		message = NewMessage("name", 1, 2)
+		ctx     = context.Background()
+	)
+	message.AddNewApp(ctx, "first-app")
+	message.AddToAppMessage(ctx, "first-app", CheckResult{
+		State:   StateSuccess,
+		Summary: "summary-1",
+		Details: "detail-1",
+	})
+	message.AddToAppMessage(ctx, "first-app", CheckResult{
+		State:   StateSuccess,
+		Summary: "summary-2",
+		Details: "detail-2",
+	})
+	message.AddNewApp(ctx, "second-app")
+	message.AddToAppMessage(ctx, "second-app", CheckResult{
+		State:   StateSuccess,
+		Summary: "summary-1",
+		Details: "detail-1",
+	})
+	message.AddToAppMessage(ctx, "second-app", CheckResult{
+		State:   StateSuccess,
+		Summary: "summary-2",
+		Details: "detail-2",
+	})
+	result := message.BuildComment(ctx)
+
+	// header rows need double newlines before and after
+	index := 0
+	newline := uint8('\n')
+	for {
+		index++
+		foundAt := strings.Index(result[index:], "---")
+		if foundAt == -1 {
+			break // couldn't be found, we're done
+		}
+		index += foundAt
+
+		if index < 2 {
+			continue // hyphens are at the beginning of the string, we're fine
+		}
+
+		if result[index-1] == '-' || result[index+3] == '-' {
+			continue // not a triple-hyphen, but a more-than-triple-hyphen, move on
+		}
+
+		// must be preceded by two newlines
+		assert.Equal(t, newline, result[index-1])
+		assert.Equal(t, newline, result[index-2])
+
+		// must be followed by two newlines
+		assert.Equal(t, newline, result[index+3])
+		assert.Equal(t, newline, result[index+4])
 	}
 }
