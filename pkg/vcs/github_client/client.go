@@ -156,17 +156,16 @@ func toGithubCommitStatus(state pkg.CommitState) *string {
 	switch state {
 	case pkg.StateError, pkg.StatePanic:
 		return pkg.Pointer("error")
-	case pkg.StateFailure, pkg.StateWarning:
+	case pkg.StateFailure:
 		return pkg.Pointer("failure")
 	case pkg.StateRunning:
 		return pkg.Pointer("pending")
-	case pkg.StateSuccess:
+	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone:
 		return pkg.Pointer("success")
-
-	default: // maybe a different one? panic?
-		log.Warn().Str("state", state.String()).Msg("failed to convert to a github commit status")
-		return pkg.Pointer("failure")
 	}
+
+	log.Warn().Str("state", state.String()).Msg("failed to convert to a github commit status")
+	return pkg.Pointer("failure")
 }
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status pkg.CommitState) error {
