@@ -40,6 +40,7 @@ resources:
 - ../overlays/base
 - ./overlays/dev
 - /common/overlays/prod
+- https://google.com/some/url
 `)},
 
 			"test/app2/kustomization.yaml": {
