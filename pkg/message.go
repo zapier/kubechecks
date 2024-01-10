@@ -146,7 +146,7 @@ func buildComment(ctx context.Context, apps map[string]*AppResults) string {
 		sb.WriteString("<summary>\n\n")
 		sb.WriteString(fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, appState.Emoji()))
 		sb.WriteString("</summary>\n\n")
-		sb.WriteString(strings.Join(checkStrings, "---\n"))
+		sb.WriteString(strings.Join(checkStrings, "\n\n---\n\n"))
 		sb.WriteString("</details>")
 	}
 

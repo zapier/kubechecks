@@ -69,6 +69,8 @@ func (rd *ReposDirectory) Register(ctx context.Context, cloneUrl string) string 
 
 func (rd *ReposDirectory) fetchLatest() {
 	cmd := exec.Command("git", "pull")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stdout
 	err := cmd.Run()
 	if err != nil {
 		log.Err(err).Msg("failed to pull latest")

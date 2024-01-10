@@ -55,7 +55,14 @@ func CreateGitlabClient() (*Client, error) {
 		return nil, errors.Wrap(err, "failed to get current user")
 	}
 
-	return &Client{Client: c, username: user.Username, email: user.Email}, nil
+	client := &Client{Client: c, username: user.Username, email: user.Email}
+	if client.username == "" {
+		client.username = vcs.DefaultVcsUsername
+	}
+	if client.email == "" {
+		client.email = vcs.DefaultVcsEmail
+	}
+	return client, nil
 }
 
 func (c *Client) Email() string    { return c.email }

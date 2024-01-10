@@ -168,3 +168,27 @@ tests:
                 name: new-configmap
             - secretMap:
                 name: new-secret
+  - it: should render tag as annotation
+    chart:
+      appVersion: 1.0.0
+      version: 0.1.0
+    release:
+      name: kubechecks
+    set:
+      deployment:
+        image:
+          tag: 2.0.0
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/zapier/kubechecks:2.0.0
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/instance: kubechecks
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/name: kubechecks
+            app.kubernetes.io/version: 2.0.0
+            helm.sh/chart: kubechecks-0.1.0
