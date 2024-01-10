@@ -214,6 +214,8 @@ func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
 func execCommand(name string, args ...string) *exec.Cmd {
 	log.Debug().Strs("args", args).Msg("building command")
 	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stdout
 	return cmd
 }
 
