@@ -2,6 +2,7 @@ package app_watcher
 
 import (
 	"context"
+	"reflect"
 
 	appclientset "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
 	"github.com/rs/zerolog/log"
@@ -12,11 +13,9 @@ import (
 	"time"
 
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	informers "github.com/argoproj/argo-cd/v2/pkg/client/informers/externalversions/application/v1alpha1"
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -25,7 +24,6 @@ type ApplicationWatcher struct {
 	cfg                  *config.ServerConfig
 	applicationClientset appclientset.Interface
 	appInformer          cache.SharedIndexInformer
-	appCache             cache.InformerSynced
 	appLister            applisters.ApplicationLister
 }
 
@@ -44,7 +42,7 @@ func NewApplicationWatcher(cfg *config.ServerConfig) (*ApplicationWatcher, error
 		applicationClientset: appClient,
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister()
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 30)
 
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
@@ -78,8 +76,8 @@ func (ctrl *ApplicationWatcher) onApplicationAdded(obj interface{}) {
 	if err != nil {
 		log.Error().Err(err).Msg("appwatcher: could not get key for added application")
 	}
-	log.Trace().Str("key", key).Msg("appwatcher: onApplicationAdded")
-	ctrl.cfg.VcsToArgoMap.AddApp(obj.(appv1alpha1.Application))
+	log.Debug().Str("key", key).Msg("appwatcher: onApplicationAdded")
+	ctrl.cfg.VcsToArgoMap.AddApp(obj.(*appv1alpha1.Application))
 }
 
 func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
@@ -87,9 +85,15 @@ func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
 	if err != nil {
 		log.Warn().Err(err).Msg("appwatcher: could not get key for updated application")
 	}
-	// TODO
-	// have any of the Source repoURLs changed?
-	log.Trace().Str("key", key).Msg("appwatcher: onApplicationUpdated")
+	oldApp := old.(*appv1alpha1.Application)
+	newApp := new.(*appv1alpha1.Application)
+
+	// We want to update when any of Source or Sources parameters has changed
+	if !reflect.DeepEqual(oldApp.Spec.Source, newApp.Spec.Source) || !reflect.DeepEqual(oldApp.Spec.Sources, newApp.Spec.Sources) {
+		log.Debug().Str("key", key).Msg("appwatcher: onApplicationUpdated")
+		ctrl.cfg.VcsToArgoMap.UpdateApp(old.(*appv1alpha1.Application), new.(*appv1alpha1.Application))
+	}
+
 }
 
 func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
@@ -101,7 +105,8 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 		log.Warn().Err(err).Msg("appwatcher: could not get key for deleted application")
 	}
 
-	log.Trace().Str("key", key).Msg("appwatcher: onApplicationDeleted")
+	log.Debug().Str("key", key).Msg("appwatcher: onApplicationDeleted")
+	ctrl.cfg.VcsToArgoMap.DeleteApp(obj.(*appv1alpha1.Application))
 }
 
 /*
@@ -109,25 +114,11 @@ This Go function, named newApplicationInformerAndLister, is part of the Applicat
 A SharedIndexInformer is used to watch changes to a specific type of Kubernetes resource in an efficient manner. It significantly reduces the load on the Kubernetes API server by sharing and caching watches between all controllers that need to observe the object.
 Listers use the data from the informer's cache to provide a read-optimized view of the cache which reduces the load on the API Server and hides some complexity.
 */
-func (ctrl *ApplicationWatcher) newApplicationInformerAndLister() (cache.SharedIndexInformer, applisters.ApplicationLister) {
-	refreshTimeout := time.Second * 30
-	informer := cache.NewSharedIndexInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (apiruntime.Object, error) {
-				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications("").List(context.TODO(), options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications("").Watch(context.TODO(), options)
-			},
-		},
-		&appv1alpha1.Application{},
-		refreshTimeout,
-		cache.Indexers{
-			cache.NamespaceIndex: func(obj interface{}) ([]string, error) {
-				return cache.MetaNamespaceIndexFunc(obj)
-			},
-		},
+func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration) (cache.SharedIndexInformer, applisters.ApplicationLister) {
+	informer := informers.NewApplicationInformer(ctrl.applicationClientset, "", refreshTimeout,
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
+
 	lister := applisters.NewApplicationLister(informer.GetIndexer())
 	informer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{

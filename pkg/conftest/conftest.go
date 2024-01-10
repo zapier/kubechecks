@@ -41,7 +41,7 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (
 	policiesLocations := viper.GetStringSlice("policies-location")
 	var locations []string
 	for _, policiesLocation := range policiesLocations {
-		log.Debug().Str("schemas-location", policiesLocation).Msg("viper")
+		log.Debug().Str("policies-location", policiesLocation).Msg("viper")
 		schemaPath := reposCache.EnsurePath(ctx, repoPath, policiesLocation)
 		if schemaPath != "" {
 			locations = append(locations, schemaPath)

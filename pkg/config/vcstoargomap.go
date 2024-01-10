@@ -21,6 +21,10 @@ func NewVcsToArgoMap() VcsToArgoMap {
 	}
 }
 
+func (v2a *VcsToArgoMap) GetMap() map[RepoURL]*AppDirectory {
+	return v2a.appDirByRepo
+}
+
 func BuildAppsMap(ctx context.Context) (VcsToArgoMap, error) {
 	result := NewVcsToArgoMap()
 	argoClient := argo_client.GetArgoClient()
@@ -30,7 +34,7 @@ func BuildAppsMap(ctx context.Context) (VcsToArgoMap, error) {
 		return result, errors.Wrap(err, "failed to list applications")
 	}
 	for _, app := range apps.Items {
-		result.AddApp(app)
+		result.AddApp(&app)
 	}
 
 	return result, nil

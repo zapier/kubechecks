@@ -150,7 +150,7 @@ func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 		Str("appName", app.Name).
 		Str("cluster-name", app.Spec.Destination.Name).
 		Str("cluster-server", app.Spec.Destination.Server).
-		Msg("found app")
+		Msg("add app")
 	d.appsMap[app.Name] = app
 	d.AddDir(app.Name, getSourcePath(app))
 }
@@ -161,6 +161,36 @@ func (d *AppDirectory) AddDir(appName, path string) {
 
 func (d *AppDirectory) AddFile(appName, path string) {
 	d.appFiles[path] = append(d.appFiles[path], appName)
+}
+
+func (d *AppDirectory) RemoveApp(app v1alpha1.Application) {
+	log.Debug().
+		Str("appName", app.Name).
+		Str("cluster-name", app.Spec.Destination.Name).
+		Str("cluster-server", app.Spec.Destination.Server).
+		Msg("delete app")
+
+	// remove app from appsMap
+	delete(d.appsMap, app.Name)
+
+	// Clean up app from appDirs
+	sourcePath := getSourcePath(app)
+	d.appDirs[sourcePath] = removeFromSlice[string](d.appDirs[sourcePath], app.Name, func(a, b string) bool { return a == b })
+
+	// Clean up app from appFiles
+	src := app.Spec.GetSource()
+	srcPath := src.Path
+	if helm := src.Helm; helm != nil {
+		for _, param := range helm.FileParameters {
+			path := filepath.Join(srcPath, param.Path)
+			d.appFiles[path] = removeFromSlice[string](d.appFiles[path], app.Name, func(a, b string) bool { return a == b })
+		}
+
+		for _, valueFilePath := range helm.ValueFiles {
+			path := filepath.Join(srcPath, valueFilePath)
+			d.appFiles[path] = removeFromSlice[string](d.appFiles[path], app.Name, func(a, b string) bool { return a == b })
+		}
+	}
 }
 
 func mergeMaps[T any](first map[string]T, second map[string]T, combine func(T, T) T) map[string]T {
@@ -185,4 +215,13 @@ func mergeLists[T any](a []T, b []T) []T {
 
 func takeFirst[T any](a, _ T) T {
 	return a
+}
+
+func removeFromSlice[T any](slice []T, element T, equal func(T, T) bool) []T {
+	for i, j := range slice {
+		if equal(j, element) {
+			return append(slice[:i], slice[i+1:]...)
+		}
+	}
+	return slice
 }
