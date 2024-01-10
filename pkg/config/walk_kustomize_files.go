@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -48,6 +49,11 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 	}
 
 	for _, resource := range kustomize.Resources {
+		if strings.Contains(resource, "://") {
+			// no reason to walk remote files, since they can't be changed
+			continue
+		}
+
 		var relPath string
 		if len(resource) >= 1 && resource[0] == '/' {
 			relPath = resource[1:]
@@ -57,8 +63,7 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 
 		file, err := fs.Open(relPath)
 		if err != nil {
-			log.Warn().Err(err).Msgf("failed to read %s", relPath)
-			continue
+			return errors.Wrapf(err, "failed to read %s", relPath)
 		}
 		stat, err := file.Stat()
 		if err != nil {
