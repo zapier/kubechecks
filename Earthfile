@@ -1,6 +1,6 @@
 VERSION 0.7
 
-ARG --global GOARCH=amd64
+ARG --global USERARCH
 
 test:
     BUILD +ci-golang
@@ -26,8 +26,9 @@ release:
 go-deps:
     ARG GOLANG_VERSION="1.21"
     ARG GOOS=linux
+    ARG GOARCH=$USERARCH
 
-    FROM --platform=linux/$GOARCH golang:$GOLANG_VERSION-bullseye
+    FROM --platform=linux/$USERARCH golang:$GOLANG_VERSION-bullseye
 
     ENV GO111MODULE=on
     ENV CGO_ENABLED=0
@@ -63,11 +64,12 @@ test-golang:
 
 build-binary:
     ARG GOOS=linux
+    ARG GOARCH=$USERARCH
     ARG VARIANT
     ARG --required GIT_TAG
     ARG --required GIT_COMMIT
 
-    FROM --platform=linux/$GOARCH +go-deps
+    FROM --platform=linux/$USERARCH +go-deps
 
     WORKDIR /src
     COPY . /src
@@ -75,8 +77,7 @@ build-binary:
     SAVE ARTIFACT kubechecks
 
 build-debug-binary:
-    LOCALLY
-    FROM +go-deps
+    FROM --platform=linux/$USERARCH +go-deps
     WORKDIR /src
     COPY . /src
     RUN go build -gcflags="all=-N -l" -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit=$GIT_COMMIT -X github.com/zapier/kubechecks/pkg.GitTag=$GIT_TAG" -o kubechecks
@@ -122,7 +123,7 @@ docker:
     VOLUME /app/policies
     VOLUME /app/schemas
 
-    COPY (+build-binary/kubechecks --platform=linux/$GOARCH --GOARCH=$TARGETARCH --VARIANT=$TARGETVARIANT) .
+    COPY (+build-binary/kubechecks --platform=linux/$USERARCH --GOARCH=$TARGETARCH --VARIANT=$TARGETVARIANT) .
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
@@ -140,9 +141,9 @@ dlv:
 docker-debug:
     FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef
 
-    COPY (+build-debug-binary/kubechecks --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) .
+    COPY (+build-debug-binary/kubechecks --GOARCH=$USERARCH --VARIANT=$TARGETVARIANT) .
 
-    COPY (+dlv/dlv --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
+    COPY (+dlv/dlv --GOARCH=$USERARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
 
     CMD ["/usr/local/bin/dlv", "--listen=:2345", "--api-version=2", "--headless=true", "--accept-multiclient", "exec", "--continue", "./kubechecks", "controller"]
 
@@ -165,7 +166,7 @@ lint-golang:
 
     # install staticcheck
     RUN FILE=staticcheck.tgz \
-        && URL=https://github.com/dominikh/go-tools/releases/download/$STATICCHECK_VERSION/staticcheck_linux_$GOARCH.tar.gz \
+        && URL=https://github.com/dominikh/go-tools/releases/download/$STATICCHECK_VERSION/staticcheck_linux_$USERARCH.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \
@@ -187,7 +188,7 @@ test-helm:
     # install kubeconform
     ARG KUBECONFORM_VERSION="0.6.4"
     RUN FILE=kubeconform.tgz \
-        && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-${GOARCH}.tar.gz \
+        && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-${USERARCH}.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \
@@ -214,7 +215,7 @@ release-helm:
 
     ARG HELM_VERSION="3.8.1"
     RUN FILE=helm.tgz \
-        && URL=https://get.helm.sh/helm-v${HELM_VERSION}-linux-${GOARCH}.tar.gz \
+        && URL=https://get.helm.sh/helm-v${HELM_VERSION}-linux-${USERARCH}.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \

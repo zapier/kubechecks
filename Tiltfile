@@ -137,17 +137,12 @@ test_go(
   ],
 )
 
-arch="arm64" if str(local("uname -m")).strip('\n') == "arm64" else "amd64"
-
 earthly_build(
     context='.',
     target="+docker-debug",
     ref='kubechecks',
     image_arg='IMAGE_NAME',
     ignore='./dist',
-    extra_args=[
-        '--GOARCH={}'.format(arch),
-    ]
 )
 
 cmd_button('loc:go mod tidy',
