@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"testing"
 
 	"github.com/zapier/kubechecks/pkg/config"
@@ -50,7 +51,7 @@ func TestHooksPrefix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewServer(tt.cfg)
+			s := NewServer(context.TODO(), tt.cfg)
 			if got := s.hooksPrefix(); got != tt.want {
 				t.Errorf("hooksPrefix() = %v, want %v", got, tt.want)
 			}

@@ -36,7 +36,7 @@ func initTestObjects() *ApplicationWatcher {
 		},
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Millisecond * 500)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 1)
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
 

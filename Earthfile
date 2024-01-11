@@ -159,13 +159,13 @@ fmt-golang:
         && ./hacks/exit-on-changed-files.sh
 
 lint-golang:
-    ARG STATICCHECK_VERSION="2023.1.3"
+    ARG STATICCHECK_VERSION="2023.1.6"
 
     FROM +go-deps
 
     # install staticcheck
     RUN FILE=staticcheck.tgz \
-        && URL=https://github.com/dominikh/go-tools/releases/download/$STATICCHECK_VERSION/staticcheck_linux_amd64.tar.gz \
+        && URL=https://github.com/dominikh/go-tools/releases/download/$STATICCHECK_VERSION/staticcheck_linux_$GOARCH.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \

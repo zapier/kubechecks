@@ -69,7 +69,8 @@ func (ctrl *ApplicationWatcher) Run(ctx context.Context, processors int) {
 // onAdd is the function executed when the informer notifies the
 // presence of a new Application in the namespace
 func (ctrl *ApplicationWatcher) onApplicationAdded(obj interface{}) {
-	if !canProcessApp(obj) {
+	app, ok := canProcessApp(obj)
+	if !ok {
 		return
 	}
 	key, err := cache.MetaNamespaceKeyFunc(obj)
@@ -77,16 +78,20 @@ func (ctrl *ApplicationWatcher) onApplicationAdded(obj interface{}) {
 		log.Error().Err(err).Msg("appwatcher: could not get key for added application")
 	}
 	log.Debug().Str("key", key).Msg("appwatcher: onApplicationAdded")
-	ctrl.cfg.VcsToArgoMap.AddApp(obj.(*appv1alpha1.Application))
+	ctrl.cfg.VcsToArgoMap.AddApp(app)
 }
 
 func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
+	newApp, newOk := canProcessApp(new)
+	oldApp, oldOk := canProcessApp(old)
+	if !newOk || !oldOk {
+		return
+	}
+
 	key, err := cache.MetaNamespaceKeyFunc(new)
 	if err != nil {
 		log.Warn().Err(err).Msg("appwatcher: could not get key for updated application")
 	}
-	oldApp := old.(*appv1alpha1.Application)
-	newApp := new.(*appv1alpha1.Application)
 
 	// We want to update when any of Source or Sources parameters has changed
 	if !reflect.DeepEqual(oldApp.Spec.Source, newApp.Spec.Source) || !reflect.DeepEqual(oldApp.Spec.Sources, newApp.Spec.Sources) {
@@ -97,7 +102,8 @@ func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
 }
 
 func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
-	if !canProcessApp(obj) {
+	app, ok := canProcessApp(obj)
+	if !ok {
 		return
 	}
 	key, err := cache.MetaNamespaceKeyFunc(obj)
@@ -106,7 +112,7 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 	}
 
 	log.Debug().Str("key", key).Msg("appwatcher: onApplicationDeleted")
-	ctrl.cfg.VcsToArgoMap.DeleteApp(obj.(*appv1alpha1.Application))
+	ctrl.cfg.VcsToArgoMap.DeleteApp(app)
 }
 
 /*
@@ -130,23 +136,23 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout t
 	return informer, lister
 }
 
-func canProcessApp(obj interface{}) bool {
+func canProcessApp(obj interface{}) (*appv1alpha1.Application, bool) {
 	app, ok := obj.(*appv1alpha1.Application)
 	if !ok {
-		return false
+		return &appv1alpha1.Application{}, false
 	}
 
 	for _, src := range app.Spec.Sources {
 		if isGitRepo(src.RepoURL) {
-			return true
+			return app, true
 		}
 	}
 
 	if !isGitRepo(app.Spec.Source.RepoURL) {
-		return false
+		return app, false
 	}
 
-	return true
+	return app, true
 }
 
 func isGitRepo(url string) bool {

@@ -44,9 +44,9 @@ var ControllerCmd = &cobra.Command{
 		}
 
 		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
-		server := server.NewServer(&cfg)
-
 		ctx := context.Background()
+		server := server.NewServer(ctx, &cfg)
+
 		go server.Start(ctx)
 
 		// graceful termination handler.

@@ -27,10 +27,10 @@ type Server struct {
 	appWatcher *app_watcher.ApplicationWatcher
 }
 
-func NewServer(cfg *config.ServerConfig) *Server {
+func NewServer(ctx context.Context, cfg *config.ServerConfig) *Server {
 	var appWatcher *app_watcher.ApplicationWatcher
 	if viper.GetBool("monitor-all-applications") {
-		argoMap, err := config.BuildAppsMap(context.TODO())
+		argoMap, err := config.BuildAppsMap(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Msg("could not build VcsToArgoMap")
 		}
@@ -49,10 +49,10 @@ func NewServer(cfg *config.ServerConfig) *Server {
 
 func (s *Server) Start(ctx context.Context) {
 	if s.appWatcher != nil {
-		go s.appWatcher.Run(context.Background(), 1)
+		go s.appWatcher.Run(ctx, 1)
 	}
 
-	if err := s.ensureWebhooks(); err != nil {
+	if err := s.ensureWebhooks(ctx); err != nil {
 		log.Warn().Err(err).Msg("failed to create webhooks")
 	}
 
@@ -94,7 +94,7 @@ func (s *Server) hooksPrefix() string {
 	return strings.TrimSuffix(serverUrl, "/")
 }
 
-func (s *Server) ensureWebhooks() error {
+func (s *Server) ensureWebhooks(ctx context.Context) error {
 	if !viper.GetBool("ensure-webhooks") {
 		return nil
 	}
@@ -110,7 +110,6 @@ func (s *Server) ensureWebhooks() error {
 
 	log.Info().Msg("ensuring all webhooks are created correctly")
 
-	ctx := context.TODO()
 	vcsClient := s.cfg.VcsClient
 
 	fullUrl, err := url.JoinPath(urlBase, s.hooksPrefix(), vcsClient.GetName(), "project")
