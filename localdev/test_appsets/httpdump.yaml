@@ -2,6 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: httpdump
+  namespace: kubechecks
 spec:
   generators:
     - list:

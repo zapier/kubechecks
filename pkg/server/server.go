@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/ziflex/lecho/v3"
 
+	"github.com/zapier/kubechecks/pkg/app_watcher"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
@@ -22,21 +23,36 @@ import (
 const KubeChecksHooksPathPrefix = "/hooks"
 
 type Server struct {
-	cfg *config.ServerConfig
+	cfg        *config.ServerConfig
+	appWatcher *app_watcher.ApplicationWatcher
 }
 
-func NewServer(cfg *config.ServerConfig) *Server {
-	return &Server{cfg: cfg}
+func NewServer(ctx context.Context, cfg *config.ServerConfig) *Server {
+	var appWatcher *app_watcher.ApplicationWatcher
+	if viper.GetBool("monitor-all-applications") {
+		argoMap, err := config.BuildAppsMap(ctx)
+		if err != nil {
+			log.Fatal().Err(err).Msg("could not build VcsToArgoMap")
+		}
+		cfg.VcsToArgoMap = argoMap
+
+		appWatcher, err = app_watcher.NewApplicationWatcher(cfg)
+		if err != nil {
+			log.Fatal().Err(err).Msg("could not create ApplicationWatcher")
+		}
+	} else {
+		cfg.VcsToArgoMap = config.NewVcsToArgoMap()
+	}
+
+	return &Server{cfg: cfg, appWatcher: appWatcher}
 }
 
 func (s *Server) Start(ctx context.Context) {
-	if argoMap, err := s.buildVcsToArgoMap(ctx); err != nil {
-		log.Warn().Err(err).Msg("failed to build vcs app map from argo")
-	} else {
-		s.cfg.VcsToArgoMap = argoMap
+	if s.appWatcher != nil {
+		go s.appWatcher.Run(ctx, 1)
 	}
 
-	if err := s.ensureWebhooks(); err != nil {
+	if err := s.ensureWebhooks(ctx); err != nil {
 		log.Warn().Err(err).Msg("failed to create webhooks")
 	}
 
@@ -78,7 +94,7 @@ func (s *Server) hooksPrefix() string {
 	return strings.TrimSuffix(serverUrl, "/")
 }
 
-func (s *Server) ensureWebhooks() error {
+func (s *Server) ensureWebhooks(ctx context.Context) error {
 	if !viper.GetBool("ensure-webhooks") {
 		return nil
 	}
@@ -94,7 +110,6 @@ func (s *Server) ensureWebhooks() error {
 
 	log.Info().Msg("ensuring all webhooks are created correctly")
 
-	ctx := context.TODO()
 	vcsClient := s.cfg.VcsClient
 
 	fullUrl, err := url.JoinPath(urlBase, s.hooksPrefix(), vcsClient.GetName(), "project")
@@ -119,14 +134,4 @@ func (s *Server) ensureWebhooks() error {
 	}
 
 	return nil
-}
-
-func (s *Server) buildVcsToArgoMap(ctx context.Context) (config.VcsToArgoMap, error) {
-	if !viper.GetBool("monitor-all-applications") {
-		return config.NewVcsToArgoMap(), nil
-	}
-
-	log.Debug().Msg("building VCS to Application Map")
-
-	return config.BuildAppsMap(ctx)
 }

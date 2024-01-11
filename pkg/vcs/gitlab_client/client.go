@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"github.com/whilp/git-urls"
+	giturls "github.com/whilp/git-urls"
 	"github.com/xanzy/go-gitlab"
 
 	"github.com/zapier/kubechecks/pkg"

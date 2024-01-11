@@ -72,3 +72,13 @@ def deploy_argo():
         labels=["argocd"],
         resource_deps=['k8s:namespace']
     )
+
+def delete_argocd_apps_on_tilt_down():
+    if config.tilt_subcommand == 'down':
+        # delete Apps
+        local("./localdev/argocd/delete-apps.sh")
+
+def force_argocd_cleanup_on_tilt_down():
+    if config.tilt_subcommand == 'down':
+        # force cleanup of Apps and CRD on tilt down
+        local("./localdev/argocd/force-cleanup-apps.sh")

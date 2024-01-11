@@ -2,6 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: in-cluster-echo-server
+  namespace: kubechecks
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:
@@ -24,3 +25,4 @@ spec:
       selfHeal: false
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true

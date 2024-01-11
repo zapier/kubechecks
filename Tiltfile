@@ -45,7 +45,9 @@ deploy_ngrok(cfg)
 # /////////////////////////////////////////////////////////////////////////////
 
 # Load ArgoCD Tiltfile
-load('./localdev/argocd/Tiltfile', 'deploy_argo')
+load('./localdev/argocd/Tiltfile', 'deploy_argo', 'delete_argocd_apps_on_tilt_down', 'force_argocd_cleanup_on_tilt_down')
+# make sure apps get removed (cleanly) before ArgoCD is shutdown
+delete_argocd_apps_on_tilt_down()
 deploy_argo()
 
 #load('./localdev/reloader/Tiltfile', 'deploy_reloader')
@@ -135,19 +137,13 @@ test_go(
   ],
 )
 
-arch="arm64" if str(local("uname -m")).strip('\n') == "arm64" else "amd64"
-
 earthly_build(
     context='.',
     target="+docker-debug",
     ref='kubechecks',
     image_arg='IMAGE_NAME',
     ignore='./dist',
-    extra_args=[
-        '--GOARCH={}'.format(arch),
-    ]
 )
-
 
 cmd_button('loc:go mod tidy',
   argv=['go', 'mod', 'tidy'],
@@ -155,12 +151,7 @@ cmd_button('loc:go mod tidy',
   icon_name='move_up',
   text='go mod tidy',
 )
-cmd_button('generate-mocks',
-   argv=['go', 'generate', './...'],
-   resource='kubechecks',
-   icon_name='change_circle',
-   text='go generate',
-)
+
 cmd_button('restart-pod',
    argv=['kubectl', '-n', 'kubechecks', 'rollout', 'restart', 'deployment/kubechecks'],
    resource='kubechecks',
@@ -173,13 +164,15 @@ k8s_yaml(helm(
   namespace='kubechecks',
   name='kubechecks',
   values='./localdev/kubechecks/values.yaml',
-  set=['deployment.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg), 'deployment.env.NGROK_URL=' + get_ngrok_url(cfg),
-        'deployment.env.KUBECHECKS_ARGOCD_WEBHOOK_URL='+ get_ngrok_url(cfg) +'/argocd/api/webhook',
-        'deployment.env.KUBECHECKS_ENABLE_CONFTEST=true',
-        'deployment.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
-        'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
-        'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
-        'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),],
+  set=[
+    'deployment.env[15].name=KUBECHECKS_WEBHOOK_URL_BASE',  'deployment.env[15].value=' + get_ngrok_url(cfg), 
+    'deployment.env[16].name=NGROK_URL', 'deployment.env[16].value=' + get_ngrok_url(cfg),
+    'deployment.env[17].name=KUBECHECKS_ARGOCD_WEBHOOK_URL', 'deployment.env[17].value=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
+    'deployment.env[18].name=KUBECHECKS_VCS_TYPE', 'deployment.env[18].value=' + cfg.get('vcs-type', 'gitlab'),
+    'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
+    'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
+    'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
+  ],
 ))
 
 k8s_resource(
@@ -188,7 +181,9 @@ k8s_resource(
   resource_deps=[
     # 'go-build',
     'go-test',
-    'k8s:namespace'
+    'k8s:namespace',
+    'argocd',
+    'argocd-crds',
   ],
   labels=["kubechecks"]
 )
@@ -218,3 +213,6 @@ install_test_apps(cfg)
 
 load("localdev/test_appsets/Tiltfile", "install_test_appsets")
 install_test_appsets(cfg)
+
+
+force_argocd_cleanup_on_tilt_down()

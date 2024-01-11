@@ -106,7 +106,7 @@ Click the Detailed view button at the top, and click the refresh button next to 
 
 #### Minikube
 
-If you're using minikube with Tilt we recommend following this [guide](https://github.com/tilt-dev/minikube-local) to setup a local registry that Tilt can push to automatically. Without this Tilt will attempt to push up to Docker Hub by default.
+If you're using minikube with Tilt we recommend following this [guide](https://github.com/tilt-dev/ctlptl) to setup a local registry that Tilt can push to automatically. Without this Tilt will attempt to push up to Docker Hub by default.
 
 ### Code Changes
 

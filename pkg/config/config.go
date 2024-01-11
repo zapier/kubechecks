@@ -12,21 +12,21 @@ import (
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
-type repoURL struct {
+type RepoURL struct {
 	Host, Path string
 }
 
-func (r repoURL) CloneURL() string {
+func (r RepoURL) CloneURL() string {
 	return fmt.Sprintf("git@%s:%s", r.Host, r.Path)
 }
 
-func buildNormalizedRepoUrl(host, path string) repoURL {
+func buildNormalizedRepoUrl(host, path string) RepoURL {
 	path = strings.TrimPrefix(path, "/")
 	path = strings.TrimSuffix(path, ".git")
-	return repoURL{host, path}
+	return RepoURL{host, path}
 }
 
-func normalizeRepoUrl(s string) (repoURL, error) {
+func NormalizeRepoUrl(s string) (RepoURL, error) {
 	var parser func(string) (*url.URL, error)
 
 	if strings.HasPrefix(s, "http") {
@@ -37,20 +37,43 @@ func normalizeRepoUrl(s string) (repoURL, error) {
 
 	r, err := parser(s)
 	if err != nil {
-		return repoURL{}, err
+		return RepoURL{}, err
 	}
 
 	return buildNormalizedRepoUrl(r.Host, r.Path), nil
 }
 
-func (v2a *VcsToArgoMap) AddApp(app v1alpha1.Application) {
+func (v2a *VcsToArgoMap) AddApp(app *v1alpha1.Application) {
 	if app.Spec.Source == nil {
 		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
 		return
 	}
 
 	appDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
-	appDirectory.ProcessApp(app)
+	appDirectory.ProcessApp(*app)
+}
+
+func (v2a *VcsToArgoMap) UpdateApp(old *v1alpha1.Application, new *v1alpha1.Application) {
+	if new.Spec.Source == nil {
+		log.Warn().Msgf("%s/%s: no source, skipping", new.Namespace, new.Name)
+		return
+	}
+
+	oldAppDirectory := v2a.GetAppsInRepo(old.Spec.Source.RepoURL)
+	oldAppDirectory.RemoveApp(*old)
+
+	newAppDirectory := v2a.GetAppsInRepo(new.Spec.Source.RepoURL)
+	newAppDirectory.ProcessApp(*new)
+}
+
+func (v2a *VcsToArgoMap) DeleteApp(app *v1alpha1.Application) {
+	if app.Spec.Source == nil {
+		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
+		return
+	}
+
+	oldAppDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
+	oldAppDirectory.RemoveApp(*app)
 }
 
 type ServerConfig struct {
