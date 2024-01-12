@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	mGlobal "go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -184,7 +183,6 @@ func (bt *BaseTelemetry) initOTLPMetric(conn *grpc.ClientConn, res *resource.Res
 
 	otelReader := metric.NewPeriodicReader(
 		mClient,
-		metric.WithAggregationSelector(metric.DefaultAggregationSelector),
 		metric.WithInterval(DefaultMetricInterval*time.Second),
 	)
 
@@ -193,7 +191,7 @@ func (bt *BaseTelemetry) initOTLPMetric(conn *grpc.ClientConn, res *resource.Res
 		metric.WithReader(otelReader),
 	)
 
-	mGlobal.SetMeterProvider(bt.metric)
+	otel.SetMeterProvider(bt.metric)
 
 	return nil
 }

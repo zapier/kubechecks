@@ -215,7 +215,7 @@ func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) *repo.Repo {
 	// Convert all labels from this MR to a string array of label names
 	var labels []string
 	for _, label := range event.Labels {
-		labels = append(labels, label.Name)
+		labels = append(labels, label.Title)
 	}
 
 	return &repo.Repo{
