@@ -1,11 +1,7 @@
 package telemetry
 
 import (
-	"context"
-	"fmt"
-
 	"go.opentelemetry.io/otel/attribute"
-	otelMetric "go.opentelemetry.io/otel/metric"
 )
 
 type MetricType int
@@ -77,57 +73,11 @@ func intToBool(i int64) bool {
 	return i == 1
 }
 
-func boolToInt(v bool) int64 {
-	if v {
-		return 1
-	}
-	return 0
-}
-
-func BoolAttribute(key string, value bool) Attrs {
-	return Attrs{
-		Key: key,
-		Value: AttrsValue{
-			Type:     BOOL,
-			Numberic: boolToInt(value),
-		},
-	}
-}
-
-func StringAttribute(key, value string) Attrs {
-	return Attrs{
-		Key: key,
-		Value: AttrsValue{
-			Type:     STRING,
-			Stringly: value,
-		},
-	}
-}
-
-func StringSliceAttribute(key string, value []string) Attrs {
-	return Attrs{
-		Key: key,
-		Value: AttrsValue{
-			Type:  STRINGSLICE,
-			Slice: value,
-		},
-	}
-}
-
 type MetricData struct {
 	Name       string
 	MetricType MetricType
 	Value      interface{}
 	Attrs      []Attrs
-}
-
-func NewMetricData(name string, metricType MetricType, value interface{}, attrs ...Attrs) *MetricData {
-	return &MetricData{
-		Name:       name,
-		MetricType: metricType,
-		Value:      value,
-		Attrs:      attrs,
-	}
 }
 
 func (md MetricData) ConvertAttrs() []attribute.KeyValue {
@@ -147,58 +97,4 @@ func (md MetricData) ConvertAttrs() []attribute.KeyValue {
 	}
 
 	return attrs
-}
-
-func RecordGaugeFloat(ctx context.Context, meter otelMetric.Meter, metricName string, value float64, attrs ...attribute.KeyValue) error {
-	h, err := meter.SyncFloat64().UpDownCounter(metricName)
-	if err != nil {
-		return fmt.Errorf("error creating %s gauge: %s", metricName, err.Error())
-	}
-	h.Add(ctx, value, attrs...)
-	return nil
-}
-
-func RecordGaugeInt(ctx context.Context, meter otelMetric.Meter, metricName string, value int64, attrs ...attribute.KeyValue) error {
-	h, err := meter.SyncInt64().UpDownCounter(metricName)
-	if err != nil {
-		return fmt.Errorf("error creating %s gauge: %s", metricName, err.Error())
-	}
-	h.Add(ctx, value, attrs...)
-	return nil
-}
-
-func RecordCounterFloat(ctx context.Context, meter otelMetric.Meter, metricName string, value float64, attrs ...attribute.KeyValue) error {
-	h, err := meter.SyncFloat64().Counter(metricName)
-	if err != nil {
-		return fmt.Errorf("error creating %s counter: %s", metricName, err.Error())
-	}
-	h.Add(ctx, value, attrs...)
-	return nil
-}
-
-func RecordCounterInt(ctx context.Context, meter otelMetric.Meter, metricName string, value int64, attrs ...attribute.KeyValue) error {
-	h, err := meter.SyncInt64().Counter(metricName)
-	if err != nil {
-		return fmt.Errorf("error creating %s counter: %s", metricName, err.Error())
-	}
-	h.Add(ctx, value, attrs...)
-	return nil
-}
-
-func RecordHistogramInt(ctx context.Context, meter otelMetric.Meter, metricName string, value int64, attrs ...attribute.KeyValue) error {
-	h, err := meter.SyncInt64().Histogram(metricName)
-	if err != nil {
-		return fmt.Errorf("error creating %s counter: %s", metricName, err.Error())
-	}
-	h.Record(ctx, value, attrs...)
-	return nil
-}
-
-func RecordHistogramFloat(ctx context.Context, meter otelMetric.Meter, metricName string, value float64, attrs ...attribute.KeyValue) error {
-	h, err := meter.SyncFloat64().Histogram(metricName)
-	if err != nil {
-		return fmt.Errorf("error creating %s counter: %s", metricName, err.Error())
-	}
-	h.Record(ctx, value, attrs...)
-	return nil
 }
