@@ -1,6 +1,7 @@
 VERSION 0.7
 
 ARG --global USERARCH
+ARG --global GOLANG_VERSION="1.21"
 
 test:
     BUILD +ci-golang
@@ -24,7 +25,6 @@ release:
     BUILD +release-helm
 
 go-deps:
-    ARG GOLANG_VERSION="1.21"
     ARG GOOS=linux
     ARG GOARCH=$USERARCH
 
@@ -131,7 +131,7 @@ docker:
     SAVE IMAGE --push $IMAGE_NAME
 
 dlv:
-    FROM golang:1.21-bullseye
+    FROM golang:$GOLANG_VERSION-bullseye
 
     RUN apt update && apt install -y ca-certificates curl git
     RUN go install github.com/go-delve/delve/cmd/dlv@latest

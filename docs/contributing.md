@@ -40,7 +40,7 @@ The following checks run when a PR is opened:
 
 ### Tools / Accounts
 
-* [Go 1.19](https://go.dev/)
+* [Go 1.21](https://go.dev/)
 * [Earthly](https://earthly.dev/)
 * [Ngrok](https://ngrok.com/)
 * [Tilt](https://tilt.dev/)

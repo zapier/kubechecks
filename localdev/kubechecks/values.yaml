@@ -1,3 +1,8 @@
+configMap:
+  create: true
+  env: {}
+
+
 deployment:
   annotations:
     reloader.stakater.com/auto: "true" 
