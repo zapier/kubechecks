@@ -77,7 +77,7 @@ func (ctrl *ApplicationWatcher) onApplicationAdded(obj interface{}) {
 	if err != nil {
 		log.Error().Err(err).Msg("appwatcher: could not get key for added application")
 	}
-	log.Debug().Str("key", key).Msg("appwatcher: onApplicationAdded")
+	log.Info().Str("key", key).Msg("appwatcher: onApplicationAdded")
 	ctrl.cfg.VcsToArgoMap.AddApp(app)
 }
 
@@ -95,7 +95,7 @@ func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
 
 	// We want to update when any of Source or Sources parameters has changed
 	if !reflect.DeepEqual(oldApp.Spec.Source, newApp.Spec.Source) || !reflect.DeepEqual(oldApp.Spec.Sources, newApp.Spec.Sources) {
-		log.Debug().Str("key", key).Msg("appwatcher: onApplicationUpdated")
+		log.Info().Str("key", key).Msg("appwatcher: onApplicationUpdated")
 		ctrl.cfg.VcsToArgoMap.UpdateApp(old.(*appv1alpha1.Application), new.(*appv1alpha1.Application))
 	}
 
@@ -111,7 +111,7 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 		log.Warn().Err(err).Msg("appwatcher: could not get key for deleted application")
 	}
 
-	log.Debug().Str("key", key).Msg("appwatcher: onApplicationDeleted")
+	log.Info().Str("key", key).Msg("appwatcher: onApplicationDeleted")
 	ctrl.cfg.VcsToArgoMap.DeleteApp(app)
 }
 

@@ -468,7 +468,7 @@ func (ce *CheckEvent) createNote(ctx context.Context) *pkg.Message {
 
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "kubechecks running ... ")
+	return ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, ":hourglass: kubechecks running ... ")
 }
 
 // cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.
