@@ -83,7 +83,6 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 		KustomizeOptions:  argoSettings.KustomizeOptions,
 		KubeVersion:       cluster.Info.ServerVersion,
 		ApiVersions:       cluster.Info.APIVersions,
-		Plugins:           argoSettings.ConfigManagementPlugins,
 		TrackingMethod:    argoSettings.TrackingMethod,
 	}, true, &git.NoopCredsStore{}, resource.MustParse("0"), nil)
 	if err != nil {

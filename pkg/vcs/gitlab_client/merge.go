@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/zapier/kubechecks/pkg/repo_config"
-	"github.com/zapier/kubechecks/telemetry"
+	"github.com/xanzy/go-gitlab"
 	"go.opentelemetry.io/otel"
 
-	"github.com/xanzy/go-gitlab"
+	"github.com/zapier/kubechecks/pkg/repo_config"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
 type Changes struct {
@@ -26,14 +26,14 @@ func (c *Client) GetMergeChanges(ctx context.Context, projectId int, mergeReqId 
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "GetMergeChanges")
 	defer span.End()
 
-	changes := []*Changes{}
-	mr, _, err := c.MergeRequests.GetMergeRequestChanges(projectId, mergeReqId, &gitlab.GetMergeRequestChangesOptions{})
+	var changes []*Changes
+	diffs, _, err := c.MergeRequests.ListMergeRequestDiffs(projectId, mergeReqId, &gitlab.ListMergeRequestDiffsOptions{})
 	if err != nil {
 		telemetry.SetError(span, err, "Get MergeRequest Changes")
 		return changes, err
 	}
 
-	for _, change := range mr.Changes {
+	for _, change := range diffs {
 		changes = append(changes, &Changes{
 			OldPath:     change.OldPath,
 			NewPath:     change.NewPath,
