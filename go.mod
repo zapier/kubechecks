@@ -14,8 +14,8 @@ require (
 	github.com/go-logr/zerologr v1.2.3
 	github.com/google/go-github/v53 v53.2.0
 	github.com/heptiolabs/healthcheck v0.0.0-20211123025425-613501dd5deb
-	github.com/labstack/echo-contrib v0.14.1
-	github.com/labstack/echo/v4 v4.10.2
+	github.com/labstack/echo-contrib v0.15.0
+	github.com/labstack/echo/v4 v4.11.4
 	github.com/masterminds/semver v1.5.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/open-policy-agent/conftest v0.39.2
@@ -243,7 +243,7 @@ require (
 	go.starlark.net v0.0.0-20231121155337-90ade8b19d09 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/crypto v0.16.0 // indirect
+	golang.org/x/crypto v0.17.0 // indirect
 	golang.org/x/sync v0.5.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
