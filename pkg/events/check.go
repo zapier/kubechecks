@@ -379,8 +379,14 @@ func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app 
 			}()
 
 			ce.logger.Info().Str("app", app).Str("check", desc).Msgf("running check")
-
 			cr, err := fn()
+			ce.logger.Info().
+				Err(err).
+				Str("app", app).
+				Str("check", desc).
+				Uint8("result", uint8(cr.State)).
+				Msg("check result")
+
 			if err != nil {
 				telemetry.SetError(span, err, desc)
 				result := pkg.CheckResult{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}

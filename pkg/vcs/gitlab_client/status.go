@@ -46,7 +46,12 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state pkg.Co
 		status.PipelineID = &pipelineStatus.ID
 	}
 
-	log.Debug().Str("project", repo.FullName).Str("commit_sha", repo.SHA).Msg("gitlab client: updating commit status")
+	log.Debug().
+		Str("project", repo.FullName).
+		Str("commit_sha", repo.SHA).
+		Str("kubechecks_status", state.String()).
+		Str("gitlab_status", string(status.State)).
+		Msg("gitlab client: updating commit status")
 	_, err = c.setCommitStatus(repo.FullName, repo.SHA, status)
 	if err != nil {
 		log.Error().Err(err).Str("project", repo.FullName).Msg("gitlab client: could not set commit status")
