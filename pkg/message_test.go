@@ -43,45 +43,45 @@ func TestMessageIsSuccess(t *testing.T) {
 		)
 
 		// no apps mean success
-		assert.True(t, message.IsSuccess())
+		assert.Equal(t, StateNone, message.WorstState())
 
 		// one app, no checks = success
 		message.AddNewApp(ctx, "some-app")
-		assert.True(t, message.IsSuccess())
+		assert.Equal(t, StateNone, message.WorstState())
 
 		// one app, one success = success
 		message.AddToAppMessage(ctx, "some-app", CheckResult{State: StateSuccess})
-		assert.True(t, message.IsSuccess())
+		assert.Equal(t, StateSuccess, message.WorstState())
 
 		// one app, one success, one failure = failure
 		message.AddToAppMessage(ctx, "some-app", CheckResult{State: StateFailure})
-		assert.False(t, message.IsSuccess())
+		assert.Equal(t, StateFailure, message.WorstState())
 
 		// one app, two successes, one failure = failure
 		message.AddToAppMessage(ctx, "some-app", CheckResult{State: StateSuccess})
-		assert.False(t, message.IsSuccess())
+		assert.Equal(t, StateFailure, message.WorstState())
 
 		// one app, two successes, one failure = failure
 		message.AddToAppMessage(ctx, "some-app", CheckResult{State: StateSuccess})
-		assert.False(t, message.IsSuccess())
+		assert.Equal(t, StateFailure, message.WorstState())
 
 		// two apps: second app's success does not override first app's failure
 		message.AddNewApp(ctx, "some-other-app")
 		message.AddToAppMessage(ctx, "some-other-app", CheckResult{State: StateSuccess})
-		assert.False(t, message.IsSuccess())
+		assert.Equal(t, StateFailure, message.WorstState())
 	})
 
-	testcases := map[CommitState]bool{
-		StateNone:    true,
-		StateSuccess: true,
-		StateRunning: true,
-		StateWarning: false,
-		StateFailure: false,
-		StateError:   false,
-		StatePanic:   false,
+	testcases := map[CommitState]struct{}{
+		StateNone:    {},
+		StateSuccess: {},
+		StateRunning: {},
+		StateWarning: {},
+		StateFailure: {},
+		StateError:   {},
+		StatePanic:   {},
 	}
 
-	for state, expected := range testcases {
+	for state := range testcases {
 		t.Run(state.BareString(), func(t *testing.T) {
 			var (
 				message = NewMessage("name", 1, 2)
@@ -89,7 +89,7 @@ func TestMessageIsSuccess(t *testing.T) {
 			)
 			message.AddNewApp(ctx, "some-app")
 			message.AddToAppMessage(ctx, "some-app", CheckResult{State: state})
-			assert.Equal(t, expected, message.IsSuccess())
+			assert.Equal(t, state, message.WorstState())
 		})
 	}
 }

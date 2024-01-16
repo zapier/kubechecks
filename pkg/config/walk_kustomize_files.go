@@ -77,15 +77,20 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 
 		result.AddDir(appName, relPath)
 		if err = walkKustomizeFiles(result, fs, appName, relPath); err != nil {
-			log.Warn().Err(err).Msgf("failed to read kustomize.yaml in %s", relPath)
+			log.Warn().Err(err).Msgf("failed to read kustomize.yaml from resources in %s", relPath)
 		}
 	}
 
 	for _, basePath := range kustomize.Bases {
+		if strings.Contains(basePath, "://") {
+			// no reason to walk remote files, since they can't be changed
+			continue
+		}
+
 		relPath := filepath.Join(dirpath, basePath)
 		result.AddDir(appName, relPath)
 		if err = walkKustomizeFiles(result, fs, appName, relPath); err != nil {
-			log.Warn().Err(err).Msgf("failed to read kustomize.yaml in %s", relPath)
+			log.Warn().Err(err).Msgf("failed to read kustomize.yaml from bases in %s", relPath)
 		}
 	}
 

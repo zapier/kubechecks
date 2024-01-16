@@ -5,6 +5,7 @@ import "fmt"
 // CommitState is an enum for represnting the state of a commit for posting via CommitStatus
 type CommitState uint8
 
+// must be in order of best to worst, in order for WorstState to work
 const (
 	StateNone CommitState = iota
 	StateSuccess
@@ -70,9 +71,5 @@ var stateString = map[CommitState]string{
 const defaultString = "Unknown"
 
 func WorstState(l1, l2 CommitState) CommitState {
-	if l2 > l1 {
-		return l2
-	}
-
-	return l1
+	return max(l1, l2)
 }
