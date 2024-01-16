@@ -47,7 +47,7 @@ type CheckEvent struct {
 
 	addedAppsSet map[string]struct{}
 	appChannel   chan *v1alpha1.Application
-	doneChannel  chan bool
+	doneChannel  chan struct{}
 }
 
 var inFlight int32
@@ -196,7 +196,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
 	ce.addedAppsSet = make(map[string]struct{})
 	ce.appChannel = make(chan *v1alpha1.Application, len(ce.affectedItems.Applications)*2)
-	ce.doneChannel = make(chan bool, len(ce.affectedItems.Applications)*2)
+	ce.doneChannel = make(chan struct{}, len(ce.affectedItems.Applications)*2)
 
 	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
 	if ce.workerLimits > len(ce.affectedItems.Applications) {
@@ -216,13 +216,8 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	}
 
 	returnCount := 0
-	commitStatus := true
-	for appStatus := range ce.doneChannel {
+	for range ce.doneChannel {
 		ce.logger.Debug().Msg("finished an app")
-		if !appStatus {
-			ce.logger.Debug().Msg("app failed, commit status = false")
-			commitStatus = false
-		}
 
 		returnCount++
 		ce.logger.Debug().Int("done apps", returnCount).Int("all apps", len(ce.addedAppsSet)).Msg("completed apps")
@@ -240,13 +235,8 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 		ce.logger.Error().Err(err).Msg("failed to push comment")
 	}
 
-	if !commitStatus {
-		ce.CommitStatus(ctx, pkg.StateFailure)
-		ce.logger.Error().Msg("Errors found")
-		return
-	}
-
-	ce.CommitStatus(ctx, pkg.StateSuccess)
+	worstStatus := ce.vcsNote.WorstState()
+	ce.CommitStatus(ctx, worstStatus)
 }
 
 func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
@@ -284,16 +274,14 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 // Process all apps on the provided channel
 func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
 	for app := range ce.appChannel {
-		var isSuccess bool
-
 		if app != nil {
 			ce.logger.Info().Int("workerID", workerID).Str("app", app.Name).Msg("Processing App")
-			isSuccess = ce.processApp(ctx, *app)
+			ce.processApp(ctx, *app)
 		} else {
 			log.Warn().Msg("appWorkers received a nil app")
 		}
 
-		ce.doneChannel <- isSuccess
+		ce.doneChannel <- struct{}{}
 	}
 }
 
@@ -302,7 +290,7 @@ func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
 // It takes a context (ctx), application name (app), directory (dir) as input and returns an error if any check fails.
 // The processing is performed concurrently using Go routines and error groups. Any check results are sent through
 // the returnChan. The function also manages the inFlight atomic counter to track active processing routines.
-func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) bool {
+func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) {
 	appName := app.Name
 	dir := app.Spec.GetSource().Path
 
@@ -326,7 +314,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", appName, dir)
 		cr := pkg.CheckResult{State: pkg.StateError, Summary: "Unable to get manifests", Details: fmt.Sprintf("```\n%s\n```", ce.cleanupGetManifestsError(err))}
 		ce.vcsNote.AddToAppMessage(ctx, appName, cr)
-		return false
+		return
 	}
 
 	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
@@ -358,9 +346,6 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	wg.Wait()
 
 	ce.vcsNote.SetFooter(start, ce.repo.SHA)
-
-	commitStatus := ce.vcsNote.IsSuccess()
-	return commitStatus
 }
 
 type checkFunction func() (pkg.CheckResult, error)
@@ -394,8 +379,14 @@ func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app 
 			}()
 
 			ce.logger.Info().Str("app", app).Str("check", desc).Msgf("running check")
-
 			cr, err := fn()
+			ce.logger.Info().
+				Err(err).
+				Str("app", app).
+				Str("check", desc).
+				Uint8("result", uint8(cr.State)).
+				Msg("check result")
+
 			if err != nil {
 				telemetry.SetError(span, err, desc)
 				result := pkg.CheckResult{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}

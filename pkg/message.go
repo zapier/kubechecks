@@ -51,19 +51,16 @@ type Message struct {
 	lock   sync.Mutex
 }
 
-func (m *Message) IsSuccess() bool {
-	isSuccess := true
+func (m *Message) WorstState() CommitState {
+	state := StateNone
 
 	for _, r := range m.apps {
 		for _, result := range r.results {
-			switch result.State {
-			case StateError, StateFailure, StatePanic, StateWarning:
-				isSuccess = false
-			}
+			state = WorstState(state, result.State)
 		}
 	}
 
-	return isSuccess
+	return state
 }
 
 func (m *Message) AddNewApp(ctx context.Context, app string) {
