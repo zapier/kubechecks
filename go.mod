@@ -24,7 +24,7 @@ require (
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rikatz/kubepug v1.4.0
 	github.com/rs/zerolog v1.31.0
-	github.com/sashabaranov/go-openai v1.17.11
+	github.com/sashabaranov/go-openai v1.18.1
 	github.com/shurcooL/githubv4 v0.0.0-20231126234147-1cffa1f02456
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.0
