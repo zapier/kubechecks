@@ -51,4 +51,5 @@ type Client interface {
 
 	Username() string
 	Email() string
+	ToEmoji(pkg.CommitState) string
 }

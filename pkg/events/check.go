@@ -396,7 +396,7 @@ func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app 
 
 			ce.vcsNote.AddToAppMessage(grpCtx, app, cr)
 
-			ce.logger.Info().Str("app", app).Str("check", desc).Str("result", cr.State.String()).Msgf("check done")
+			ce.logger.Info().Str("app", app).Str("check", desc).Str("result", cr.State.BareString()).Msgf("check done")
 		}()
 	}
 }
@@ -419,7 +419,7 @@ func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (pk
 			return pkg.CheckResult{}, errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", app)
 		}
 
-		cr, err := conftest.Conftest(ctx, argoApp, ce.TempWorkingDir)
+		cr, err := conftest.Conftest(ctx, argoApp, ce.TempWorkingDir, ce.client)
 		if err != nil {
 			return pkg.CheckResult{}, err
 		}

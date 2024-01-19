@@ -8,6 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type fakeEmojiable struct {
+	emoji string
+}
+
+func (fe fakeEmojiable) ToEmoji(state CommitState) string { return fe.emoji }
+
 func TestBuildComment(t *testing.T) {
 	appResults := map[string]*AppResults{
 		"myapp": {
@@ -20,16 +26,17 @@ func TestBuildComment(t *testing.T) {
 			},
 		},
 	}
-	comment := buildComment(context.TODO(), appResults)
+	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
+	comment := m.buildComment(context.TODO(), appResults)
 	assert.Equal(t, `# Kubechecks Report
 <details>
 <summary>
 
-## ArgoCD Application Checks: `+"`myapp`"+` :heavy_exclamation_mark:
+## ArgoCD Application Checks: `+"`myapp`"+` :test:
 </summary>
 
 <details>
-<summary>this failed bigly Error :heavy_exclamation_mark:</summary>
+<summary>this failed bigly Error :test:</summary>
 
 should add some important details here
 </details></details>`, comment)
@@ -38,7 +45,7 @@ should add some important details here
 func TestMessageIsSuccess(t *testing.T) {
 	t.Run("logic works", func(t *testing.T) {
 		var (
-			message = NewMessage("name", 1, 2)
+			message = NewMessage("name", 1, 2, fakeEmojiable{":test:"})
 			ctx     = context.TODO()
 		)
 
@@ -84,7 +91,7 @@ func TestMessageIsSuccess(t *testing.T) {
 	for state := range testcases {
 		t.Run(state.BareString(), func(t *testing.T) {
 			var (
-				message = NewMessage("name", 1, 2)
+				message = NewMessage("name", 1, 2, fakeEmojiable{":test:"})
 				ctx     = context.TODO()
 			)
 			message.AddNewApp(ctx, "some-app")
@@ -96,7 +103,7 @@ func TestMessageIsSuccess(t *testing.T) {
 
 func TestMultipleItemsWithNewlines(t *testing.T) {
 	var (
-		message = NewMessage("name", 1, 2)
+		message = NewMessage("name", 1, 2, fakeEmojiable{":test:"})
 		ctx     = context.Background()
 	)
 	message.AddNewApp(ctx, "first-app")

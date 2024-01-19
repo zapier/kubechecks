@@ -41,7 +41,7 @@ func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, prID int, msg
 		log.Error().Err(err).Msg("could not post message to PR")
 	}
 
-	return pkg.NewMessage(repo.FullName, prID, int(*comment.ID))
+	return pkg.NewMessage(repo.FullName, prID, int(*comment.ID), c)
 }
 
 func (c *Client) UpdateMessage(ctx context.Context, m *pkg.Message, msg string) error {

@@ -164,12 +164,12 @@ func toGithubCommitStatus(state pkg.CommitState) *string {
 		return pkg.Pointer("success")
 	}
 
-	log.Warn().Str("state", state.String()).Msg("failed to convert to a github commit status")
+	log.Warn().Str("state", state.BareString()).Msg("failed to convert to a github commit status")
 	return pkg.Pointer("failure")
 }
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status pkg.CommitState) error {
-	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.String()).Msg("setting Github commit status")
+	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.BareString()).Msg("setting Github commit status")
 	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repo.Owner, repo.Name, repo.SHA, &github.RepoStatus{
 		State:       toGithubCommitStatus(status),
 		Description: pkg.Pointer(status.BareString()),
