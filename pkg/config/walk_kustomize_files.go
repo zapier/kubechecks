@@ -16,6 +16,22 @@ type patchJson6902 struct {
 	Path string `yaml:"path"`
 }
 
+func isGoGetterIsh(s string) bool {
+	if strings.HasPrefix(s, "github.com/") {
+		return true
+	}
+
+	if strings.HasPrefix(s, "https://") {
+		return true
+	}
+
+	if strings.HasPrefix(s, "http://") {
+		return true
+	}
+
+	return false
+}
+
 func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string) error {
 	kustomizeFile := filepath.Join(dirpath, "kustomization.yaml")
 
@@ -49,7 +65,7 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 	}
 
 	for _, resource := range kustomize.Resources {
-		if strings.Contains(resource, "://") {
+		if isGoGetterIsh(resource) {
 			// no reason to walk remote files, since they can't be changed
 			continue
 		}
@@ -82,7 +98,7 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 	}
 
 	for _, basePath := range kustomize.Bases {
-		if strings.Contains(basePath, "://") {
+		if isGoGetterIsh(basePath) {
 			// no reason to walk remote files, since they can't be changed
 			continue
 		}
