@@ -60,15 +60,16 @@ func (rd *ReposDirectory) Register(ctx context.Context, cloneUrl string) string 
 
 	repoDir, ok = rd.paths[cloneUrl]
 	if ok {
-		rd.fetchLatest()
+		rd.fetchLatest(repoDir)
 		return repoDir
 	}
 
 	return rd.clone(ctx, cloneUrl)
 }
 
-func (rd *ReposDirectory) fetchLatest() {
+func (rd *ReposDirectory) fetchLatest(repoDir string) {
 	cmd := exec.Command("git", "pull")
+	cmd.Dir = repoDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stdout
 	err := cmd.Run()
