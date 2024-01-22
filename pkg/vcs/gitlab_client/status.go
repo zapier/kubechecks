@@ -3,6 +3,7 @@ package gitlab_client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -19,10 +20,12 @@ const GitlabCommitStatusContext = "kubechecks"
 var errNoPipelineStatus = errors.New("nil pipeline status")
 
 func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state pkg.CommitState) error {
+	description := fmt.Sprintf("%s %s", state.BareString(), c.ToEmoji(state))
+
 	status := &gitlab.SetCommitStatusOptions{
 		Name:        pkg.Pointer(GitlabCommitStatusContext),
 		Context:     pkg.Pointer(GitlabCommitStatusContext),
-		Description: pkg.Pointer(state.String()),
+		Description: pkg.Pointer(description),
 		State:       convertState(state),
 	}
 	// Get pipelineStatus so we can attach new status to existing pipeline. We
@@ -49,7 +52,7 @@ func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state pkg.Co
 	log.Debug().
 		Str("project", repo.FullName).
 		Str("commit_sha", repo.SHA).
-		Str("kubechecks_status", state.String()).
+		Str("kubechecks_status", description).
 		Str("gitlab_status", string(status.State)).
 		Msg("gitlab client: updating commit status")
 	_, err = c.setCommitStatus(repo.FullName, repo.SHA, status)

@@ -27,13 +27,18 @@ func (ar *AppResults) AddCheckResult(result CheckResult) {
 	ar.results = append(ar.results, result)
 }
 
-func NewMessage(name string, prId, commentId int) *Message {
+func NewMessage(name string, prId, commentId int, vcs toEmoji) *Message {
 	return &Message{
 		Name:    name,
 		CheckID: prId,
 		NoteID:  commentId,
 		apps:    make(map[string]*AppResults),
+		vcs:     vcs,
 	}
+}
+
+type toEmoji interface {
+	ToEmoji(state CommitState) string
 }
 
 // Message type that allows concurrent updates
@@ -49,6 +54,7 @@ type Message struct {
 	apps   map[string]*AppResults
 	footer string
 	lock   sync.Mutex
+	vcs    toEmoji
 }
 
 func (m *Message) WorstState() CommitState {
@@ -92,7 +98,7 @@ func (m *Message) SetFooter(start time.Time, commitSha string) {
 }
 
 func (m *Message) BuildComment(ctx context.Context) string {
-	return buildComment(ctx, m.apps)
+	return m.buildComment(ctx, m.apps)
 }
 
 func buildFooter(start time.Time, commitSHA string) string {
@@ -112,7 +118,7 @@ func buildFooter(start time.Time, commitSHA string) string {
 }
 
 // Iterate the map of all apps in this message, building a final comment from their current state
-func buildComment(ctx context.Context, apps map[string]*AppResults) string {
+func (m *Message) buildComment(ctx context.Context, apps map[string]*AppResults) string {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "buildComment")
 	defer span.End()
 
@@ -131,7 +137,7 @@ func buildComment(ctx context.Context, apps map[string]*AppResults) string {
 			if check.State == StateNone {
 				summary = check.Summary
 			} else {
-				summary = fmt.Sprintf("%s %s", check.Summary, check.State.String())
+				summary = fmt.Sprintf("%s %s %s", check.Summary, check.State.BareString(), m.vcs.ToEmoji(check.State))
 			}
 
 			msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
@@ -141,7 +147,7 @@ func buildComment(ctx context.Context, apps map[string]*AppResults) string {
 
 		sb.WriteString("<details>\n")
 		sb.WriteString("<summary>\n\n")
-		sb.WriteString(fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, appState.Emoji()))
+		sb.WriteString(fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, m.vcs.ToEmoji(appState)))
 		sb.WriteString("</summary>\n\n")
 		sb.WriteString(strings.Join(checkStrings, "\n\n---\n\n"))
 		sb.WriteString("</details>")

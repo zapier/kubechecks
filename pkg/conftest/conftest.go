@@ -25,12 +25,16 @@ const passedMessage = "\nPassed all policy checks."
 
 var reposCache = local.NewReposDirectory()
 
+type emojiable interface {
+	ToEmoji(state pkg.CommitState) string
+}
+
 // Conftest runs the conftest validation against an application in a given repository
 // path. It generates a summary string with the results, which can later be posted
 // as a GitLab comment. The validation checks resources against Zapier policies and
 // provides feedback for warnings or errors as informational messages. Failure to
 // pass a policy check currently does not block deploy.
-func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (pkg.CheckResult, error) {
+func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string, vcs emojiable) (pkg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "Conftest")
 	defer span.End()
 
@@ -76,7 +80,7 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (
 	}
 
 	var b bytes.Buffer
-	formatConftestResults(&b, results)
+	formatConftestResults(&b, results, vcs)
 	innerStrings = append(innerStrings, fmt.Sprintf("\n\n**%s**\n", app.Spec.Source.Path))
 	s := b.String()
 	s = strings.ReplaceAll(s, fmt.Sprintf("%s/", repoPath), "")
@@ -114,7 +118,7 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string) (
 // formatConftestResults writes the check results from an array of output.CheckResult objects into a formatted table.
 // The table omits success messages to reduce noise and includes file, message, and status (failed, warning, skipped).
 // The formatted table is then rendered and written to the given io.Writer 'w'.
-func formatConftestResults(w io.Writer, checkResults []output.CheckResult) {
+func formatConftestResults(w io.Writer, checkResults []output.CheckResult, vcs emojiable) {
 	table := tablewriter.NewWriter(w)
 	table.SetHeader([]string{" ", "file", "message"})
 	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
@@ -129,11 +133,11 @@ func formatConftestResults(w io.Writer, checkResults []output.CheckResult) {
 		}
 
 		for _, result := range checkResult.Exceptions {
-			tableData = append(tableData, []string{pkg.StateError.Emoji(), code(checkResult.FileName), result.Message})
+			tableData = append(tableData, []string{vcs.ToEmoji(pkg.StateError), code(checkResult.FileName), result.Message})
 		}
 
 		for _, result := range checkResult.Warnings {
-			tableData = append(tableData, []string{pkg.StateWarning.Emoji(), code(checkResult.FileName), result.Message})
+			tableData = append(tableData, []string{vcs.ToEmoji(pkg.StateWarning), code(checkResult.FileName), result.Message})
 		}
 
 		for _, result := range checkResult.Skipped {
@@ -141,7 +145,7 @@ func formatConftestResults(w io.Writer, checkResults []output.CheckResult) {
 		}
 
 		for _, result := range checkResult.Failures {
-			tableData = append(tableData, []string{pkg.StateFailure.Emoji(), code(checkResult.FileName), result.Message})
+			tableData = append(tableData, []string{vcs.ToEmoji(pkg.StateFailure), code(checkResult.FileName), result.Message})
 		}
 	}
 

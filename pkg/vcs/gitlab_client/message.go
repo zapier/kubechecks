@@ -36,7 +36,7 @@ func (c *Client) PostMessage(ctx context.Context, repo *repo.Repo, mergeRequestI
 		log.Error().Err(err).Msg("could not post message to MR")
 	}
 
-	return pkg.NewMessage(repo.FullName, mergeRequestID, n.ID)
+	return pkg.NewMessage(repo.FullName, mergeRequestID, n.ID, c)
 }
 
 func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
