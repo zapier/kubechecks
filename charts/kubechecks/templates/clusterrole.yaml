@@ -3,6 +3,6 @@ kind: ClusterRole
 metadata:
   name: {{ include "kubechecks.fullname" . }}
 rules:
-  - apiGroups: ['*']
+  - apiGroups: ['argoproj.io']
     resources: ['applications', 'appprojects', 'services']
-    verbs: ['*']
+    verbs: ['get', 'list', 'watch']
