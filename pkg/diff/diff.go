@@ -171,6 +171,9 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 				}
 			case diffRes.Modified:
 				modified++
+				if app, ok := isApp(item, diffRes.PredictedLive); ok {
+					addApp(app)
+				}
 			}
 		}
 	}
