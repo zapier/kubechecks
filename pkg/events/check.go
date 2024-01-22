@@ -189,7 +189,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "No changes")
+		ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "Kubechecks: No changes")
 		return
 	}
 
