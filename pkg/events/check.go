@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,7 +46,8 @@ type CheckEvent struct {
 
 	cfg *config.ServerConfig
 
-	addedAppsSet map[string]struct{}
+	addedAppsSet map[string]v1alpha1.Application
+	appsSent     int32
 	appChannel   chan *v1alpha1.Application
 	doneChannel  chan struct{}
 }
@@ -194,7 +196,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	}
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
-	ce.addedAppsSet = make(map[string]struct{})
+	ce.addedAppsSet = make(map[string]v1alpha1.Application)
 	ce.appChannel = make(chan *v1alpha1.Application, len(ce.affectedItems.Applications)*2)
 	ce.doneChannel = make(chan struct{}, len(ce.affectedItems.Applications)*2)
 
@@ -215,14 +217,18 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 		ce.queueApp(app)
 	}
 
-	returnCount := 0
+	var returnCount int32 = 0
 	for range ce.doneChannel {
 		ce.logger.Debug().Msg("finished an app")
 
 		returnCount++
-		ce.logger.Debug().Int("done apps", returnCount).Int("all apps", len(ce.addedAppsSet)).Msg("completed apps")
+		ce.logger.Debug().
+			Int32("done apps", returnCount).
+			Int("all apps", len(ce.addedAppsSet)).
+			Int32("sent apps", ce.appsSent).
+			Msg("completed apps")
 
-		if returnCount == len(ce.addedAppsSet) {
+		if returnCount == ce.appsSent {
 			ce.logger.Debug().Msg("Closing channels")
 			close(ce.appChannel)
 			close(ce.doneChannel)
@@ -243,17 +249,21 @@ func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
 	name := app.Name
 	dir := app.Spec.GetSource().Path
 
-	if _, ok := ce.addedAppsSet[name]; ok {
-		return
+	if old, ok := ce.addedAppsSet[name]; ok {
+		if reflect.DeepEqual(old, app) {
+			return
+		}
 	}
 
-	ce.addedAppsSet[name] = struct{}{}
+	ce.addedAppsSet[name] = app
 
 	logger := ce.logger.Debug().
 		Str("app", name).
 		Str("dir", dir).
 		Str("cluster-name", app.Spec.Destination.Name).
 		Str("cluster-server", app.Spec.Destination.Server)
+
+	atomic.AddInt32(&ce.appsSent, 1)
 
 	logger.Msg("producing app on channel")
 	ce.appChannel <- &app
