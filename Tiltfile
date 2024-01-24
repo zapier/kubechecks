@@ -164,8 +164,8 @@ cmd_button('restart-pod',
 helm_resource(name='kubechecks', 
               chart='./charts/kubechecks',
               image_deps=['kubechecks'],
-              image_keys=[('deployment.image.name', 'deployment.image.tag')],
-
+              image_keys=[('deployment.image.name', 'deployment.image.tag') ],
+              namespace= k8s_namespace,
               flags=[
                 '--set=configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg),
                 '--set=configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
