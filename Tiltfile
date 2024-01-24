@@ -1,9 +1,10 @@
 load('ext://dotenv', 'dotenv')
 load('ext://earthly', 'earthly_build', 'earthly_build_with_restart')
 load('ext://helm_remote', 'helm_remote')
-load('ext://namespace', 'namespace_yaml')
 load('ext://tests/golang', 'test_go')
+load('ext://namespace', 'namespace_create')
 load('ext://uibutton', 'cmd_button')
+load('ext://helm_resource', 'helm_resource')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
 dotenv()
@@ -21,9 +22,9 @@ allow_k8s_contexts([
 ])
 
 k8s_namespace='kubechecks'
-k8s_yaml(namespace_yaml(k8s_namespace), allow_duplicates=False)
+namespace_create(k8s_namespace)
 k8s_resource(
-  objects=['kubechecks:namespace'],
+  objects=[k8s_namespace + ':namespace'],
   labels=["localdev"],
   new_name='k8s:namespace'
 )
@@ -159,21 +160,42 @@ cmd_button('restart-pod',
    text='restart pod',
 )
 
-k8s_yaml(helm(
-  './charts/kubechecks/',
-  namespace='kubechecks',
-  name='kubechecks',
-  values='./localdev/kubechecks/values.yaml',
-  set=[
-    'configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg), 
-    'configMap.env.NGROK_URL=', + get_ngrok_url(cfg),
-    'configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=', + get_ngrok_url(cfg) +'/argocd/api/webhook',
-    'configMap.env.KUBECHECKS_VCS_TYPE=', + cfg.get('vcs-type', 'gitlab'),
-    'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
-    'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
-    'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
-  ],
-))
+
+helm_resource(name='kubechecks', 
+              chart='./charts/kubechecks',
+              image_deps=['kubechecks'],
+              image_keys=[('deployment.image.name', 'deployment.image.tag')],
+
+              flags=[
+                '--set=configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg),
+                '--set=configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
+                '--set=configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
+                '--set=configMap.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
+                '--set=secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
+                '--set=secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
+                '--set=secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
+              ],
+              labels=["kubechecks"],
+              resource_deps=[
+                'k8s:namespace',
+                'argocd',
+                'argocd-crds',
+              ])
+# k8s_yaml(helm(
+#   './charts/kubechecks/',
+#   namespace='kubechecks',
+#   name='kubechecks',
+#   values='./localdev/kubechecks/values.yaml',
+#   set=[
+#     'configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg), 
+#     'configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
+#     'configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
+#     'configMap.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
+#     'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
+#     'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
+#     'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
+#   ],
+# ))
 
 k8s_resource(
   'kubechecks',
@@ -196,16 +218,8 @@ k8s_resource(
       'kubechecks-argocd-server:clusterrolebinding',
     ],
     new_name='kubechecks-rbac',
-    labels=["kubechecks"],
-    resource_deps=['k8s:namespace']
-)
-
-helm_remote(
-    'reloader',
-    repo_url='https://stakater.github.io/stakater-charts',
-    release_name='reloader',
-    namespace='kubechecks',
-    version='1.0.26'
+    resource_deps=['k8s:namespace'],
+    labels=["kubechecks"]
 )
 
 load("localdev/test_apps/Tiltfile", "install_test_apps")
