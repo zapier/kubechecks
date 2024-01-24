@@ -181,21 +181,6 @@ helm_resource(name='kubechecks',
                 'argocd',
                 'argocd-crds',
               ])
-# k8s_yaml(helm(
-#   './charts/kubechecks/',
-#   namespace='kubechecks',
-#   name='kubechecks',
-#   values='./localdev/kubechecks/values.yaml',
-#   set=[
-#     'configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg), 
-#     'configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
-#     'configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
-#     'configMap.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
-#     'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
-#     'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
-#     'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
-#   ],
-# ))
 
 k8s_resource(
   'kubechecks',
