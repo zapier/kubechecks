@@ -27,7 +27,8 @@ func TestBuildComment(t *testing.T) {
 		},
 	}
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
-	comment := m.buildComment(context.TODO(), appResults)
+	m.apps = appResults
+	comment := m.buildComment(context.TODO())
 	assert.Equal(t, `# Kubechecks Report
 <details>
 <summary>
