@@ -1,50 +1,34 @@
 configMap:
   create: true
-  env: {}
+  env:
+    KUBECHECKS_LOG_LEVEL: debug
+    KUBECHECKS_ENABLE_WEBHOOK_CONTROLLER: "false"
+    KUBECHECKS_ARGOCD_API_INSECURE: "true"
+    KUBECHECKS_ARGOCD_API_PATH_PREFIX : '/argocd'
+    KUBECHECKS_ARGOCD_NAMESPACE: 'kubechecks'
+    KUBECHECKS_WEBHOOK_URL_PREFIX: 'kubechecks'
+    KUBECHECKS_NAMESPACE: 'kubechecks'
+    KUBECHECKS_FALLBACK_K8S_VERSION: "1.25.0"
+    KUBECHECKS_SHOW_DEBUG_INFO: "true"
+    # OTEL
+    KUBECHECKS_OTEL_COLLECTOR_PORT: "4317"
+    KUBECHECKS_OTEL_ENABLED: "false"
+    # Webhook Management
+    KUBECHECKS_ENSURE_WEBHOOKS: "true"
+    KUBECHECKS_MONITOR_ALL_APPLICATIONS: "true"
+    #
+    # KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
+    # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
+    KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
+    KUBECHECKS_ENABLE_CONFTEST: "true"
 
 
 deployment:
   annotations:
     reloader.stakater.com/auto: "true" 
-  env:
-    - name: KUBECHECKS_LOG_LEVEL
-      value: debug
-    - name: KUBECHECKS_ENABLE_WEBHOOK_CONTROLLER
-      value: "false"
-    - name: KUBECHECKS_ARGOCD_API_INSECURE
-      value: "true"
-    - name: KUBECHECKS_ARGOCD_API_PATH_PREFIX 
-      value : '/argocd'
-    - name: KUBECHECKS_ARGOCD_NAMESPACE
-      value: 'kubechecks'
-    - name: KUBECHECKS_WEBHOOK_URL_PREFIX
-      value: 'kubechecks'
-    - name: KUBECHECKS_NAMESPACE
-      value: 'kubechecks'
-    - name: KUBECHECKS_FALLBACK_K8S_VERSION
-      value: "1.25.0"
-    - name: KUBECHECKS_SHOW_DEBUG_INFO
-      value: "true"
-    # OTEL
-    - name: KUBECHECKS_OTEL_COLLECTOR_PORT
-      value: "4317"
-    - name: KUBECHECKS_OTEL_ENABLED
-      value: "false"
-    # Webhook Management
-    - name: KUBECHECKS_ENSURE_WEBHOOKS
-      value: "true"
-    - name: KUBECHECKS_MONITOR_ALL_APPLICATIONS
-      value: "true"
-    #
-    # KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
-    # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
-    - name: KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE
-      value: "delete"
-    - name: KUBECHECKS_ENABLE_CONFTEST
-      value: "true"
-
+  
   image:
-    pullPolicy: Always
+    pullPolicy: Never
     name: "kubechecks"
     tag: ""
 

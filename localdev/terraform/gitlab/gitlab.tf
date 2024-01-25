@@ -15,14 +15,14 @@ resource "local_file" "gitlab_project" {
   ]
 }
 
-resource "gitlab_label" "kubechecks_production" {
+resource "gitlab_project_label" "kubechecks_production" {
   project     = gitlab_project.kubechecks_test_project.id
   name        = "kubechecks:production"
   description = ""
   color       = "#dc143c"
 }
 
-resource "gitlab_label" "kubechecks_staging" {
+resource "gitlab_project_label" "kubechecks_staging" {
   project     = gitlab_project.kubechecks_test_project.id
   name        = "kubechecks:staging"
   description = ""
