@@ -73,7 +73,7 @@ if cfg.get('enable_repo', True):
     check_env_set("GITLAB_TOKEN")
 
     gitlabOutputs=local_terraform_resource(
-      'tf-gitlab',
+      'tf-vcs',
       dir='./localdev/terraform/gitlab',
       env={
         'GITLAB_TOKEN': os.getenv('GITLAB_TOKEN'),
@@ -98,7 +98,7 @@ if cfg.get('enable_repo', True):
     check_env_set("GITHUB_TOKEN")
 
     githubOutputs=local_terraform_resource(
-      'tf-github',
+      'tf-vcs',
       dir='./localdev/terraform/github',
       env={
         'GITHUB_TOKEN': os.getenv('GITHUB_TOKEN'),
@@ -164,9 +164,10 @@ cmd_button('restart-pod',
 helm_resource(name='kubechecks', 
               chart='./charts/kubechecks',
               image_deps=['kubechecks'],
-              image_keys=[('deployment.image.name', 'deployment.image.tag') ],
+              image_keys=[('deployment.image.name', 'deployment.image.tag')],
               namespace= k8s_namespace,
               flags=[
+                '--values=./localdev/kubechecks/values.yaml',
                 '--set=configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg),
                 '--set=configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
                 '--set=configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
@@ -180,6 +181,7 @@ helm_resource(name='kubechecks',
                 'k8s:namespace',
                 'argocd',
                 'argocd-crds',
+                'tf-vcs' if cfg.get('enable_repo', True) else '',
               ])
 
 k8s_resource(
