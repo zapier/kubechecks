@@ -32,8 +32,10 @@ func NewMessage(name string, prId, commentId int, vcs toEmoji) *Message {
 		Name:    name,
 		CheckID: prId,
 		NoteID:  commentId,
-		apps:    make(map[string]*AppResults),
 		vcs:     vcs,
+
+		apps:           make(map[string]*AppResults),
+		deletedAppsSet: make(map[string]struct{}),
 	}
 }
 
@@ -55,12 +57,18 @@ type Message struct {
 	footer string
 	lock   sync.Mutex
 	vcs    toEmoji
+
+	deletedAppsSet map[string]struct{}
 }
 
 func (m *Message) WorstState() CommitState {
 	state := StateNone
 
-	for _, r := range m.apps {
+	for app, r := range m.apps {
+		if m.isDeleted(app) {
+			continue
+		}
+
 		for _, result := range r.results {
 			state = WorstState(state, result.State)
 		}
@@ -69,7 +77,26 @@ func (m *Message) WorstState() CommitState {
 	return state
 }
 
+func (m *Message) RemoveApp(app string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.deletedAppsSet[app] = struct{}{}
+}
+
+func (m *Message) isDeleted(app string) bool {
+	if _, ok := m.deletedAppsSet[app]; ok {
+		return true
+	}
+
+	return false
+}
+
 func (m *Message) AddNewApp(ctx context.Context, app string) {
+	if m.isDeleted(app) {
+		return
+	}
+
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "AddNewApp")
 	defer span.End()
 	m.lock.Lock()
@@ -79,6 +106,10 @@ func (m *Message) AddNewApp(ctx context.Context, app string) {
 }
 
 func (m *Message) AddToAppMessage(ctx context.Context, app string, result CheckResult) {
+	if m.isDeleted(app) {
+		return
+	}
+
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "AddToAppMessage")
 	defer span.End()
 	m.lock.Lock()
@@ -98,7 +129,7 @@ func (m *Message) SetFooter(start time.Time, commitSha string) {
 }
 
 func (m *Message) BuildComment(ctx context.Context) string {
-	return m.buildComment(ctx, m.apps)
+	return m.buildComment(ctx)
 }
 
 func buildFooter(start time.Time, commitSHA string) string {
@@ -118,18 +149,22 @@ func buildFooter(start time.Time, commitSHA string) string {
 }
 
 // Iterate the map of all apps in this message, building a final comment from their current state
-func (m *Message) buildComment(ctx context.Context, apps map[string]*AppResults) string {
+func (m *Message) buildComment(ctx context.Context) string {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "buildComment")
 	defer span.End()
 
-	names := getSortedKeys(apps)
+	names := getSortedKeys(m.apps)
 
 	var sb strings.Builder
 	sb.WriteString("# Kubechecks Report\n")
 
 	for _, appName := range names {
+		if m.isDeleted(appName) {
+			continue
+		}
+
 		var checkStrings []string
-		results := apps[appName]
+		results := m.apps[appName]
 
 		appState := StateSuccess
 		for _, check := range results.results {
