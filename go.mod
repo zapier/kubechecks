@@ -5,7 +5,6 @@ go 1.19
 require (
 	github.com/argoproj/argo-cd/v2 v2.6.7
 	github.com/argoproj/gitops-engine v0.7.1-0.20230214165351-ed70eac8b7bd
-	github.com/argoproj/pkg v0.13.7-0.20221221191914-44694015343d
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/creasty/defaults v1.7.0
 	github.com/ghodss/yaml v1.0.0
@@ -23,7 +22,7 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rikatz/kubepug v1.4.0
 	github.com/rs/zerolog v1.29.0
-	github.com/sashabaranov/go-openai v1.7.0
+	github.com/sashabaranov/go-openai v1.19.3
 	github.com/shurcooL/githubv4 v0.0.0-20230704064427-599ae7bbf278
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.6.1
@@ -45,7 +44,6 @@ require (
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
 	golang.org/x/net v0.17.0
 	golang.org/x/oauth2 v0.13.0
-	golang.org/x/sync v0.5.0
 	google.golang.org/grpc v1.59.0
 	gopkg.in/dealancer/validate.v2 v2.1.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -73,6 +71,7 @@ require (
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/agnivade/levenshtein v1.1.1 // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
+	github.com/argoproj/pkg v0.13.7-0.20221221191914-44694015343d // indirect
 	github.com/aws/aws-sdk-go v1.44.164 // indirect
 	github.com/basgys/goxml2json v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -233,6 +232,7 @@ require (
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	go.starlark.net v0.0.0-20220328144851-d1966c6b9fcd // indirect
 	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/sync v0.5.0 // indirect
 	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/term v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
