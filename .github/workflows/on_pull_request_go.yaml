@@ -14,13 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: jdx/mise-action@v2
+      - uses: djeebus/parse-tool-versions@v2.1
 
       - uses: earthly/actions-setup@v1
         with: { version: "v${{ env.EARTHLY }}" }
 
-      - run: |
-          earthly \
-            +ci-golang \  
-              --GOLANG_VERSION=$( mise current golang ) \
-              --GOLANGCI_LINT_VERSION=$( mise current golangci-lint )
+      - run: >-
+          earthly
+          +ci-golang  
+          --GOLANG_VERSION=${{ env.GOLANG }}
+          --GOLANGCI_LINT_VERSION=${{ env.GOLANGCI_LINT }}
