@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"bufio"
@@ -14,11 +14,11 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
@@ -38,6 +38,8 @@ type Repo struct {
 	Username      string   // Username of auth'd client
 	Email         string   // Email of auth'd client
 	Labels        []string // Labels associated with the MR/PR
+
+	cfg config.ServerConfig
 }
 
 func (r *Repo) CloneRepoLocal(ctx context.Context, repoDir string) error {
@@ -206,13 +208,13 @@ func walk(s string, d fs.DirEntry, err error) error {
 }
 
 func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
-	cmd := execCommand(name, args...)
+	cmd := execCommand(r.cfg, name, args...)
 	cmd.Dir = r.RepoDir
 	return cmd
 }
 
-func censorVcsToken(v *viper.Viper, args []string) []string {
-	vcsToken := v.GetString("vcs-token")
+func censorVcsToken(cfg config.ServerConfig, args []string) []string {
+	vcsToken := cfg.VcsToken
 
 	var argsToLog []string
 	for _, arg := range args {
@@ -221,8 +223,8 @@ func censorVcsToken(v *viper.Viper, args []string) []string {
 	return argsToLog
 }
 
-func execCommand(name string, args ...string) *exec.Cmd {
-	argsToLog := censorVcsToken(viper.GetViper(), args)
+func execCommand(cfg config.ServerConfig, name string, args ...string) *exec.Cmd {
+	argsToLog := censorVcsToken(cfg, args)
 
 	log.Debug().Strs("args", argsToLog).Msg("building command")
 	cmd := exec.Command(name, args...)
@@ -230,20 +232,23 @@ func execCommand(name string, args ...string) *exec.Cmd {
 }
 
 // InitializeGitSettings ensures Git auth is set up for cloning
-func InitializeGitSettings(username, email string) error {
-	cmd := execCommand("git", "config", "--global", "user.email", email)
+func InitializeGitSettings(cfg config.ServerConfig, vcsClient VcsClient) error {
+	email := vcsClient.Email()
+	username := vcsClient.Username()
+
+	cmd := execCommand(cfg, "git", "config", "--global", "user.email", email)
 	err := cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git email address")
 	}
 
-	cmd = execCommand("git", "config", "--global", "user.name", username)
+	cmd = execCommand(cfg, "git", "config", "--global", "user.name", username)
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git user name")
 	}
 
-	cloneUrl, err := getCloneUrl(username, viper.GetViper())
+	cloneUrl, err := getCloneUrl(username, cfg)
 	if err != nil {
 		return errors.Wrap(err, "failed to get clone url")
 	}
@@ -260,14 +265,14 @@ func InitializeGitSettings(username, email string) error {
 	}
 	defer outfile.Close()
 
-	cmd = execCommand("echo", cloneUrl)
+	cmd = execCommand(cfg, "echo", cloneUrl)
 	cmd.Stdout = outfile
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "unable to set git credentials")
 	}
 
-	cmd = execCommand("git", "config", "--global", "credential.helper", "store")
+	cmd = execCommand(cfg, "git", "config", "--global", "credential.helper", "store")
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "unable to set git credential usage")
@@ -277,10 +282,10 @@ func InitializeGitSettings(username, email string) error {
 	return nil
 }
 
-func getCloneUrl(user string, cfg *viper.Viper) (string, error) {
-	vcsBaseUrl := cfg.GetString("vcs-base-url")
-	vcsType := cfg.GetString("vcs-type")
-	vcsToken := cfg.GetString("vcs-token")
+func getCloneUrl(user string, cfg config.ServerConfig) (string, error) {
+	vcsBaseUrl := cfg.VcsBaseUrl
+	vcsType := cfg.VcsType
+	vcsToken := cfg.VcsToken
 
 	var hostname, scheme string
 
@@ -296,5 +301,6 @@ func getCloneUrl(user string, cfg *viper.Viper) (string, error) {
 		hostname = parts.Host
 		scheme = parts.Scheme
 	}
+
 	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, vcsToken, hostname), nil
 }

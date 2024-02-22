@@ -10,18 +10,22 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
-	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 )
 
 type ConfigMatcher struct {
 	cfg        *repo_config.Config
-	argoClient *argo_client.ArgoClient
+	argoClient argoClient
 }
 
-func NewConfigMatcher(cfg *repo_config.Config) *ConfigMatcher {
-	argoClient := argo_client.GetArgoClient()
-	return &ConfigMatcher{cfg: cfg, argoClient: argoClient}
+type argoClient interface {
+	GetApplications(ctx context.Context) (*v1alpha1.ApplicationList, error)
+	GetApplicationsByAppset(ctx context.Context, appsetName string) (*v1alpha1.ApplicationList, error)
+}
+
+func NewConfigMatcher(cfg *repo_config.Config, ctr container.Container) *ConfigMatcher {
+	return &ConfigMatcher{cfg: cfg, argoClient: ctr.ArgoClient}
 }
 
 func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
@@ -131,7 +135,8 @@ func (b *ConfigMatcher) appsFromApplicationSetForDir(ctx context.Context, dir st
 		}
 	}
 
-	apps := []*repo_config.ArgoCdApplicationConfig{}
+	var apps []*repo_config.ArgoCdApplicationConfig
+
 	for _, appset := range appsets {
 		appList, err := b.argoClient.GetApplicationsByAppset(ctx, appset.Name)
 		if err != nil {
@@ -149,6 +154,7 @@ func (b *ConfigMatcher) appsFromApplicationSetForDir(ctx context.Context, dir st
 			})
 		}
 	}
+
 	return appsets, apps, nil
 }
 

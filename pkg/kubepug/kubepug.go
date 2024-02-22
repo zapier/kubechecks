@@ -15,11 +15,12 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/msg"
 )
 
 const docLinkFmt = "[%s Deprecation Notes](https://kubernetes.io/docs/reference/using-api/deprecation-guide/#%s-v%d%d)"
 
-func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, manifests []string) (pkg.CheckResult, error) {
+func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, manifests []string) (msg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "KubePug")
 	defer span.End()
 
@@ -33,7 +34,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 	if err != nil {
 		log.Error().Err(err).Msg("could not create temp directory to write manifests for kubepug check")
 		//return "", err
-		return pkg.CheckResult{}, err
+		return msg.CheckResult{}, err
 	}
 	defer os.RemoveAll(tempDir)
 
@@ -44,7 +45,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 
 	nextVersion, err := nextKubernetesVersion(targetKubernetesVersion)
 	if err != nil {
-		return pkg.CheckResult{}, err
+		return msg.CheckResult{}, err
 	}
 	config := lib.Config{
 		K8sVersion:      fmt.Sprintf("v%s", nextVersion.String()),
@@ -57,7 +58,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 
 	result, err := kubepug.GetDeprecated()
 	if err != nil {
-		return pkg.CheckResult{}, err
+		return msg.CheckResult{}, err
 	}
 
 	if len(result.DeprecatedAPIs) > 0 || len(result.DeletedAPIs) > 0 {
@@ -112,7 +113,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 		outputString = append(outputString, "No Deprecated or Deleted APIs found.")
 	}
 
-	return pkg.CheckResult{
+	return msg.CheckResult{
 		State:   checkStatus(result),
 		Summary: "<b>Show kubepug report:</b>",
 		Details: fmt.Sprintf(

@@ -2,39 +2,28 @@ package argo_client
 
 import (
 	"io"
-	"sync"
-
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
+	"github.com/rs/zerolog/log"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
+
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 type ArgoClient struct {
 	client apiclient.Client
 }
 
-var argoClient *ArgoClient
-var once sync.Once
-
-func GetArgoClient() *ArgoClient {
-	once.Do(func() {
-		argoClient = createArgoClient()
-	})
-	return argoClient
-}
-
-func createArgoClient() *ArgoClient {
+func NewArgoClient(cfg config.ServerConfig) *ArgoClient {
 	clientOptions := &apiclient.ClientOptions{
-		ServerAddr:      viper.GetString("argocd-api-server-addr"),
-		AuthToken:       viper.GetString("argocd-api-token"),
-		GRPCWebRootPath: viper.GetString("argocd-api-path-prefix"),
-		Insecure:        viper.GetBool("argocd-api-insecure"),
+		ServerAddr:      cfg.ArgoCDServerAddr,
+		AuthToken:       cfg.ArgoCDToken,
+		GRPCWebRootPath: cfg.ArgoCDPathPrefix,
+		Insecure:        cfg.ArgoCDInsecure,
 	}
 	argo, err := apiclient.NewClient(clientOptions)
 	if err != nil {
@@ -43,12 +32,6 @@ func createArgoClient() *ArgoClient {
 
 	return &ArgoClient{
 		client: argo,
-	}
-}
-
-func NewArgoClient(client apiclient.Client) *ArgoClient {
-	return &ArgoClient{
-		client: client,
 	}
 }
 

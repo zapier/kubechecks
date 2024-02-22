@@ -6,19 +6,20 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/zapier/kubechecks/pkg/config"
-	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/appdir"
+	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 type ArgocdMatcher struct {
-	appsDirectory *config.AppDirectory
+	appsDirectory *appdir.AppDirectory
 }
 
-func NewArgocdMatcher(vcsToArgoMap config.VcsToArgoMap, repo *repo.Repo, repoPath string) (*ArgocdMatcher, error) {
+func NewArgocdMatcher(vcsToArgoMap container.VcsToArgoMap, repo *vcs.Repo, repoPath string) (*ArgocdMatcher, error) {
 	repoApps := getArgocdApps(vcsToArgoMap, repo)
 	kustomizeAppFiles := getKustomizeApps(vcsToArgoMap, repo, repoPath)
 
-	appDirectory := config.NewAppDirectory().
+	appDirectory := appdir.NewAppDirectory().
 		Union(repoApps).
 		Union(kustomizeAppFiles)
 
@@ -27,7 +28,7 @@ func NewArgocdMatcher(vcsToArgoMap config.VcsToArgoMap, repo *repo.Repo, repoPat
 	}, nil
 }
 
-func logCounts(repoApps *config.AppDirectory) {
+func logCounts(repoApps *appdir.AppDirectory) {
 	if repoApps == nil {
 		log.Debug().Msg("found no apps")
 	} else {
@@ -35,17 +36,17 @@ func logCounts(repoApps *config.AppDirectory) {
 	}
 }
 
-func getKustomizeApps(vcsToArgoMap config.VcsToArgoMap, repo *repo.Repo, repoPath string) *config.AppDirectory {
+func getKustomizeApps(vcsToArgoMap container.VcsToArgoMap, repo *vcs.Repo, repoPath string) *appdir.AppDirectory {
 	log.Debug().Msgf("creating fs for %s", repoPath)
 	fs := os.DirFS(repoPath)
 	log.Debug().Msg("following kustomize apps")
-	kustomizeAppFiles := vcsToArgoMap.WalkKustomizeApps(repo, fs)
+	kustomizeAppFiles := vcsToArgoMap.WalkKustomizeApps(repo.CloneURL, fs)
 
 	logCounts(kustomizeAppFiles)
 	return kustomizeAppFiles
 }
 
-func getArgocdApps(vcsToArgoMap config.VcsToArgoMap, repo *repo.Repo) *config.AppDirectory {
+func getArgocdApps(vcsToArgoMap container.VcsToArgoMap, repo *vcs.Repo) *appdir.AppDirectory {
 	log.Debug().Msgf("looking for %s repos", repo.CloneURL)
 	repoApps := vcsToArgoMap.GetAppsInRepo(repo.CloneURL)
 

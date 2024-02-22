@@ -10,7 +10,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/sashabaranov/go-openai"
-	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel"
 )
 
@@ -22,9 +21,8 @@ type OpenAiClient struct {
 var openAiClient *OpenAiClient
 var once sync.Once
 
-func GetOpenAiClient() *OpenAiClient {
+func GetOpenAiClient(apiToken string) *OpenAiClient {
 	once.Do(func() {
-		apiToken := viper.GetString("openai-api-token")
 		if apiToken != "" {
 			log.Info().Msg("enabling OpenAI client")
 			client := openai.NewClient(apiToken)

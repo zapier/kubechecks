@@ -3,32 +3,33 @@ package app_watcher
 import (
 	"context"
 	"reflect"
+	"strings"
+	"time"
 
 	appclientset "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/config"
 	"k8s.io/client-go/tools/clientcmd"
-
-	"strings"
-	"time"
 
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	informers "github.com/argoproj/argo-cd/v2/pkg/client/informers/externalversions/application/v1alpha1"
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
+
+	"github.com/zapier/kubechecks/pkg/appdir"
 )
 
 // ApplicationWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API
 type ApplicationWatcher struct {
-	cfg                  *config.ServerConfig
 	applicationClientset appclientset.Interface
 	appInformer          cache.SharedIndexInformer
 	appLister            applisters.ApplicationLister
+
+	vcsToArgoMap appdir.VcsToArgoMap
 }
 
 // NewApplicationWatcher creates new instance of ApplicationWatcher.
-func NewApplicationWatcher(cfg *config.ServerConfig) (*ApplicationWatcher, error) {
+func NewApplicationWatcher(vcsToArgoMap appdir.VcsToArgoMap) (*ApplicationWatcher, error) {
 	// this assumes kubechecks is running inside the cluster
 	kubeCfg, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
@@ -38,7 +39,6 @@ func NewApplicationWatcher(cfg *config.ServerConfig) (*ApplicationWatcher, error
 	appClient := appclientset.NewForConfigOrDie(kubeCfg)
 
 	ctrl := ApplicationWatcher{
-		cfg:                  cfg,
 		applicationClientset: appClient,
 	}
 
@@ -78,7 +78,7 @@ func (ctrl *ApplicationWatcher) onApplicationAdded(obj interface{}) {
 		log.Error().Err(err).Msg("appwatcher: could not get key for added application")
 	}
 	log.Info().Str("key", key).Msg("appwatcher: onApplicationAdded")
-	ctrl.cfg.VcsToArgoMap.AddApp(app)
+	ctrl.vcsToArgoMap.AddApp(app)
 }
 
 func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
@@ -96,7 +96,7 @@ func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
 	// We want to update when any of Source or Sources parameters has changed
 	if !reflect.DeepEqual(oldApp.Spec.Source, newApp.Spec.Source) || !reflect.DeepEqual(oldApp.Spec.Sources, newApp.Spec.Sources) {
 		log.Info().Str("key", key).Msg("appwatcher: onApplicationUpdated")
-		ctrl.cfg.VcsToArgoMap.UpdateApp(old.(*appv1alpha1.Application), new.(*appv1alpha1.Application))
+		ctrl.vcsToArgoMap.UpdateApp(old.(*appv1alpha1.Application), new.(*appv1alpha1.Application))
 	}
 
 }
@@ -112,7 +112,7 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 	}
 
 	log.Info().Str("key", key).Msg("appwatcher: onApplicationDeleted")
-	ctrl.cfg.VcsToArgoMap.DeleteApp(app)
+	ctrl.vcsToArgoMap.DeleteApp(app)
 }
 
 /*

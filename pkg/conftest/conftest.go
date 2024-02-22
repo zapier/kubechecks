@@ -13,11 +13,11 @@ import (
 	"github.com/open-policy-agent/conftest/output"
 	"github.com/open-policy-agent/conftest/runner"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/local"
+	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
@@ -34,7 +34,9 @@ type emojiable interface {
 // as a GitLab comment. The validation checks resources against Zapier policies and
 // provides feedback for warnings or errors as informational messages. Failure to
 // pass a policy check currently does not block deploy.
-func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string, vcs emojiable) (pkg.CheckResult, error) {
+func Conftest(
+	ctx context.Context, app *v1alpha1.Application, repoPath string, policiesLocations []string, vcs emojiable,
+) (msg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "Conftest")
 	defer span.End()
 
@@ -42,7 +44,6 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string, v
 
 	log.Debug().Str("dir", confTestDir).Str("app", app.Name).Msg("running conftest in dir for application")
 
-	policiesLocations := viper.GetStringSlice("policies-location")
 	var locations []string
 	for _, policiesLocation := range policiesLocations {
 		log.Debug().Str("policies-location", policiesLocation).Msg("viper")
@@ -53,7 +54,7 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string, v
 	}
 
 	if len(locations) == 0 {
-		return pkg.CheckResult{
+		return msg.CheckResult{
 			State:   pkg.StateWarning,
 			Summary: "no policies locations configured",
 		}, nil
@@ -76,7 +77,7 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string, v
 	results, err := r.Run(ctx, []string{confTestDir})
 	if err != nil {
 		telemetry.SetError(span, err, "ConfTest Run")
-		return pkg.CheckResult{}, err
+		return msg.CheckResult{}, err
 	}
 
 	var b bytes.Buffer
@@ -100,7 +101,7 @@ func Conftest(ctx context.Context, app *v1alpha1.Application, repoPath string, v
 		innerStrings = append(innerStrings, passedMessage)
 	}
 
-	var cr pkg.CheckResult
+	var cr msg.CheckResult
 	if failures {
 		cr.State = pkg.StateFailure
 	} else if warnings {

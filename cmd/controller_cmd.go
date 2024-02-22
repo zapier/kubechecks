@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,9 +14,11 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
-	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/server"
+	"github.com/zapier/kubechecks/pkg/vcs"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
 // ControllerCmd represents the run command
@@ -26,56 +27,87 @@ var ControllerCmd = &cobra.Command{
 	Short: "Start the VCS Webhook handler.",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		clientType := viper.GetString("vcs-type")
-		client, err := createVCSClient(clientType)
+		ctx := context.Background()
+
+		log.Info().
+			Str("git-tag", pkg.GitTag).
+			Str("git-commit", pkg.GitCommit).
+			Msg("Starting KubeChecks")
+
+		log.Info().Msg("parsing configuration")
+		cfg, err := config.New()
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create vcs client")
+			log.Fatal().Err(err).Msg("failed to parse configuration")
 		}
 
-		cfg := config.ServerConfig{
-			UrlPrefix:     viper.GetString("webhook-url-prefix"),
-			WebhookSecret: viper.GetString("webhook-secret"),
-			VcsClient:     client,
+		ctr, err := newContainer(ctx, cfg)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create container")
 		}
 
-		log.Info().Msg("Initializing git settings")
-		if err := repo.InitializeGitSettings(cfg.VcsClient.Username(), cfg.VcsClient.Email()); err != nil {
+		t, err := initTelemetry(ctx, cfg)
+		if err != nil {
+			log.Panic().Err(err).Msg("Failed to initialize telemetry")
+		}
+		defer t.Shutdown()
+
+		log.Info().Msg("initializing git settings")
+		if err = initializeGit(ctr); err != nil {
 			log.Fatal().Err(err).Msg("failed to initialize git settings")
 		}
 
-		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
-		ctx := context.Background()
-		server := server.NewServer(ctx, &cfg)
+		log.Info().Msgf("starting web server")
+		startWebserver(ctx, ctr)
 
-		go server.Start(ctx)
+		log.Info().Msgf("listening for requests")
+		waitForShutdown()
 
-		// graceful termination handler.
-		// when we receive a SIGTERM from kubernetes, check for in-flight requests before exiting.
-		sigs := make(chan os.Signal, 1)
-		signal.Notify(sigs, syscall.SIGTERM)
-		done := make(chan bool, 1)
-
-		go func() {
-			sig := <-sigs
-			log.Debug().Str("signal", sig.String()).Msg("received signal")
-			done <- true
-		}()
-
-		<-done
-		log.Info().Msg("shutting down...")
-		for events.GetInFlight() > 0 {
-			log.Info().Int("count", events.GetInFlight()).Msg("waiting for in-flight requests to complete")
-			time.Sleep(time.Second * 3)
-		}
-		log.Info().Msg("good bye.")
+		log.Info().Msg("shutting down gracefully")
+		waitForPendingRequest()
 	},
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		log.Info().Msg("Server Configuration: ")
-		log.Info().Msgf("Webhook URL Base: %s", viper.GetString("webhook-url-base"))
-		log.Info().Msgf("Webhook URL Prefix: %s", viper.GetString("webhook-url-prefix"))
-		log.Info().Msgf("VCS Type: %s", viper.GetString("vcs-type"))
-		return nil
-	},
+}
+
+func initTelemetry(ctx context.Context, cfg config.ServerConfig) (*telemetry.OperatorTelemetry, error) {
+	return telemetry.Init(
+		ctx, "kubechecks", pkg.GitTag, pkg.GitCommit,
+		cfg.EnableOtel, cfg.OtelCollectorHost, cfg.OtelCollectorPort,
+	)
+}
+
+func startWebserver(ctx context.Context, ctr container.Container) {
+	srv := server.NewServer(ctr)
+	go srv.Start(ctx)
+}
+
+func initializeGit(ctr container.Container) error {
+	if err := vcs.InitializeGitSettings(ctr.Config, ctr.VcsClient); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func waitForPendingRequest() {
+	for events.GetInFlight() > 0 {
+		log.Info().Int("count", events.GetInFlight()).Msg("waiting for in-flight requests to complete")
+		time.Sleep(time.Second * 3)
+	}
+}
+
+func waitForShutdown() {
+	// graceful termination handler.
+	// when we receive a SIGTERM from kubernetes, check for in-flight requests before exiting.
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	done := make(chan bool, 1)
+
+	go func() {
+		sig := <-sigs
+		log.Debug().Str("signal", sig.String()).Msg("received signal")
+		done <- true
+	}()
+
+	<-done
 }
 
 func panicIfError(err error) {

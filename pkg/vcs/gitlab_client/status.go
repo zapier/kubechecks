@@ -12,14 +12,14 @@ import (
 	"github.com/xanzy/go-gitlab"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 const GitlabCommitStatusContext = "kubechecks"
 
 var errNoPipelineStatus = errors.New("nil pipeline status")
 
-func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, state pkg.CommitState) error {
+func (c *Client) CommitStatus(ctx context.Context, repo *vcs.Repo, state pkg.CommitState) error {
 	description := fmt.Sprintf("%s %s", state.BareString(), c.ToEmoji(state))
 
 	status := &gitlab.SetCommitStatusOptions{
