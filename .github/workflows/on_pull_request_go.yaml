@@ -14,13 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: wistia/parse-tool-versions@v1.0
+      - uses: jdx/mise-action@v2
 
       - uses: earthly/actions-setup@v1
-        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
+        with: { version: "v${{ env.EARTHLY }}" }
 
       - run: |
           earthly \
             +ci-golang \  
-              --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }} \
-              --GOLANGCI_LINT_VERSION=${{ env.GOLANGCI_LINT_TOOL_VERSION }}
+              --GOLANG_VERSION=$( mise current golang ) \
+              --GOLANGCI_LINT_VERSION=$( mise current golangci-lint )
