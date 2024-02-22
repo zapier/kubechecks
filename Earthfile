@@ -170,10 +170,10 @@ golang-ci-lint:
     WORKDIR /src
     COPY . .
 
-    RUN golangci-lint --timeout 4m run
+    RUN golangci-lint --timeout 10m run
 
 staticcheck-golang:
-    ARG STATICCHECK_VERSION="2023.1.6"
+    ARG --required STATICCHECK_VERSION
 
     FROM +go-deps
 

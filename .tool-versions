@@ -6,4 +6,5 @@ helm-cr 1.6.1
 helm-ct 3.8.0
 kubeconform 0.6.3
 kustomize 5.1.0
+staticcheck 2023.1.6
 tilt 0.33.2

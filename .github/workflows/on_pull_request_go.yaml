@@ -24,3 +24,4 @@ jobs:
           +ci-golang  
           --GOLANG_VERSION=${{ env.GOLANG }}
           --GOLANGCI_LINT_VERSION=${{ env.GOLANGCI_LINT }}
+          --STATICCHECK_VERSION=${{ env.STATICCHECK }}
