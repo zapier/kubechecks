@@ -21,9 +21,11 @@ jobs:
         with: { version: "${{ env.EARTHLY_TOOL_VERSION }}" }
 
       - name: rebuild the docs
-        run: |
-          earthly \
-            +rebuild-docs
+        run: >-
+          earthly
+          +rebuild-docs
+          --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}
+          
 
       - name: verify that the checked in file has not changed
         run: ./hacks/exit-on-changed-files.sh "Please run 'earthly +rebuild-docs' and commit the results to this PR"

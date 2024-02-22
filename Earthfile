@@ -132,7 +132,7 @@ docker:
     SAVE IMAGE --push $IMAGE_NAME
 
 dlv:
-    ARG --global --required GOLANG_VERSION
+    ARG --required GOLANG_VERSION
 
     FROM golang:$GOLANG_VERSION-bullseye
 
