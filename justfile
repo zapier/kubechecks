@@ -66,3 +66,7 @@ unit_test_race:
 
 rebuild_docs:
     earthly +rebuild-docs
+
+lint-golang:
+    #!/usr/bin/env bash
+    earthly +lint-golang --GOLANGCI_LINT_VERSION=$(mise current golangci-lint)
