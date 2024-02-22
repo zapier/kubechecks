@@ -162,7 +162,7 @@ fmt-golang:
     RUN go fmt \
         && ./hacks/exit-on-changed-files.sh
 
-lint-golang:
+golang-ci-lint:
     ARG --required GOLANGCI_LINT_VERSION
 
     FROM golangci/golangci-lint:v${GOLANGCI_LINT_VERSION}
