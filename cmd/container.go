@@ -22,9 +22,9 @@ func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Conta
 	ctr.Config = cfg
 
 	switch cfg.VcsType {
-	case "github":
-		ctr.VcsClient, err = gitlab_client.CreateGitlabClient(cfg)
 	case "gitlab":
+		ctr.VcsClient, err = gitlab_client.CreateGitlabClient(cfg)
+	case "github":
 		ctr.VcsClient, err = github_client.CreateGithubClient(cfg)
 	default:
 		err = fmt.Errorf("unknown vcs-type: %q", cfg.VcsType)
