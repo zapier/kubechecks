@@ -39,7 +39,7 @@ type Repo struct {
 	Email         string   // Email of auth'd client
 	Labels        []string // Labels associated with the MR/PR
 
-	cfg config.ServerConfig
+	Config config.ServerConfig
 }
 
 func (r *Repo) CloneRepoLocal(ctx context.Context, repoDir string) error {
@@ -208,13 +208,16 @@ func walk(s string, d fs.DirEntry, err error) error {
 }
 
 func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
-	cmd := execCommand(r.cfg, name, args...)
+	cmd := execCommand(r.Config, name, args...)
 	cmd.Dir = r.RepoDir
 	return cmd
 }
 
 func censorVcsToken(cfg config.ServerConfig, args []string) []string {
 	vcsToken := cfg.VcsToken
+	if len(vcsToken) == 0 {
+		return args
+	}
 
 	var argsToLog []string
 	for _, arg := range args {
