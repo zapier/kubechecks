@@ -5,8 +5,8 @@ go 1.21
 toolchain go1.21.6
 
 require (
-	github.com/argoproj/argo-cd/v2 v2.9.5
-	github.com/argoproj/gitops-engine v0.7.1-0.20230906152414-b0fffe419a0f
+	github.com/argoproj/argo-cd/v2 v2.10.1
+	github.com/argoproj/gitops-engine v0.7.1-0.20240122213038-792124280fcc
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/creasty/defaults v1.7.0
 	github.com/ghodss/yaml v1.0.0
@@ -267,9 +267,9 @@ require (
 	k8s.io/cli-runtime v0.26.12 // indirect
 	k8s.io/component-base v0.26.12 // indirect
 	k8s.io/component-helpers v0.26.12 // indirect
-	k8s.io/klog/v2 v2.90.1 // indirect
+	k8s.io/klog/v2 v2.100.1 // indirect
 	k8s.io/kube-aggregator v0.26.12 // indirect
-	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
+	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
 	k8s.io/kubectl v0.26.12 // indirect
 	k8s.io/kubernetes v1.26.12 // indirect
 	k8s.io/utils v0.0.0-20240102154912-e7106e64919e // indirect
@@ -280,7 +280,7 @@ require (
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/kustomize/api v0.12.1 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.13.9 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.3.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
