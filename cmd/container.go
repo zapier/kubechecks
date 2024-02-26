@@ -30,22 +30,24 @@ func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Conta
 		err = fmt.Errorf("unknown vcs-type: %q", cfg.VcsType)
 	}
 	if err != nil {
-		return ctr, err
+		return ctr, errors.Wrap(err, "failed to create vcs client")
 	}
 
-	ctr.ArgoClient = argo_client.NewArgoClient(cfg)
+	if ctr.ArgoClient, err = argo_client.NewArgoClient(cfg); err != nil {
+		return ctr, errors.Wrap(err, "failed to create argo client")
+	}
 
 	vcsToArgoMap := appdir.NewVcsToArgoMap()
 	ctr.VcsToArgoMap = vcsToArgoMap
 
 	if cfg.MonitorAllApplications {
 		if err = buildAppsMap(ctx, ctr.ArgoClient, ctr.VcsToArgoMap); err != nil {
-			return ctr, err
+			return ctr, errors.Wrap(err, "failed to build apps map")
 		}
 
 		ctr.ApplicationWatcher, err = app_watcher.NewApplicationWatcher(vcsToArgoMap)
 		if err != nil {
-			return ctr, err
+			return ctr, errors.Wrap(err, "failed to create watch applications")
 		}
 
 		go ctr.ApplicationWatcher.Run(ctx, 1)
