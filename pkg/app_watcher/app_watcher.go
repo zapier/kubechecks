@@ -40,6 +40,7 @@ func NewApplicationWatcher(vcsToArgoMap appdir.VcsToArgoMap) (*ApplicationWatche
 
 	ctrl := ApplicationWatcher{
 		applicationClientset: appClient,
+		vcsToArgoMap:         vcsToArgoMap,
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 30)
@@ -126,13 +127,15 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout t
 	)
 
 	lister := applisters.NewApplicationLister(informer.GetIndexer())
-	informer.AddEventHandler(
+	if _, err := informer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    ctrl.onApplicationAdded,
 			UpdateFunc: ctrl.onApplicationUpdated,
 			DeleteFunc: ctrl.onApplicationDeleted,
 		},
-	)
+	); err != nil {
+		log.Error().Err(err).Msg("failed to add event handlers")
+	}
 	return informer, lister
 }
 

@@ -18,8 +18,9 @@ import (
 func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Container, error) {
 	var err error
 
-	ctr := container.Container{}
-	ctr.Config = cfg
+	var ctr = container.Container{
+		Config: cfg,
+	}
 
 	switch cfg.VcsType {
 	case "gitlab":
