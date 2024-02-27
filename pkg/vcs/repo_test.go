@@ -76,5 +76,5 @@ func TestCensorVcsToken(t *testing.T) {
 func TestCensorEmptyVcsToken(t *testing.T) {
 	cfg := config.ServerConfig{VcsToken: ""}
 	result := censorVcsToken(cfg, []string{"one", "two", "three"})
-	assert.Equal(t, []string{"one", "two", "te"}, result)
+	assert.Equal(t, []string{"one", "two", "three"}, result)
 }
