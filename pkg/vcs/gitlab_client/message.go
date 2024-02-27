@@ -26,7 +26,7 @@ func (c *Client) PostMessage(ctx context.Context, repo *vcs.Repo, mergeRequestID
 		message = message[:MaxCommentLength]
 	}
 
-	n, _, err := c.Notes.CreateMergeRequestNote(
+	n, _, err := c.c.Notes.CreateMergeRequestNote(
 		repo.FullName, mergeRequestID,
 		&gitlab.CreateMergeRequestNoteOptions{
 			Body: pkg.Pointer(message),
@@ -71,7 +71,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 
 		log.Debug().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
 
-		_, _, err := c.Notes.UpdateMergeRequestNote(projectName, mergeRequestID, note.ID, &gitlab.UpdateMergeRequestNoteOptions{
+		_, _, err := c.c.Notes.UpdateMergeRequestNote(projectName, mergeRequestID, note.ID, &gitlab.UpdateMergeRequestNoteOptions{
 			Body: &newBody,
 		})
 
@@ -92,7 +92,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 		message = message[:MaxCommentLength]
 	}
 
-	n, _, err := c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
+	n, _, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
 		Body: pkg.Pointer(message),
 	})
 
@@ -116,7 +116,7 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 	for _, note := range notes {
 		if note.Author.Username == c.username {
 			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
-			_, err := c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
+			_, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
 			if err != nil {
 				telemetry.SetError(span, err, "Prune Old Comments")
 				return fmt.Errorf("could not delete old comment: %w", err)
@@ -137,7 +137,7 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, repo *vcs.Repo) error
 
 	for {
 		// list merge request notes
-		notes, resp, err := c.Notes.ListMergeRequestNotes(repo.FullName, repo.CheckID, &gitlab.ListMergeRequestNotesOptions{
+		notes, resp, err := c.c.Notes.ListMergeRequestNotes(repo.FullName, repo.CheckID, &gitlab.ListMergeRequestNotesOptions{
 			Sort:    pkg.Pointer("asc"),
 			OrderBy: pkg.Pointer("created_at"),
 			ListOptions: gitlab.ListOptions{
@@ -156,7 +156,7 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, repo *vcs.Repo) error
 		nextPage = resp.NextPage
 	}
 
-	if strings.ToLower(c.tidyOutdatedCommentsMode) == "delete" {
+	if strings.ToLower(c.cfg.TidyOutdatedCommentsMode) == "delete" {
 		return c.pruneOldComments(ctx, repo.FullName, repo.CheckID, allNotes)
 	}
 	return c.hideOutdatedMessages(ctx, repo.FullName, repo.CheckID, allNotes)

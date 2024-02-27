@@ -78,7 +78,7 @@ func convertState(state pkg.CommitState) gitlab.BuildStateValue {
 }
 
 func (c *Client) setCommitStatus(projectWithNS string, commitSHA string, status *gitlab.SetCommitStatusOptions) (*gitlab.CommitStatus, error) {
-	commitStatus, _, err := c.Commits.SetCommitStatus(projectWithNS, commitSHA, status)
+	commitStatus, _, err := c.c.Commits.SetCommitStatus(projectWithNS, commitSHA, status)
 	return commitStatus, err
 }
 

@@ -22,9 +22,9 @@ import (
 type Client struct {
 	shurcoolClient *githubv4.Client
 	googleClient   *github.Client
+	cfg            config.ServerConfig
 
-	tidyOutdatedCommentsMode string
-	username, email          string
+	username, email string
 }
 
 // CreateGithubClient creates a new GitHub client using the auth token provided. We
@@ -68,6 +68,7 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 	}
 
 	client := &Client{
+		cfg:            cfg,
 		googleClient:   googleClient,
 		shurcoolClient: shurcoolClient,
 	}
@@ -147,6 +148,8 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) *vcs.Repo {
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
+
+		Config: c.cfg,
 	}
 }
 
@@ -313,6 +316,8 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*vcs.Repo, error) {
 		Username:      userName,
 		Email:         userEmail,
 		Labels:        labels,
+
+		Config: c.cfg,
 	}, nil
 }
 

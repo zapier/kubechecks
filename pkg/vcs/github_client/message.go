@@ -154,7 +154,7 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, repo *vcs.Repo) error
 		nextPage = resp.NextPage
 	}
 
-	if strings.ToLower(c.tidyOutdatedCommentsMode) == "delete" {
+	if strings.ToLower(c.cfg.TidyOutdatedCommentsMode) == "delete" {
 		return c.pruneOldComments(ctx, repo, allComments)
 	}
 	return c.hideOutdatedMessages(ctx, repo, allComments)

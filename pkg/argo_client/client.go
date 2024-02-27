@@ -18,21 +18,29 @@ type ArgoClient struct {
 	client apiclient.Client
 }
 
-func NewArgoClient(cfg config.ServerConfig) *ArgoClient {
-	clientOptions := &apiclient.ClientOptions{
+func NewArgoClient(cfg config.ServerConfig) (*ArgoClient, error) {
+	opts := &apiclient.ClientOptions{
 		ServerAddr:      cfg.ArgoCDServerAddr,
 		AuthToken:       cfg.ArgoCDToken,
 		GRPCWebRootPath: cfg.ArgoCDPathPrefix,
 		Insecure:        cfg.ArgoCDInsecure,
 	}
-	argo, err := apiclient.NewClient(clientOptions)
+
+	log.Info().
+		Str("server-addr", opts.ServerAddr).
+		Int("auth-token", len(opts.AuthToken)).
+		Str("grpc-web-root-path", opts.GRPCWebRootPath).
+		Bool("insecure", cfg.ArgoCDInsecure).
+		Msg("ArgoCD client configuration")
+
+	argo, err := apiclient.NewClient(opts)
 	if err != nil {
-		log.Fatal().Err(err).Msg("could not create ArgoCD API client")
+		return nil, err
 	}
 
 	return &ArgoClient{
 		client: argo,
-	}
+	}, nil
 }
 
 // GetApplicationClient has related argocd diff code https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L899

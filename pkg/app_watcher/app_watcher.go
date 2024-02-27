@@ -40,6 +40,7 @@ func NewApplicationWatcher(vcsToArgoMap appdir.VcsToArgoMap) (*ApplicationWatche
 
 	ctrl := ApplicationWatcher{
 		applicationClientset: appClient,
+		vcsToArgoMap:         vcsToArgoMap,
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 30)

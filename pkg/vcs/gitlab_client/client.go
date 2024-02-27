@@ -22,10 +22,10 @@ import (
 const GitlabTokenHeader = "X-Gitlab-Token"
 
 type Client struct {
-	*gitlab.Client
+	c   *gitlab.Client
+	cfg config.ServerConfig
 
-	tidyOutdatedCommentsMode string
-	username, email          string
+	username, email string
 }
 
 func CreateGitlabClient(cfg config.ServerConfig) (*Client, error) {
@@ -54,11 +54,10 @@ func CreateGitlabClient(cfg config.ServerConfig) (*Client, error) {
 	}
 
 	client := &Client{
-		Client:   c,
+		c:        c,
+		cfg:      cfg,
 		username: user.Username,
 		email:    user.Email,
-
-		tidyOutdatedCommentsMode: cfg.TidyOutdatedCommentsMode,
 	}
 	if client.username == "" {
 		client.username = vcs.DefaultVcsUsername
@@ -132,7 +131,7 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse repo url")
 	}
-	webhooks, _, err := c.Client.Projects.ListProjectHooks(pid, nil)
+	webhooks, _, err := c.c.Projects.ListProjectHooks(pid, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list project webhooks")
 	}
@@ -160,7 +159,7 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 		return errors.Wrap(err, "failed to parse repo name")
 	}
 
-	_, _, err = c.Client.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
+	_, _, err = c.c.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
 		URL:                 pkg.Pointer(webhookUrl),
 		MergeRequestsEvents: pkg.Pointer(true),
 		Token:               pkg.Pointer(webhookSecret),
@@ -187,12 +186,12 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*vcs.Repo, error) {
 		return nil, errors.Wrap(err, "failed to parse merge request number")
 	}
 
-	project, _, err := c.Projects.GetProject(repoPath, nil)
+	project, _, err := c.c.Projects.GetProject(repoPath, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get project '%s'", repoPath)
 	}
 
-	mergeRequest, _, err := c.MergeRequests.GetMergeRequest(repoPath, int(mrNumber), nil)
+	mergeRequest, _, err := c.c.MergeRequests.GetMergeRequest(repoPath, int(mrNumber), nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get merge request '%d' in project '%s'", mrNumber, repoPath)
 	}
@@ -212,6 +211,8 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*vcs.Repo, error) {
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        mergeRequest.Labels,
+
+		Config: c.cfg,
 	}, nil
 }
 
@@ -234,5 +235,7 @@ func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) *vcs.Repo {
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
+
+		Config: c.cfg,
 	}
 }
