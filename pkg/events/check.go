@@ -291,7 +291,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 
 	repoPath := ce.TempWorkingDir
 	if appRepoUrl != ce.repo.CloneURL {
-		if repoPath, err = ce.ctr.ReposCache.Clone(ctx, appRepoUrl); err != nil {
+		if repoPath, err = ce.ctr.ReposCache.CloneWithBranch(ctx, appRepoUrl, appSrc.Ref); err != nil {
 			logger.Error().Err(err).Str("clone-url", appRepoUrl)
 			return
 		}

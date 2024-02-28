@@ -15,7 +15,7 @@ func TestParseCloneUrl(t *testing.T) {
 		{
 			name:     "github git url",
 			cloneUrl: "git@github.com:zapier/kubechecks.git",
-			expected: parsedUrl{cloneUrl: "git@github.com:zapier/kubechecks.git"},
+			expected: parsedUrl{cloneUrl: "https://github.com/zapier/kubechecks.git"},
 		},
 		{
 			name:     "github https url",
@@ -25,7 +25,7 @@ func TestParseCloneUrl(t *testing.T) {
 		{
 			name:     "gitlab git url",
 			cloneUrl: "git@gitlab.com:zapier/team-sre/kubechecks.git",
-			expected: parsedUrl{cloneUrl: "git@gitlab.com:zapier/team-sre/kubechecks.git"},
+			expected: parsedUrl{cloneUrl: "https://gitlab.com/zapier/team-sre/kubechecks.git"},
 		},
 		{
 			name:     "gitlab https url",
@@ -36,7 +36,7 @@ func TestParseCloneUrl(t *testing.T) {
 			name:     "gitlab git url with subdir",
 			cloneUrl: "git@gitlab.com:zapier/team-sre/kubechecks.git?subdir=/hello/world",
 			expected: parsedUrl{
-				cloneUrl: "git@gitlab.com:zapier/team-sre/kubechecks.git",
+				cloneUrl: "https://gitlab.com/zapier/team-sre/kubechecks.git",
 				subdir:   "hello/world",
 			},
 		},

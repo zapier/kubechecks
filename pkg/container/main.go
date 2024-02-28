@@ -36,4 +36,5 @@ type VcsToArgoMap interface {
 
 type ReposCache interface {
 	Clone(ctx context.Context, repoUrl string) (string, error)
+	CloneWithBranch(ctx context.Context, repoUrl, targetBranch string) (string, error)
 }
