@@ -31,7 +31,7 @@ var processCmd = &cobra.Command{
 			return
 		}
 
-		server.ProcessCheckEvent(ctx, repo, cfg, ctr)
+		server.ProcessCheckEvent(ctx, repo, ctr)
 	},
 }
 

@@ -88,7 +88,7 @@ func (r *Repo) CloneRepoLocal(ctx context.Context, repoDir string) error {
 	if log.Trace().Enabled() {
 		// print contents of repo
 		//nolint
-		filepath.WalkDir(repoDir, walk)
+		filepath.WalkDir(repoDir, printFile)
 	}
 
 	// Print the path to the cloned repository
@@ -138,31 +138,6 @@ func (r *Repo) MergeIntoTarget(ctx context.Context) error {
 	return nil
 }
 
-// GetListOfRepoFiles returns a list of all files in the local repository
-func (r *Repo) GetListOfRepoFiles() ([]string, error) {
-	files := []string{}
-	walkFn := func(s string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() {
-			// make path relative to repo root
-			rel, _ := filepath.Rel(r.RepoDir, s)
-			if strings.HasPrefix(rel, ".git") {
-				// ignore files in .git subdir
-				return nil
-			}
-
-			files = append(files, rel)
-		}
-		return nil
-	}
-
-	err := filepath.WalkDir(r.RepoDir, walkFn)
-
-	return files, err
-}
-
 // GetListOfChangedFiles returns a list of files that have changed between the current branch and the target branch
 func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "RepoGetListOfChangedFiles")
@@ -197,7 +172,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 	return fileList, nil
 }
 
-func walk(s string, d fs.DirEntry, err error) error {
+func printFile(s string, d fs.DirEntry, err error) error {
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -69,10 +68,10 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *vcs.Repo) 
 		return
 	}
 
-	ProcessCheckEvent(ctx, repo, h.ctr.Config, h.ctr)
+	ProcessCheckEvent(ctx, repo, h.ctr)
 }
 
-func ProcessCheckEvent(ctx context.Context, r *vcs.Repo, cfg config.ServerConfig, ctr container.Container) {
+func ProcessCheckEvent(ctx context.Context, r *vcs.Repo, ctr container.Container) {
 	var span trace.Span
 	ctx, span = otel.Tracer("Kubechecks").Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
