@@ -103,7 +103,7 @@ func ProcessCheckEvent(ctx context.Context, r *vcs.Repo, ctr container.Container
 	}
 
 	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
-	err = cEvent.CloneRepoLocal(ctx)
+	err = r.CloneRepoLocal(ctx, cEvent.TempWorkingDir)
 	if err != nil {
 		// TODO: Cancel event if gitlab etc
 		telemetry.SetError(span, err, "Clone Repo Local")
@@ -112,7 +112,7 @@ func ProcessCheckEvent(ctx context.Context, r *vcs.Repo, ctr container.Container
 	}
 
 	// Merge the most recent changes into the branch we just cloned
-	err = cEvent.MergeIntoTarget(ctx)
+	err = r.MergeIntoTarget(ctx)
 	if err != nil {
 		// TODO: Cancel if gitlab etc
 		log.Error().Err(err).Msg("failed to merge into target")
@@ -120,8 +120,7 @@ func ProcessCheckEvent(ctx context.Context, r *vcs.Repo, ctr container.Container
 	}
 
 	// Get the diff between the two branches, storing them within the CheckEvent (also returns but discarded here)
-	_, err = cEvent.GetListOfChangedFiles(ctx)
-	if err != nil {
+	if err = cEvent.UpdateListOfChangedFiles(ctx); err != nil {
 		// TODO: Cancel if gitlab etc
 		log.Error().Err(err).Msg("failed to get list of changed files")
 		return

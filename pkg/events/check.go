@@ -61,20 +61,6 @@ func NewCheckEvent(repo *vcs.Repo, ctr container.Container) *CheckEvent {
 	return ce
 }
 
-// getRepo gets the repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
-// As the Repo is built from a webhook payload via the VCSClient, it should always be present. If not, error
-func (ce *CheckEvent) getRepo(ctx context.Context) (*vcs.Repo, error) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetRepo")
-	defer span.End()
-	var err error
-
-	if ce.repo == nil {
-		ce.logger.Error().Err(err).Msg("Repo is nil, did you forget to create it?")
-		return nil, err
-	}
-	return ce.repo, nil
-}
-
 func (ce *CheckEvent) CreateTempDir() error {
 	var err error
 	ce.TempWorkingDir, err = os.MkdirTemp("/tmp", "kubechecks-mr-clone")
@@ -96,44 +82,18 @@ func (ce *CheckEvent) Cleanup(ctx context.Context) {
 	}
 }
 
-// CloneRepoLocal takes the repo inside the Check Event and try to clone it locally
-func (ce *CheckEvent) CloneRepoLocal(ctx context.Context) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "CloneRepoLocal")
+func (ce *CheckEvent) UpdateListOfChangedFiles(ctx context.Context) error {
+	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetListOfChangedFiles")
 	defer span.End()
 
-	return ce.repo.CloneRepoLocal(ctx, ce.TempWorkingDir)
-}
-
-// MergeIntoTarget merges the changes from the MR/PR into the base branch
-func (ce *CheckEvent) MergeIntoTarget(ctx context.Context) error {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "MergeIntoTarget")
-	defer span.End()
-	gitRepo, err := ce.getRepo(ctx)
+	files, err := ce.repo.GetListOfChangedFiles(ctx)
 	if err != nil {
 		return err
 	}
 
-	return gitRepo.MergeIntoTarget(ctx)
-}
-
-func (ce *CheckEvent) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetListOfChangedFiles")
-	defer span.End()
-
-	gitRepo, err := ce.getRepo(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(ce.fileList) == 0 {
-		ce.fileList, err = gitRepo.GetListOfChangedFiles(ctx)
-	}
-
-	if err == nil {
-		ce.logger.Debug().Msgf("Changed files: %s", strings.Join(ce.fileList, ","))
-	}
-
-	return ce.fileList, err
+	ce.logger.Debug().Msgf("Changed files: %s", strings.Join(files, ","))
+	ce.fileList = files
+	return nil
 }
 
 // GenerateListOfAffectedApps walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
@@ -301,12 +261,23 @@ func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
 // The processing is performed concurrently using Go routines and error groups. Any check results are sent through
 // the returnChan. The function also manages the inFlight atomic counter to track active processing routines.
 func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) {
-	appName := app.Name
-	dir := app.Spec.GetSource().Path
+	var (
+		err error
+
+		appName    = app.Name
+		appSrc     = app.Spec.Source
+		appPath    = appSrc.Path
+		appRepoUrl = appSrc.RepoURL
+
+		logger = ce.logger.With().
+			Str("app_name", appName).
+			Str("app_path", appPath).
+			Logger()
+	)
 
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "processApp", trace.WithAttributes(
 		attribute.String("app", appName),
-		attribute.String("dir", dir),
+		attribute.String("dir", appPath),
 	))
 	defer span.End()
 
@@ -314,14 +285,22 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	defer atomic.AddInt32(&inFlight, -1)
 
 	start := time.Now()
-	ce.logger.Info().Str("app", appName).Msg("Adding new app")
+	logger.Info().Str("app", appName).Msg("Adding new app")
 	// Build a new section for this app in the parent comment
 	ce.vcsNote.AddNewApp(ctx, appName)
 
-	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", appName, ce.TempWorkingDir, dir)
-	jsonManifests, err := argo_client.GetManifestsLocal(ctx, ce.ctr.ArgoClient, appName, ce.TempWorkingDir, dir, app)
+	repoPath := ce.TempWorkingDir
+	if appRepoUrl != ce.repo.CloneURL {
+		if repoPath, err = ce.ctr.ReposCache.Clone(ctx, appRepoUrl); err != nil {
+			logger.Error().Err(err).Str("clone-url", appRepoUrl)
+			return
+		}
+	}
+
+	logger.Debug().Str("repo_path", repoPath).Msg("Getting manifests")
+	jsonManifests, err := argo_client.GetManifestsLocal(ctx, ce.ctr.ArgoClient, appName, repoPath, appPath, app)
 	if err != nil {
-		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", appName, dir)
+		logger.Error().Err(err).Msg("Unable to get manifests")
 		cr := msg.CheckResult{State: pkg.StateError, Summary: "Unable to get manifests", Details: fmt.Sprintf("```\n%s\n```", ce.cleanupGetManifestsError(err))}
 		ce.vcsNote.AddToAppMessage(ctx, appName, cr)
 		return
@@ -329,18 +308,18 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 
 	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
 	yamlManifests := argo_client.ConvertJsonToYamlManifests(jsonManifests)
-	ce.logger.Trace().Msgf("Manifests:\n%+v\n", yamlManifests)
+	logger.Trace().Msgf("Manifests:\n%+v\n", yamlManifests)
 
 	k8sVersion, err := ce.ctr.ArgoClient.GetKubernetesVersionByApplication(ctx, app)
 	if err != nil {
-		ce.logger.Error().Err(err).Msg("Error retrieving the Kubernetes version")
+		logger.Error().Err(err).Msg("Error retrieving the Kubernetes version")
 		k8sVersion = ce.ctr.Config.FallbackK8sVersion
 	} else {
 		k8sVersion = fmt.Sprintf("%s.0", k8sVersion)
-		ce.logger.Info().Msgf("Kubernetes version: %s", k8sVersion)
+		logger.Info().Msgf("Kubernetes version: %s", k8sVersion)
 	}
 
-	runner := newRunner(span, ctx, app, appName, k8sVersion, ce.TempWorkingDir, jsonManifests, yamlManifests, ce.logger, ce.vcsNote)
+	runner := newRunner(span, ctx, app, appName, k8sVersion, repoPath, jsonManifests, yamlManifests, logger, ce.vcsNote)
 
 	runner.Run("validating app against schema", ce.validateSchemas)
 	runner.Run("generating diff for app", ce.generateDiff)
