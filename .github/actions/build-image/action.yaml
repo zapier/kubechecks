@@ -38,10 +38,8 @@ runs:
     - name: Build and push the Docker image
       shell: bash
       run: >-       
-        earthly 
+        ./earthly 
         --push 
         +build 
         --GIT_TAG=${{ inputs.image_tag }}
-        --GIT_COMMIT=$(git rev-parse --short HEAD) 
-        --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}
         --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
