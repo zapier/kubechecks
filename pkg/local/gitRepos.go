@@ -125,6 +125,12 @@ func clone(cloneUrl, branchName string) (string, error) {
 		return "", errors.Wrap(err, "failed to make temp dir")
 	}
 
+	log.Info().
+		Str("temp-dir", repoDir).
+		Str("clone-url", cloneUrl).
+		Str("branch", branchName).
+		Msg("cloning git repo")
+
 	args := []string{"clone", cloneUrl, repoDir}
 	if branchName != defaultBranchName {
 		args = append(args, "-b", branchName)
