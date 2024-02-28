@@ -11,6 +11,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/local"
 	"github.com/zapier/kubechecks/pkg/vcs/github_client"
 	"github.com/zapier/kubechecks/pkg/vcs/gitlab_client"
 )
@@ -40,6 +41,10 @@ func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Conta
 
 	vcsToArgoMap := appdir.NewVcsToArgoMap()
 	ctr.VcsToArgoMap = vcsToArgoMap
+
+	if ctr.ReposCache, err = local.NewReposDirectory(); err != nil {
+		return ctr, errors.Wrap(err, "failed to create repos cache")
+	}
 
 	if cfg.MonitorAllApplications {
 		if err = buildAppsMap(ctx, ctr.ArgoClient, ctr.VcsToArgoMap); err != nil {

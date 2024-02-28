@@ -13,14 +13,13 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/config"
-	"github.com/zapier/kubechecks/pkg/local"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
-var reposCache = local.NewReposDirectory()
+func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPath string) []string {
+	cfg := ctr.Config
 
-func getSchemaLocations(ctx context.Context, cfg config.ServerConfig, tempRepoPath string) []string {
 	locations := []string{
 		// schemas included in kubechecks
 		"default",
@@ -28,16 +27,22 @@ func getSchemaLocations(ctx context.Context, cfg config.ServerConfig, tempRepoPa
 
 	// schemas configured globally
 	for _, schemasLocation := range cfg.SchemasLocations {
-		log.Debug().Str("schemas-location", schemasLocation).Msg("viper")
-		schemaPath := reposCache.EnsurePath(ctx, tempRepoPath, schemasLocation)
-		if schemaPath != "" {
-			locations = append(locations, schemaPath)
+		if strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "https://") {
+			locations = append(locations, schemasLocation)
+		} else if strings.HasSuffix(schemasLocation, ".git") {
+			if schemaPath, err := ctr.ReposCache.Clone(ctx, schemasLocation); err != nil {
+				log.Warn().Err(err).Msg("failed to clone schema repo")
+			} else if schemaPath != "" {
+				locations = append(locations, schemaPath)
+			}
+		} else {
+			locations = append(locations, filepath.Join(tempRepoPath, schemasLocation))
 		}
 	}
 
 	for index := range locations {
 		location := locations[index]
-		if location == "default" {
+		if location == "default" || strings.Contains(location, "{{") {
 			continue
 		}
 
@@ -52,7 +57,7 @@ func getSchemaLocations(ctx context.Context, cfg config.ServerConfig, tempRepoPa
 	return locations
 }
 
-func ArgoCdAppValidate(ctx context.Context, cfg config.ServerConfig, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.CheckResult, error) {
+func ArgoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -74,7 +79,7 @@ func ArgoCdAppValidate(ctx context.Context, cfg config.ServerConfig, appName, ta
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(ctx, cfg, tempRepoPath)
+		schemaLocations = getSchemaLocations(ctx, ctr, tempRepoPath)
 	)
 
 	log.Debug().Msgf("cache location: %s", vOpts.Cache)

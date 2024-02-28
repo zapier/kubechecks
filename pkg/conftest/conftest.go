@@ -16,14 +16,12 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/local"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
 const passedMessage = "\nPassed all policy checks."
-
-var reposCache = local.NewReposDirectory()
 
 type emojiable interface {
 	ToEmoji(state pkg.CommitState) string
@@ -35,7 +33,7 @@ type emojiable interface {
 // provides feedback for warnings or errors as informational messages. Failure to
 // pass a policy check currently does not block deploy.
 func Conftest(
-	ctx context.Context, app *v1alpha1.Application, repoPath string, policiesLocations []string, vcs emojiable,
+	ctx context.Context, ctr container.Container, app *v1alpha1.Application, repoPath string, policiesLocations []string, vcs emojiable,
 ) (msg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "Conftest")
 	defer span.End()
@@ -46,10 +44,14 @@ func Conftest(
 
 	var locations []string
 	for _, policiesLocation := range policiesLocations {
-		log.Debug().Str("policies-location", policiesLocation).Msg("viper")
-		schemaPath := reposCache.EnsurePath(ctx, repoPath, policiesLocation)
-		if schemaPath != "" {
-			locations = append(locations, schemaPath)
+		logger := log.With().Str("policies-location", policiesLocation).Logger()
+		if repoPath, err := ctr.ReposCache.Clone(ctx, policiesLocation); err != nil {
+			logger.Warn().Err(err).Msg("failed to clone location")
+		} else if repoPath != "" {
+			logger.Info().Str("path", repoPath).Msg("cloned policies repo")
+			locations = append(locations, repoPath)
+		} else {
+			logger.Warn().Msg("failed to clone schema policies location")
 		}
 	}
 

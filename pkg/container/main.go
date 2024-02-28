@@ -1,6 +1,7 @@
 package container
 
 import (
+	"context"
 	"io/fs"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -20,6 +21,7 @@ type Container struct {
 
 	VcsClient    vcs.VcsClient
 	VcsToArgoMap VcsToArgoMap
+	ReposCache   ReposCache
 }
 
 type VcsToArgoMap interface {
@@ -30,4 +32,8 @@ type VcsToArgoMap interface {
 	GetAppsInRepo(string) *appdir.AppDirectory
 	GetMap() map[appdir.RepoURL]*appdir.AppDirectory
 	WalkKustomizeApps(cloneURL string, fs fs.FS) *appdir.AppDirectory
+}
+
+type ReposCache interface {
+	Clone(ctx context.Context, repoUrl string) (string, error)
 }

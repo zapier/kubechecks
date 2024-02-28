@@ -2,96 +2,126 @@ package local
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	giturls "github.com/whilp/git-urls"
 
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 type ReposDirectory struct {
-	paths map[string]string
-
-	mutex sync.Mutex
+	rootPath      string
+	repoDirsByUrl map[string]string
+	mutex         sync.Mutex
 }
 
-func NewReposDirectory() *ReposDirectory {
-	rd := &ReposDirectory{
-		paths: make(map[string]string),
+func NewReposDirectory() (*ReposDirectory, error) {
+	tempFolder, err := os.MkdirTemp("", "repos-cache")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to make repos cache root")
 	}
 
-	return rd
+	return &ReposDirectory{
+		rootPath:      tempFolder,
+		repoDirsByUrl: make(map[string]string),
+	}, nil
 }
 
-func (rd *ReposDirectory) EnsurePath(ctx context.Context, tempRepoPath, location string) string {
-	if location == "" {
-		return ""
+type parsedUrl struct {
+	cloneUrl string
+	subdir   string
+}
+
+func parseCloneUrl(url string) (parsedUrl, error) {
+	parts, err := giturls.Parse(url)
+	if err != nil {
+		return parsedUrl{}, errors.Wrap(err, "failed to parse git url")
 	}
 
-	if strings.HasPrefix(location, "https://") || strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "git@") {
-		log.Debug().Str("location", location).Msg("registering remote repository")
-		localPath := rd.Register(ctx, location)
-		return localPath
-	}
+	query := parts.Query()
+	query.Get("subdir")
 
-	schemaPath := filepath.Join(tempRepoPath, location)
-	if stat, err := os.Stat(schemaPath); err == nil && stat.IsDir() {
-		log.Debug().Str("location", location).Msg("registering in-repo path")
-		return schemaPath
+	var cloneUrl string
+	if parts.Scheme == "ssh" {
+		cloneUrl = fmt.Sprintf("%s@%s:%s", parts.User.Username(), parts.Host, parts.Path)
 	} else {
-		log.Warn().Str("location", location).Err(err).Msg("failed to find in-repo path")
+		cloneUrl = fmt.Sprintf("%s://%s%s", parts.Scheme, parts.Host, parts.Path)
 	}
 
-	return ""
+	subdir := query.Get("subdir")
+	subdir = strings.TrimLeft(subdir, "/")
+
+	return parsedUrl{
+		cloneUrl: cloneUrl,
+		subdir:   subdir,
+	}, nil
 }
 
-func (rd *ReposDirectory) Register(ctx context.Context, cloneUrl string) string {
+func (rd *ReposDirectory) Clone(ctx context.Context, cloneUrl string) (string, error) {
 	var (
 		ok      bool
 		repoDir string
+		err     error
+
+		logger = log.With().
+			Str("clone-url", cloneUrl).
+			Logger()
 	)
 
 	rd.mutex.Lock()
 	defer rd.mutex.Unlock()
 
-	repoDir, ok = rd.paths[cloneUrl]
-	if ok {
-		rd.fetchLatest(repoDir)
-		return repoDir
+	parsed, err := parseCloneUrl(cloneUrl)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to parse clone url")
 	}
 
-	return rd.clone(ctx, cloneUrl)
+	repoDir, ok = rd.repoDirsByUrl[parsed.cloneUrl]
+	if ok {
+		if err = rd.fetchLatest(repoDir); err != nil {
+			logger.Warn().Err(err).Msg("failed to fetch latest")
+		}
+	} else {
+		if repoDir, err = rd.clone(ctx, cloneUrl); err != nil {
+			return "", errors.Wrap(err, "failed to clone repo")
+		}
+	}
+
+	if parsed.subdir != "" {
+		repoDir = filepath.Join(repoDir, parsed.subdir)
+	}
+
+	return repoDir, nil
+
 }
 
-func (rd *ReposDirectory) fetchLatest(repoDir string) {
+func (rd *ReposDirectory) fetchLatest(repoDir string) error {
 	cmd := exec.Command("git", "pull")
 	cmd.Dir = repoDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stdout
-	err := cmd.Run()
-	if err != nil {
-		log.Err(err).Msg("failed to pull latest")
-	}
+	return cmd.Run()
 }
 
-func (rd *ReposDirectory) clone(ctx context.Context, cloneUrl string) string {
+func (rd *ReposDirectory) clone(ctx context.Context, cloneUrl string) (string, error) {
 	repoDir, err := os.MkdirTemp("/tmp", "schemas")
 	if err != nil {
-		log.Err(err).Msg("failed to make temp dir")
-		return ""
+		return "", errors.Wrap(err, "failed to make temp dir")
 	}
 
 	r := vcs.Repo{CloneURL: cloneUrl}
 	err = r.CloneRepoLocal(ctx, repoDir)
 	if err != nil {
-		log.Err(err).Str("clone-url", cloneUrl).Msg("failed to clone repository")
-		return ""
+		return "", errors.Wrap(err, "failed to clone repository")
 	}
 
-	rd.paths[cloneUrl] = repoDir
-	return repoDir
+	rd.repoDirsByUrl[cloneUrl] = repoDir
+	return repoDir, nil
 }

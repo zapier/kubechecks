@@ -384,7 +384,7 @@ func (ce *CheckEvent) validatePolicy(data CheckData) (msg.CheckResult, error) {
 		return EmptyCheckResult, errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", data.appName)
 	}
 
-	cr, err := conftest.Conftest(data.ctx, argoApp, ce.TempWorkingDir, ce.ctr.Config.PoliciesLocation, ce.ctr.VcsClient)
+	cr, err := conftest.Conftest(data.ctx, ce.ctr, argoApp, ce.TempWorkingDir, ce.ctr.Config.PoliciesLocation, ce.ctr.VcsClient)
 	if err != nil {
 		return EmptyCheckResult, err
 	}
@@ -404,7 +404,7 @@ func (ce *CheckEvent) generateDiff(data CheckData) (msg.CheckResult, error) {
 }
 
 func (ce *CheckEvent) validateSchemas(data CheckData) (msg.CheckResult, error) {
-	cr, err := validate.ArgoCdAppValidate(data.ctx, ce.ctr.Config, data.appName, data.k8sVersion, data.repoPath, data.yamlManifests)
+	cr, err := validate.ArgoCdAppValidate(data.ctx, ce.ctr, data.appName, data.k8sVersion, data.repoPath, data.yamlManifests)
 	if err != nil {
 		return EmptyCheckResult, err
 	}

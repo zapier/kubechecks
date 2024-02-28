@@ -12,13 +12,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/container"
 )
 
 func TestDefaultGetSchemaLocations(t *testing.T) {
 	ctx := context.TODO()
-	cfg := config.ServerConfig{}
-	schemaLocations := getSchemaLocations(ctx, cfg, "/some/other/path")
+	ctr := container.Container{}
+	schemaLocations := getSchemaLocations(ctx, ctr, "/some/other/path")
 
 	// default schema location is "./schemas"
 	assert.Len(t, schemaLocations, 1)
@@ -27,7 +27,7 @@ func TestDefaultGetSchemaLocations(t *testing.T) {
 
 func TestGetRemoteSchemaLocations(t *testing.T) {
 	ctx := context.TODO()
-	cfg := config.ServerConfig{}
+	ctr := container.Container{}
 
 	if os.Getenv("CI") == "" {
 		t.Skip("Skipping testing. Only for CI environments")
@@ -39,7 +39,7 @@ func TestGetRemoteSchemaLocations(t *testing.T) {
 
 	// t.Setenv("KUBECHECKS_SCHEMAS_LOCATION", fixture.URL)  // doesn't work because viper needs to initialize from root, which doesn't happen
 	viper.Set("schemas-location", []string{fixture.URL})
-	schemaLocations := getSchemaLocations(ctx, cfg, "/some/other/path")
+	schemaLocations := getSchemaLocations(ctx, ctr, "/some/other/path")
 	hasTmpDirPrefix := strings.HasPrefix(schemaLocations[0], "/tmp/schemas")
 	assert.Equal(t, hasTmpDirPrefix, true, "invalid schemas location. Schema location should have prefix /tmp/schemas but has %s", schemaLocations[0])
 }
