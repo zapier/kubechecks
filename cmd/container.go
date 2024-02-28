@@ -42,7 +42,7 @@ func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Conta
 	vcsToArgoMap := appdir.NewVcsToArgoMap()
 	ctr.VcsToArgoMap = vcsToArgoMap
 
-	if ctr.ReposCache, err = local.NewReposDirectory(); err != nil {
+	if ctr.ReposCache, err = local.NewReposDirectory(ctr.VcsClient.Username()); err != nil {
 		return ctr, errors.Wrap(err, "failed to create repos cache")
 	}
 

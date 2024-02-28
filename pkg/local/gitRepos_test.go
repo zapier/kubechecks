@@ -15,28 +15,28 @@ func TestParseCloneUrl(t *testing.T) {
 		{
 			name:     "github git url",
 			cloneUrl: "git@github.com:zapier/kubechecks.git",
-			expected: parsedUrl{cloneUrl: "https://github.com/zapier/kubechecks.git"},
+			expected: parsedUrl{cloneUrl: "https://user@github.com/zapier/kubechecks.git"},
 		},
 		{
 			name:     "github https url",
 			cloneUrl: "https://github.com/zapier/kubechecks.git",
-			expected: parsedUrl{cloneUrl: "https://github.com/zapier/kubechecks.git"},
+			expected: parsedUrl{cloneUrl: "https://user@github.com/zapier/kubechecks.git"},
 		},
 		{
 			name:     "gitlab git url",
 			cloneUrl: "git@gitlab.com:zapier/team-sre/kubechecks.git",
-			expected: parsedUrl{cloneUrl: "https://gitlab.com/zapier/team-sre/kubechecks.git"},
+			expected: parsedUrl{cloneUrl: "https://user@gitlab.com/zapier/team-sre/kubechecks.git"},
 		},
 		{
 			name:     "gitlab https url",
 			cloneUrl: "https://gitlab.com/zapier/team-sre/kubechecks.git",
-			expected: parsedUrl{cloneUrl: "https://gitlab.com/zapier/team-sre/kubechecks.git"},
+			expected: parsedUrl{cloneUrl: "https://user@gitlab.com/zapier/team-sre/kubechecks.git"},
 		},
 		{
 			name:     "gitlab git url with subdir",
 			cloneUrl: "git@gitlab.com:zapier/team-sre/kubechecks.git?subdir=/hello/world",
 			expected: parsedUrl{
-				cloneUrl: "https://gitlab.com/zapier/team-sre/kubechecks.git",
+				cloneUrl: "https://user@gitlab.com/zapier/team-sre/kubechecks.git",
 				subdir:   "hello/world",
 			},
 		},
@@ -44,7 +44,7 @@ func TestParseCloneUrl(t *testing.T) {
 			name:     "gitlab https url with subdir",
 			cloneUrl: "https://gitlab.com/zapier/team-sre/kubechecks.git?subdir=hello/world",
 			expected: parsedUrl{
-				cloneUrl: "https://gitlab.com/zapier/team-sre/kubechecks.git",
+				cloneUrl: "https://user@gitlab.com/zapier/team-sre/kubechecks.git",
 				subdir:   "hello/world",
 			},
 		},
@@ -53,7 +53,7 @@ func TestParseCloneUrl(t *testing.T) {
 	for _, tc := range testcases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := parseCloneUrl(tc.cloneUrl)
+			actual, err := parseCloneUrl("user", tc.cloneUrl)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, actual)
 		})

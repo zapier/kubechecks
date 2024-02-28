@@ -17,18 +17,20 @@ import (
 const defaultBranchName = "HEAD"
 
 type ReposDirectory struct {
+	username      string
 	rootPath      string
 	repoDirsByUrl map[repoKey]string
 	mutex         sync.Mutex
 }
 
-func NewReposDirectory() (*ReposDirectory, error) {
+func NewReposDirectory(username string) (*ReposDirectory, error) {
 	tempFolder, err := os.MkdirTemp("", "repos-cache")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to make repos cache root")
 	}
 
 	return &ReposDirectory{
+		username:      username,
 		rootPath:      tempFolder,
 		repoDirsByUrl: make(map[repoKey]string),
 	}, nil
@@ -41,7 +43,7 @@ type parsedUrl struct {
 
 type repoKey string
 
-func parseCloneUrl(url string) (parsedUrl, error) {
+func parseCloneUrl(username, url string) (parsedUrl, error) {
 	parts, err := giturls.Parse(url)
 	if err != nil {
 		return parsedUrl{}, errors.Wrap(err, "failed to parse git url")
@@ -52,7 +54,7 @@ func parseCloneUrl(url string) (parsedUrl, error) {
 
 	parts.Path = strings.TrimPrefix(parts.Path, "/")
 
-	cloneUrl := fmt.Sprintf("https://%s/%s", parts.Host, parts.Path)
+	cloneUrl := fmt.Sprintf("https://%s@%s/%s", username, parts.Host, parts.Path)
 
 	subdir := query.Get("subdir")
 	subdir = strings.TrimLeft(subdir, "/")
@@ -85,7 +87,7 @@ func (rd *ReposDirectory) CloneWithBranch(ctx context.Context, cloneUrl, ref str
 	rd.mutex.Lock()
 	defer rd.mutex.Unlock()
 
-	parsed, err := parseCloneUrl(cloneUrl)
+	parsed, err := parseCloneUrl(cloneUrl, rd.username)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to parse clone url")
 	}
