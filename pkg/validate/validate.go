@@ -9,25 +9,25 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"github.com/yannh/kubeconform/pkg/validator"
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/local"
+	"github.com/zapier/kubechecks/pkg/msg"
 )
 
 var reposCache = local.NewReposDirectory()
 
-func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
+func getSchemaLocations(ctx context.Context, cfg config.ServerConfig, tempRepoPath string) []string {
 	locations := []string{
 		// schemas included in kubechecks
 		"default",
 	}
 
 	// schemas configured globally
-	schemasLocations := viper.GetStringSlice("schemas-location")
-	for _, schemasLocation := range schemasLocations {
+	for _, schemasLocation := range cfg.SchemasLocations {
 		log.Debug().Str("schemas-location", schemasLocation).Msg("viper")
 		schemaPath := reposCache.EnsurePath(ctx, tempRepoPath, schemasLocation)
 		if schemaPath != "" {
@@ -52,7 +52,7 @@ func getSchemaLocations(ctx context.Context, tempRepoPath string) []string {
 	return locations
 }
 
-func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (pkg.CheckResult, error) {
+func ArgoCdAppValidate(ctx context.Context, cfg config.ServerConfig, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.CheckResult, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -74,7 +74,7 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, te
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(ctx, tempRepoPath)
+		schemaLocations = getSchemaLocations(ctx, cfg, tempRepoPath)
 	)
 
 	log.Debug().Msgf("cache location: %s", vOpts.Cache)
@@ -84,7 +84,7 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, te
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
 		log.Error().Err(err).Msg("could not create kubeconform validator")
-		return pkg.CheckResult{}, fmt.Errorf("could not create kubeconform validator: %v", err)
+		return msg.CheckResult{}, fmt.Errorf("could not create kubeconform validator: %v", err)
 	}
 	result := v.Validate("-", io.NopCloser(strings.NewReader(strings.Join(appManifests, "\n"))))
 	var invalid, failedValidation bool
@@ -109,7 +109,7 @@ func ArgoCdAppValidate(ctx context.Context, appName, targetKubernetesVersion, te
 		}
 	}
 
-	var cr pkg.CheckResult
+	var cr msg.CheckResult
 	if invalid {
 		cr.State = pkg.StateWarning
 	} else if failedValidation {

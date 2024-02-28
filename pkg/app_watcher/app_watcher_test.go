@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/appdir"
 )
 
 func initTestObjects() *ApplicationWatcher {
-	// Setup the fake Application client set and informer.
+	// set up the fake Application client set and informer.
 	testApp1 := &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},
 		Spec: v1alpha1.ApplicationSpec{
@@ -31,9 +31,7 @@ func initTestObjects() *ApplicationWatcher {
 	clientset := appclientsetfake.NewSimpleClientset(testApp1, testApp2)
 	ctrl := &ApplicationWatcher{
 		applicationClientset: clientset,
-		cfg: &config.ServerConfig{
-			VcsToArgoMap: config.NewVcsToArgoMap(),
-		},
+		vcsToArgoMap:         appdir.NewVcsToArgoMap(),
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 1)
@@ -44,18 +42,18 @@ func initTestObjects() *ApplicationWatcher {
 }
 
 func TestApplicationAdded(t *testing.T) {
-	ctrl := initTestObjects()
+	appWatcher := initTestObjects()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go ctrl.Run(ctx, 1)
+	go appWatcher.Run(ctx, 1)
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(ctrl.cfg.VcsToArgoMap.GetMap()), 2)
+	assert.Equal(t, len(appWatcher.vcsToArgoMap.GetMap()), 2)
 
-	_, err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications("default").Create(ctx, &v1alpha1.Application{
+	_, err := appWatcher.applicationClientset.ArgoprojV1alpha1().Applications("default").Create(ctx, &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-3", Namespace: "default"},
 		Spec: v1alpha1.ApplicationSpec{
 			Source: &v1alpha1.ApplicationSource{RepoURL: "https://gitlab.com/test/repo-3.git"},
@@ -66,7 +64,7 @@ func TestApplicationAdded(t *testing.T) {
 	}
 
 	time.Sleep(time.Second * 1)
-	assert.Equal(t, len(ctrl.cfg.VcsToArgoMap.GetMap()), 3)
+	assert.Equal(t, len(appWatcher.vcsToArgoMap.GetMap()), 3)
 }
 
 func TestApplicationUpdated(t *testing.T) {
@@ -79,10 +77,10 @@ func TestApplicationUpdated(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(ctrl.cfg.VcsToArgoMap.GetMap()), 2)
+	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
 
-	oldAppDirectory := ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
-	newAppDirectory := ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
+	oldAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
+	newAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
 	assert.Equal(t, oldAppDirectory.Count(), 1)
 	assert.Equal(t, newAppDirectory.Count(), 0)
 	//
@@ -96,8 +94,8 @@ func TestApplicationUpdated(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(time.Second * 1)
-	oldAppDirectory = ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
-	newAppDirectory = ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
+	oldAppDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
+	newAppDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
 	assert.Equal(t, oldAppDirectory.Count(), 0)
 	assert.Equal(t, newAppDirectory.Count(), 1)
 }
@@ -112,9 +110,9 @@ func TestApplicationDeleted(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(ctrl.cfg.VcsToArgoMap.GetMap()), 2)
+	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
 
-	appDirectory := ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
+	appDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	assert.Equal(t, appDirectory.Count(), 1)
 	//
 	err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications("default").Delete(ctx, "test-app-1", metav1.DeleteOptions{})
@@ -123,7 +121,7 @@ func TestApplicationDeleted(t *testing.T) {
 	}
 	time.Sleep(time.Second * 1)
 
-	appDirectory = ctrl.cfg.VcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
+	appDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	assert.Equal(t, appDirectory.Count(), 0)
 }
 

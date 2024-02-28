@@ -1,4 +1,4 @@
-package config
+package appdir
 
 import (
 	"path/filepath"

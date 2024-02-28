@@ -12,46 +12,23 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"github.com/ziflex/lecho/v3"
 
-	"github.com/zapier/kubechecks/pkg/app_watcher"
-	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 const KubeChecksHooksPathPrefix = "/hooks"
 
 type Server struct {
-	cfg        *config.ServerConfig
-	appWatcher *app_watcher.ApplicationWatcher
+	ctr container.Container
 }
 
-func NewServer(ctx context.Context, cfg *config.ServerConfig) *Server {
-	var appWatcher *app_watcher.ApplicationWatcher
-	if viper.GetBool("monitor-all-applications") {
-		argoMap, err := config.BuildAppsMap(ctx)
-		if err != nil {
-			log.Fatal().Err(err).Msg("could not build VcsToArgoMap")
-		}
-		cfg.VcsToArgoMap = argoMap
-
-		appWatcher, err = app_watcher.NewApplicationWatcher(cfg)
-		if err != nil {
-			log.Fatal().Err(err).Msg("could not create ApplicationWatcher")
-		}
-	} else {
-		cfg.VcsToArgoMap = config.NewVcsToArgoMap()
-	}
-
-	return &Server{cfg: cfg, appWatcher: appWatcher}
+func NewServer(ctr container.Container) *Server {
+	return &Server{ctr: ctr}
 }
 
 func (s *Server) Start(ctx context.Context) {
-	if s.appWatcher != nil {
-		go s.appWatcher.Run(ctx, 1)
-	}
-
 	if err := s.ensureWebhooks(ctx); err != nil {
 		log.Warn().Err(err).Msg("failed to create webhooks")
 	}
@@ -71,7 +48,7 @@ func (s *Server) Start(ctx context.Context) {
 
 	hooksGroup := e.Group(s.hooksPrefix())
 
-	ghHooks := NewVCSHookHandler(s.cfg)
+	ghHooks := NewVCSHookHandler(s.ctr)
 	ghHooks.AttachHandlers(hooksGroup)
 
 	fmt.Println("Method\tPath")
@@ -85,7 +62,7 @@ func (s *Server) Start(ctx context.Context) {
 }
 
 func (s *Server) hooksPrefix() string {
-	prefix := s.cfg.UrlPrefix
+	prefix := s.ctr.Config.UrlPrefix
 	serverUrl, err := url.JoinPath("/", prefix, KubeChecksHooksPathPrefix)
 	if err != nil {
 		log.Warn().Err(err).Msg(":whatintarnation:")
@@ -95,22 +72,22 @@ func (s *Server) hooksPrefix() string {
 }
 
 func (s *Server) ensureWebhooks(ctx context.Context) error {
-	if !viper.GetBool("ensure-webhooks") {
+	if !s.ctr.Config.EnsureWebhooks {
 		return nil
 	}
 
-	if !viper.GetBool("monitor-all-applications") {
+	if !s.ctr.Config.MonitorAllApplications {
 		return errors.New("must enable 'monitor-all-applications' to create webhooks")
 	}
 
-	urlBase := viper.GetString("webhook-url-base")
+	urlBase := s.ctr.Config.WebhookUrlBase
 	if urlBase == "" {
 		return errors.New("must define 'webhook-url-base' to create webhooks")
 	}
 
 	log.Info().Msg("ensuring all webhooks are created correctly")
 
-	vcsClient := s.cfg.VcsClient
+	vcsClient := s.ctr.VcsClient
 
 	fullUrl, err := url.JoinPath(urlBase, s.hooksPrefix(), vcsClient.GetName(), "project")
 	if err != nil {
@@ -119,7 +96,7 @@ func (s *Server) ensureWebhooks(ctx context.Context) error {
 	}
 	log.Info().Str("webhookUrl", fullUrl).Msg("webhook URL for this kubechecks instance")
 
-	for _, repo := range s.cfg.GetVcsRepos() {
+	for _, repo := range s.ctr.VcsToArgoMap.GetVcsRepos() {
 		wh, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
 		if err != nil && !errors.Is(err, vcs.ErrHookNotFound) {
 			log.Error().Err(err).Msgf("failed to get hook for %s:", repo)
@@ -127,7 +104,7 @@ func (s *Server) ensureWebhooks(ctx context.Context) error {
 		}
 
 		if wh == nil {
-			if err = vcsClient.CreateHook(ctx, repo, fullUrl, s.cfg.WebhookSecret); err != nil {
+			if err = vcsClient.CreateHook(ctx, repo, fullUrl, s.ctr.Config.WebhookSecret); err != nil {
 				log.Info().Err(err).Msgf("failed to create hook for %s:", repo)
 			}
 		}

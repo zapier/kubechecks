@@ -1,4 +1,4 @@
-package pkg
+package msg
 
 import (
 	"context"
@@ -8,14 +8,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 type CheckResult struct {
-	State            CommitState
+	State            pkg.CommitState
 	Summary, Details string
 }
 
@@ -40,7 +41,7 @@ func NewMessage(name string, prId, commentId int, vcs toEmoji) *Message {
 }
 
 type toEmoji interface {
-	ToEmoji(state CommitState) string
+	ToEmoji(state pkg.CommitState) string
 }
 
 // Message type that allows concurrent updates
@@ -61,8 +62,8 @@ type Message struct {
 	deletedAppsSet map[string]struct{}
 }
 
-func (m *Message) WorstState() CommitState {
-	state := StateNone
+func (m *Message) WorstState() pkg.CommitState {
+	state := pkg.StateNone
 
 	for app, r := range m.apps {
 		if m.isDeleted(app) {
@@ -70,7 +71,7 @@ func (m *Message) WorstState() CommitState {
 		}
 
 		for _, result := range r.results {
-			state = WorstState(state, result.State)
+			state = pkg.WorstState(state, result.State)
 		}
 	}
 
@@ -124,28 +125,23 @@ func init() {
 	hostname, _ = os.Hostname()
 }
 
-func (m *Message) SetFooter(start time.Time, commitSha string) {
-	m.footer = buildFooter(start, commitSha)
+func (m *Message) SetFooter(start time.Time, commitSHA, labelFilter string, showDebugInfo bool) {
+	if !showDebugInfo {
+		m.footer = fmt.Sprintf("<small>_Done. CommitSHA: %s_<small>\n", commitSHA)
+		return
+	}
+
+	envStr := ""
+	if labelFilter != "" {
+		envStr = fmt.Sprintf(", Env: %s", labelFilter)
+	}
+	duration := time.Since(start)
+
+	m.footer = fmt.Sprintf("<small>_Done: Pod: %s, Dur: %v, SHA: %s%s_<small>\n", hostname, duration, pkg.GitCommit, envStr)
 }
 
 func (m *Message) BuildComment(ctx context.Context) string {
 	return m.buildComment(ctx)
-}
-
-func buildFooter(start time.Time, commitSHA string) string {
-	showDebug := viper.GetBool("show-debug-info")
-	if !showDebug {
-		return fmt.Sprintf("<small>_Done. CommitSHA: %s_<small>\n", commitSHA)
-	}
-
-	label := viper.GetString("label-filter")
-	envStr := ""
-	if label != "" {
-		envStr = fmt.Sprintf(", Env: %s", label)
-	}
-	duration := time.Since(start)
-
-	return fmt.Sprintf("<small>_Done: Pod: %s, Dur: %v, SHA: %s%s_<small>\n", hostname, duration, GitCommit, envStr)
 }
 
 // Iterate the map of all apps in this message, building a final comment from their current state
@@ -166,10 +162,10 @@ func (m *Message) buildComment(ctx context.Context) string {
 		var checkStrings []string
 		results := m.apps[appName]
 
-		appState := StateSuccess
+		appState := pkg.StateSuccess
 		for _, check := range results.results {
 			var summary string
-			if check.State == StateNone {
+			if check.State == pkg.StateNone {
 				summary = check.Summary
 			} else {
 				summary = fmt.Sprintf("%s %s %s", check.Summary, check.State.BareString(), m.vcs.ToEmoji(check.State))
@@ -177,7 +173,7 @@ func (m *Message) buildComment(ctx context.Context) string {
 
 			msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
 			checkStrings = append(checkStrings, msg)
-			appState = WorstState(appState, check.State)
+			appState = pkg.WorstState(appState, check.State)
 		}
 
 		sb.WriteString("<details>\n")

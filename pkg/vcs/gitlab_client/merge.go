@@ -27,7 +27,7 @@ func (c *Client) GetMergeChanges(ctx context.Context, projectId int, mergeReqId 
 	defer span.End()
 
 	var changes []*Changes
-	diffs, _, err := c.MergeRequests.ListMergeRequestDiffs(projectId, mergeReqId, &gitlab.ListMergeRequestDiffsOptions{})
+	diffs, _, err := c.c.MergeRequests.ListMergeRequestDiffs(projectId, mergeReqId, &gitlab.ListMergeRequestDiffsOptions{})
 	if err != nil {
 		telemetry.SetError(span, err, "Get MergeRequest Changes")
 		return changes, err

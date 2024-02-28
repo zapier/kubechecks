@@ -1,12 +1,13 @@
-package repo
+package vcs
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 func TestGetCloneUrl(t *testing.T) {
@@ -51,15 +52,13 @@ func TestGetCloneUrl(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.NotEqual(t, "", tc.vcsType)
 
-			v := viper.New()
-			v.Set("vcs-token", testToken)
-			v.Set("vcs-type", tc.vcsType)
-
-			if tc.vcsBaseUrl != "" {
-				v.Set("vcs-base-url", tc.vcsBaseUrl)
+			cfg := config.ServerConfig{
+				VcsToken:   testToken,
+				VcsType:    tc.vcsType,
+				VcsBaseUrl: tc.vcsBaseUrl,
 			}
 
-			actual, err := getCloneUrl(testUser, v)
+			actual, err := getCloneUrl(testUser, cfg)
 			require.NoError(t, err)
 
 			expected := fmt.Sprintf(tc.expected, testUser, testToken)
@@ -69,8 +68,13 @@ func TestGetCloneUrl(t *testing.T) {
 }
 
 func TestCensorVcsToken(t *testing.T) {
-	v := viper.New()
-	v.Set("vcs-token", "hre")
-	result := censorVcsToken(v, []string{"one", "two", "three"})
+	cfg := config.ServerConfig{VcsToken: "hre"}
+	result := censorVcsToken(cfg, []string{"one", "two", "three"})
 	assert.Equal(t, []string{"one", "two", "t********e"}, result)
+}
+
+func TestCensorEmptyVcsToken(t *testing.T) {
+	cfg := config.ServerConfig{VcsToken: ""}
+	result := censorVcsToken(cfg, []string{"one", "two", "three"})
+	assert.Equal(t, []string{"one", "two", "three"}, result)
 }

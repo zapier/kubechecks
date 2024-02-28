@@ -10,7 +10,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 type ReposDirectory struct {
@@ -85,7 +85,7 @@ func (rd *ReposDirectory) clone(ctx context.Context, cloneUrl string) string {
 		return ""
 	}
 
-	r := repo.Repo{CloneURL: cloneUrl}
+	r := vcs.Repo{CloneURL: cloneUrl}
 	err = r.CloneRepoLocal(ctx, repoDir)
 	if err != nil {
 		log.Err(err).Str("clone-url", cloneUrl).Msg("failed to clone repository")

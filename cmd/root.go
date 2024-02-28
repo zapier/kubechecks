@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"os"
 	"strings"
 
@@ -10,9 +9,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-
-	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/telemetry"
 )
 
 // RootCmd represents the base command when called without any subcommands
@@ -26,14 +22,6 @@ var RootCmd = &cobra.Command{
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	ctx := context.Background()
-	t, err := initTelemetry(ctx)
-	if err != nil {
-		log.Panic().Err(err).Msg("Failed to initialize telemetry")
-	}
-
-	defer t.Shutdown()
-
 	cobra.CheckErr(RootCmd.Execute())
 }
 
@@ -42,7 +30,6 @@ const envPrefix = "kubechecks"
 var envKeyReplacer = strings.NewReplacer("-", "_")
 
 func init() {
-
 	// allows environment variables to use _ instead of -
 	viper.SetEnvKeyReplacer(envKeyReplacer) // sync-provider becomes SYNC_PROVIDER
 	viper.SetEnvPrefix(envPrefix)           // port becomes KUBECHECKS_PORT
@@ -51,13 +38,13 @@ func init() {
 	flags := RootCmd.PersistentFlags()
 	stringFlag(flags, "log-level", "Set the log output level.",
 		newStringOpts().
-				withChoices(
-					zerolog.LevelErrorValue,
-					zerolog.LevelWarnValue,
-					zerolog.LevelInfoValue,
-					zerolog.LevelDebugValue,
-					zerolog.LevelTraceValue,
-				).
+			withChoices(
+				zerolog.LevelErrorValue,
+				zerolog.LevelWarnValue,
+				zerolog.LevelInfoValue,
+				zerolog.LevelDebugValue,
+				zerolog.LevelTraceValue,
+			).
 			withDefault("info").
 			withShortHand("l"),
 	)
@@ -92,13 +79,6 @@ func init() {
 	panicIfError(viper.BindPFlags(flags))
 
 	setupLogOutput()
-}
-
-func initTelemetry(ctx context.Context) (*telemetry.OperatorTelemetry, error) {
-	enableOtel := viper.GetBool("otel-enabled")
-	otelHost := viper.GetString("otel-collector-host")
-	otelPort := viper.GetString("otel-collector-port")
-	return telemetry.Init(ctx, "kubechecks", pkg.GitTag, pkg.GitCommit, enableOtel, otelHost, otelPort)
 }
 
 func setupLogOutput() {

@@ -25,8 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
@@ -42,17 +42,21 @@ func isAppMissingErr(err error) bool {
 }
 
 /*
-Take cli output and return as a string or an array of strings instead of printing
+GetDiff takes cli output and return as a string or an array of strings instead of printing
 
 changedFilePath should be the root of the changed folder
 
 from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
 */
-func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application, addApp, removeApp func(application2 argoappv1.Application)) (pkg.CheckResult, string, error) {
+func GetDiff(
+	ctx context.Context, manifests []string, app argoappv1.Application,
+	ctr container.Container,
+	addApp, removeApp func(application2 argoappv1.Application),
+) (msg.CheckResult, string, error) {
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetDiff")
 	defer span.End()
 
-	argoClient := argo_client.GetArgoClient()
+	argoClient := ctr.ArgoClient
 
 	log.Debug().Str("name", app.Name).Msg("generating diff for application...")
 
@@ -68,7 +72,7 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 	if err != nil {
 		if !isAppMissingErr(err) {
 			telemetry.SetError(span, err, "Get Argo Managed Resources")
-			return pkg.CheckResult{}, "", err
+			return msg.CheckResult{}, "", err
 		}
 
 		resources = new(application.ManagedResourcesResponse)
@@ -88,22 +92,22 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Cluster Settings")
-		return pkg.CheckResult{}, "", err
+		return msg.CheckResult{}, "", err
 	}
 
 	liveObjs, err := cmdutil.LiveObjects(resources.Items)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Live Objects")
-		return pkg.CheckResult{}, "", err
+		return msg.CheckResult{}, "", err
 	}
 
 	groupedObjs, err := groupObjsByKey(unstructureds, liveObjs, app.Spec.Destination.Namespace)
 	if err != nil {
-		return pkg.CheckResult{}, "", err
+		return msg.CheckResult{}, "", err
 	}
 
 	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name); err != nil {
-		return pkg.CheckResult{}, "", err
+		return msg.CheckResult{}, "", err
 	}
 
 	diffBuffer := &strings.Builder{}
@@ -131,13 +135,13 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 			Build()
 		if err != nil {
 			telemetry.SetError(span, err, "Build Diff")
-			return pkg.CheckResult{}, "failed to build diff", err
+			return msg.CheckResult{}, "failed to build diff", err
 		}
 
 		diffRes, err := argodiff.StateDiff(item.live, item.target, diffConfig)
 		if err != nil {
 			telemetry.SetError(span, err, "State Diff")
-			return pkg.CheckResult{}, "failed to state diff", err
+			return msg.CheckResult{}, "failed to state diff", err
 		}
 
 		if diffRes.Modified || item.target == nil || item.live == nil {
@@ -159,7 +163,7 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 			err := PrintDiff(diffBuffer, live, target)
 			if err != nil {
 				telemetry.SetError(span, err, "Print Diff")
-				return pkg.CheckResult{}, "", err
+				return msg.CheckResult{}, "", err
 			}
 			switch {
 			case item.target == nil:
@@ -189,7 +193,7 @@ func GetDiff(ctx context.Context, manifests []string, app argoappv1.Application,
 
 	diff := diffBuffer.String()
 
-	var cr pkg.CheckResult
+	var cr msg.CheckResult
 	cr.Summary = summary
 	cr.Details = fmt.Sprintf("```diff\n%s\n```", diff)
 

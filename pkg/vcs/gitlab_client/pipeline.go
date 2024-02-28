@@ -8,7 +8,7 @@ import (
 )
 
 func (c *Client) GetPipelinesForCommit(projectName string, commitSHA string) ([]*gitlab.PipelineInfo, error) {
-	pipelines, _, err := c.Pipelines.ListProjectPipelines(projectName, &gitlab.ListProjectPipelinesOptions{
+	pipelines, _, err := c.c.Pipelines.ListProjectPipelines(projectName, &gitlab.ListProjectPipelinesOptions{
 		SHA: pkg.Pointer(commitSHA),
 	})
 	if err != nil {

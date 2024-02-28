@@ -6,7 +6,6 @@ import (
 	"os"
 	"reflect"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,11 +20,11 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/argo_client"
-	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/conftest"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/diff"
 	"github.com/zapier/kubechecks/pkg/kubepug"
-	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 	"github.com/zapier/kubechecks/pkg/validate"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -34,17 +32,16 @@ import (
 )
 
 type CheckEvent struct {
-	client         vcs.Client // Client exposing methods to communicate with platform of user choice
-	fileList       []string   // What files have changed in this PR/MR
-	TempWorkingDir string     // Location of the local repo
-	repo           *repo.Repo
+	fileList       []string // What files have changed in this PR/MR
+	TempWorkingDir string   // Location of the local repo
+	repo           *vcs.Repo
 	logger         zerolog.Logger
 	workerLimits   int
-	vcsNote        *pkg.Message
+	vcsNote        *msg.Message
 
 	affectedItems affected_apps.AffectedItems
 
-	cfg *config.ServerConfig
+	ctr container.Container
 
 	addedAppsSet map[string]v1alpha1.Application
 	appsSent     int32
@@ -54,11 +51,10 @@ type CheckEvent struct {
 
 var inFlight int32
 
-func NewCheckEvent(repo *repo.Repo, cfg *config.ServerConfig) *CheckEvent {
+func NewCheckEvent(repo *vcs.Repo, ctr container.Container) *CheckEvent {
 	ce := &CheckEvent{
-		cfg:    cfg,
-		client: cfg.VcsClient,
-		repo:   repo,
+		ctr:  ctr,
+		repo: repo,
 	}
 
 	ce.logger = log.Logger.With().Str("repo", repo.Name).Int("event_id", repo.CheckID).Logger()
@@ -67,7 +63,7 @@ func NewCheckEvent(repo *repo.Repo, cfg *config.ServerConfig) *CheckEvent {
 
 // getRepo gets the repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
 // As the Repo is built from a webhook payload via the VCSClient, it should always be present. If not, error
-func (ce *CheckEvent) getRepo(ctx context.Context) (*repo.Repo, error) {
+func (ce *CheckEvent) getRepo(ctx context.Context) (*vcs.Repo, error) {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetRepo")
 	defer span.End()
 	var err error
@@ -140,7 +136,7 @@ func (ce *CheckEvent) GetListOfChangedFiles(ctx context.Context) ([]string, erro
 	return ce.fileList, err
 }
 
-// Walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
+// GenerateListOfAffectedApps walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
 func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, targetBranch string) error {
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
@@ -150,10 +146,10 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, targetBran
 	cfg, _ := repo_config.LoadRepoConfig(ce.TempWorkingDir)
 	if cfg != nil {
 		log.Debug().Msg("using the config matcher")
-		matcher = affected_apps.NewConfigMatcher(cfg)
+		matcher = affected_apps.NewConfigMatcher(cfg, ce.ctr)
 	} else {
 		log.Debug().Msg("using an argocd matcher")
-		matcher, err = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo, ce.TempWorkingDir)
+		matcher, err = affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, ce.repo, ce.TempWorkingDir)
 		if err != nil {
 			return errors.Wrap(err, "failed to create argocd matcher")
 		}
@@ -184,14 +180,14 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 		))
 	defer span.End()
 
-	err := ce.client.TidyOutdatedComments(ctx, ce.repo)
+	err := ce.ctr.VcsClient.TidyOutdatedComments(ctx, ce.repo)
 	if err != nil {
 		ce.logger.Error().Err(err).Msg("Failed to tidy outdated comments")
 	}
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "No changes")
+		ce.ctr.VcsClient.PostMessage(ctx, ce.repo, ce.repo.CheckID, "No changes")
 		return
 	}
 
@@ -237,7 +233,7 @@ func (ce *CheckEvent) ProcessApps(ctx context.Context) {
 	ce.logger.Info().Msg("Finished")
 
 	comment := ce.vcsNote.BuildComment(ctx)
-	if err = ce.client.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
+	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
 		ce.logger.Error().Err(err).Msg("failed to push comment")
 	}
 
@@ -280,7 +276,7 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 	_, span := otel.Tracer("Kubechecks").Start(ctx, "CommitStatus")
 	defer span.End()
 
-	if err := ce.client.CommitStatus(ctx, ce.repo, status); err != nil {
+	if err := ce.ctr.VcsClient.CommitStatus(ctx, ce.repo, status); err != nil {
 		log.Warn().Err(err).Msg("failed to update commit status")
 	}
 }
@@ -323,46 +319,42 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	ce.vcsNote.AddNewApp(ctx, appName)
 
 	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", appName, ce.TempWorkingDir, dir)
-	manifests, err := argo_client.GetManifestsLocal(ctx, appName, ce.TempWorkingDir, dir, app)
+	jsonManifests, err := argo_client.GetManifestsLocal(ctx, ce.ctr.ArgoClient, appName, ce.TempWorkingDir, dir, app)
 	if err != nil {
 		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", appName, dir)
-		cr := pkg.CheckResult{State: pkg.StateError, Summary: "Unable to get manifests", Details: fmt.Sprintf("```\n%s\n```", ce.cleanupGetManifestsError(err))}
+		cr := msg.CheckResult{State: pkg.StateError, Summary: "Unable to get manifests", Details: fmt.Sprintf("```\n%s\n```", ce.cleanupGetManifestsError(err))}
 		ce.vcsNote.AddToAppMessage(ctx, appName, cr)
 		return
 	}
 
 	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
-	formattedManifests := argo_client.FormatManifestsYAML(manifests)
-	ce.logger.Trace().Msgf("Manifests:\n%+v\n", formattedManifests)
+	yamlManifests := argo_client.ConvertJsonToYamlManifests(jsonManifests)
+	ce.logger.Trace().Msgf("Manifests:\n%+v\n", yamlManifests)
 
-	k8sVersion, err := argo_client.GetArgoClient().GetKubernetesVersionByApplication(ctx, app)
+	k8sVersion, err := ce.ctr.ArgoClient.GetKubernetesVersionByApplication(ctx, app)
 	if err != nil {
 		ce.logger.Error().Err(err).Msg("Error retrieving the Kubernetes version")
-		k8sVersion = viper.GetString("fallback-k8s-version")
+		k8sVersion = ce.ctr.Config.FallbackK8sVersion
 	} else {
 		k8sVersion = fmt.Sprintf("%s.0", k8sVersion)
 		ce.logger.Info().Msgf("Kubernetes version: %s", k8sVersion)
 	}
 
-	var wg sync.WaitGroup
+	runner := newRunner(span, ctx, app, appName, k8sVersion, ce.TempWorkingDir, jsonManifests, yamlManifests, ce.logger, ce.vcsNote)
 
-	run := ce.createRunner(span, ctx, appName, &wg)
+	runner.Run("validating app against schema", ce.validateSchemas)
+	runner.Run("generating diff for app", ce.generateDiff)
 
-	run("validating app against schema", ce.validateSchemas(ctx, appName, k8sVersion, ce.TempWorkingDir, formattedManifests))
-	run("generating diff for app", ce.generateDiff(ctx, app, manifests, ce.queueApp, ce.removeApp))
-
-	if viper.GetBool("enable-conftest") {
-		run("validation policy", ce.validatePolicy(ctx, appName))
+	if ce.ctr.Config.EnableConfTest {
+		runner.Run("validation policy", ce.validatePolicy)
 	}
 
-	run("running pre-upgrade check", ce.runPreupgradeCheck(ctx, appName, k8sVersion, formattedManifests))
+	runner.Run("running pre-upgrade check", ce.runPreupgradeCheck)
 
-	wg.Wait()
+	runner.Wait()
 
-	ce.vcsNote.SetFooter(start, ce.repo.SHA)
+	ce.vcsNote.SetFooter(start, ce.repo.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo)
 }
-
-type checkFunction func() (pkg.CheckResult, error)
 
 const (
 	errorCommentFormat = `
@@ -375,105 +367,59 @@ Check kubechecks application logs for more information.
 `
 )
 
-func (ce *CheckEvent) createRunner(span trace.Span, grpCtx context.Context, app string, wg *sync.WaitGroup) func(string, checkFunction) {
-	return func(desc string, fn checkFunction) {
-		wg.Add(1)
+var EmptyCheckResult msg.CheckResult
 
-		go func() {
-			defer func() {
-				wg.Done()
-
-				if r := recover(); r != nil {
-					ce.logger.Error().Str("app", app).Str("check", desc).Msgf("panic while running check")
-
-					telemetry.SetError(span, fmt.Errorf("%v", r), desc)
-					result := pkg.CheckResult{State: pkg.StatePanic, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, r)}
-					ce.vcsNote.AddToAppMessage(grpCtx, app, result)
-				}
-			}()
-
-			ce.logger.Info().Str("app", app).Str("check", desc).Msgf("running check")
-			cr, err := fn()
-			ce.logger.Info().
-				Err(err).
-				Str("app", app).
-				Str("check", desc).
-				Uint8("result", uint8(cr.State)).
-				Msg("check result")
-
-			if err != nil {
-				telemetry.SetError(span, err, desc)
-				result := pkg.CheckResult{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}
-				ce.vcsNote.AddToAppMessage(grpCtx, app, result)
-				return
-			}
-
-			ce.vcsNote.AddToAppMessage(grpCtx, app, cr)
-
-			ce.logger.Info().Str("app", app).Str("check", desc).Str("result", cr.State.BareString()).Msgf("check done")
-		}()
+func (ce *CheckEvent) runPreupgradeCheck(data CheckData) (msg.CheckResult, error) {
+	s, err := kubepug.CheckApp(data.ctx, data.appName, data.k8sVersion, data.yamlManifests)
+	if err != nil {
+		return EmptyCheckResult, err
 	}
+
+	return s, nil
 }
 
-func (ce *CheckEvent) runPreupgradeCheck(grpCtx context.Context, app string, k8sVersion string, formattedManifests []string) func() (pkg.CheckResult, error) {
-	return func() (pkg.CheckResult, error) {
-		s, err := kubepug.CheckApp(grpCtx, app, k8sVersion, formattedManifests)
-		if err != nil {
-			return pkg.CheckResult{}, err
-		}
-
-		return s, nil
+func (ce *CheckEvent) validatePolicy(data CheckData) (msg.CheckResult, error) {
+	argoApp, err := ce.ctr.ArgoClient.GetApplicationByName(data.ctx, data.appName)
+	if err != nil {
+		return EmptyCheckResult, errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", data.appName)
 	}
+
+	cr, err := conftest.Conftest(data.ctx, argoApp, ce.TempWorkingDir, ce.ctr.Config.PoliciesLocation, ce.ctr.VcsClient)
+	if err != nil {
+		return EmptyCheckResult, err
+	}
+
+	return cr, nil
 }
 
-func (ce *CheckEvent) validatePolicy(ctx context.Context, app string) func() (pkg.CheckResult, error) {
-	return func() (pkg.CheckResult, error) {
-		argoApp, err := argo_client.GetArgoClient().GetApplicationByName(ctx, app)
-		if err != nil {
-			return pkg.CheckResult{}, errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", app)
-		}
-
-		cr, err := conftest.Conftest(ctx, argoApp, ce.TempWorkingDir, ce.client)
-		if err != nil {
-			return pkg.CheckResult{}, err
-		}
-
-		return cr, nil
+func (ce *CheckEvent) generateDiff(data CheckData) (msg.CheckResult, error) {
+	cr, rawDiff, err := diff.GetDiff(data.ctx, data.jsonManifests, data.app, ce.ctr, ce.queueApp, ce.removeApp)
+	if err != nil {
+		return EmptyCheckResult, err
 	}
+
+	diff.AIDiffSummary(data.ctx, ce.vcsNote, ce.ctr.Config, data.appName, data.jsonManifests, rawDiff)
+
+	return cr, nil
 }
 
-func (ce *CheckEvent) generateDiff(ctx context.Context, app v1alpha1.Application, manifests []string, addApp, removeApp func(app v1alpha1.Application)) func() (pkg.CheckResult, error) {
-	return func() (pkg.CheckResult, error) {
-		cr, rawDiff, err := diff.GetDiff(ctx, manifests, app, addApp, removeApp)
-		if err != nil {
-			return pkg.CheckResult{}, err
-		}
-
-		diff.AIDiffSummary(ctx, ce.vcsNote, app.Name, manifests, rawDiff)
-
-		return cr, nil
+func (ce *CheckEvent) validateSchemas(data CheckData) (msg.CheckResult, error) {
+	cr, err := validate.ArgoCdAppValidate(data.ctx, ce.ctr.Config, data.appName, data.k8sVersion, data.repoPath, data.yamlManifests)
+	if err != nil {
+		return EmptyCheckResult, err
 	}
-}
 
-func (ce *CheckEvent) validateSchemas(ctx context.Context, app, k8sVersion, tempRepoPath string, formattedManifests []string) func() (pkg.CheckResult, error) {
-	return func() (pkg.CheckResult, error) {
-		cr, err := validate.ArgoCdAppValidate(ctx, app, k8sVersion, tempRepoPath, formattedManifests)
-		if err != nil {
-			return pkg.CheckResult{}, err
-		}
-
-		return cr, nil
-	}
+	return cr, nil
 }
 
 // Creates a generic Note struct that we can write into across all worker threads
-func (ce *CheckEvent) createNote(ctx context.Context) *pkg.Message {
+func (ce *CheckEvent) createNote(ctx context.Context) *msg.Message {
 	ctx, span := otel.Tracer("check").Start(ctx, "createNote")
 	defer span.End()
 
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, ":hourglass: kubechecks running ... ")
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.repo, ce.repo.CheckID, ":hourglass: kubechecks running ... ")
 }
 
 // cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.

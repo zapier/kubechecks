@@ -1,92 +1,88 @@
 package config
 
 import (
-	"fmt"
-	"net/url"
-	"strings"
-
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	giturls "github.com/whilp/git-urls"
-
-	"github.com/zapier/kubechecks/pkg/vcs"
+	"github.com/spf13/viper"
 )
 
-type RepoURL struct {
-	Host, Path string
-}
-
-func (r RepoURL) CloneURL() string {
-	return fmt.Sprintf("git@%s:%s", r.Host, r.Path)
-}
-
-func buildNormalizedRepoUrl(host, path string) RepoURL {
-	path = strings.TrimPrefix(path, "/")
-	path = strings.TrimSuffix(path, ".git")
-	return RepoURL{host, path}
-}
-
-func NormalizeRepoUrl(s string) (RepoURL, error) {
-	var parser func(string) (*url.URL, error)
-
-	if strings.HasPrefix(s, "http") {
-		parser = url.Parse
-	} else {
-		parser = giturls.Parse
-	}
-
-	r, err := parser(s)
-	if err != nil {
-		return RepoURL{}, err
-	}
-
-	return buildNormalizedRepoUrl(r.Host, r.Path), nil
-}
-
-func (v2a *VcsToArgoMap) AddApp(app *v1alpha1.Application) {
-	if app.Spec.Source == nil {
-		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
-		return
-	}
-
-	appDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
-	appDirectory.ProcessApp(*app)
-}
-
-func (v2a *VcsToArgoMap) UpdateApp(old *v1alpha1.Application, new *v1alpha1.Application) {
-	if new.Spec.Source == nil {
-		log.Warn().Msgf("%s/%s: no source, skipping", new.Namespace, new.Name)
-		return
-	}
-
-	oldAppDirectory := v2a.GetAppsInRepo(old.Spec.Source.RepoURL)
-	oldAppDirectory.RemoveApp(*old)
-
-	newAppDirectory := v2a.GetAppsInRepo(new.Spec.Source.RepoURL)
-	newAppDirectory.ProcessApp(*new)
-}
-
-func (v2a *VcsToArgoMap) DeleteApp(app *v1alpha1.Application) {
-	if app.Spec.Source == nil {
-		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
-		return
-	}
-
-	oldAppDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
-	oldAppDirectory.RemoveApp(*app)
-}
-
 type ServerConfig struct {
-	UrlPrefix     string
-	WebhookSecret string
-	VcsToArgoMap  VcsToArgoMap
-	VcsClient     vcs.Client
+	// argocd
+	ArgoCDServerAddr string
+	ArgoCDToken      string
+	ArgoCDPathPrefix string
+	ArgoCDInsecure   bool
+
+	// otel
+	EnableOtel        bool
+	OtelCollectorHost string
+	OtelCollectorPort string
+
+	// vcs
+	VcsBaseUrl string
+	VcsToken   string
+	VcsType    string
+
+	// webhooks
+	EnsureWebhooks bool
+	WebhookSecret  string
+	WebhookUrlBase string
+
+	// misc
+	EnableConfTest           bool
+	FallbackK8sVersion       string
+	LabelFilter              string
+	LogLevel                 zerolog.Level
+	MonitorAllApplications   bool
+	OpenAIAPIToken           string
+	PoliciesLocation         []string
+	SchemasLocations         []string
+	ShowDebugInfo            bool
+	TidyOutdatedCommentsMode string
+	UrlPrefix                string
 }
 
-func (cfg *ServerConfig) GetVcsRepos() []string {
-	var repos []string
-	for key := range cfg.VcsToArgoMap.appDirByRepo {
-		repos = append(repos, key.CloneURL())
+func New() (ServerConfig, error) {
+	logLevelString := viper.GetString("log-level")
+	logLevel, err := zerolog.ParseLevel(logLevelString)
+	if err != nil {
+		return ServerConfig{}, errors.Wrap(err, "failed to parse log level")
 	}
-	return repos
+
+	cfg := ServerConfig{
+		ArgoCDInsecure:   viper.GetBool("argocd-api-insecure"),
+		ArgoCDToken:      viper.GetString("argocd-api-token"),
+		ArgoCDPathPrefix: viper.GetString("argocd-api-path-prefix"),
+		ArgoCDServerAddr: viper.GetString("argocd-api-server-addr"),
+
+		EnableConfTest:           viper.GetBool("enable-conftest"),
+		EnableOtel:               viper.GetBool("otel-enabled"),
+		EnsureWebhooks:           viper.GetBool("ensure-webhooks"),
+		FallbackK8sVersion:       viper.GetString("fallback-k8s-version"),
+		LabelFilter:              viper.GetString("label-filter"),
+		LogLevel:                 logLevel,
+		MonitorAllApplications:   viper.GetBool("monitor-all-applications"),
+		OpenAIAPIToken:           viper.GetString("openai-api-token"),
+		OtelCollectorHost:        viper.GetString("otel-collector-host"),
+		OtelCollectorPort:        viper.GetString("otel-collector-port"),
+		PoliciesLocation:         viper.GetStringSlice("policies-location"),
+		SchemasLocations:         viper.GetStringSlice("schemas-location"),
+		ShowDebugInfo:            viper.GetBool("show-debug-info"),
+		TidyOutdatedCommentsMode: viper.GetString("tidy-outdated-comments-mode"),
+		UrlPrefix:                viper.GetString("webhook-url-prefix"),
+		WebhookSecret:            viper.GetString("webhook-secret"),
+		WebhookUrlBase:           viper.GetString("webhook-url-base"),
+
+		VcsBaseUrl: viper.GetString("vcs-base-url"),
+		VcsToken:   viper.GetString("vcs-token"),
+		VcsType:    viper.GetString("vcs-type"),
+	}
+
+	log.Info().Msg("Server Configuration: ")
+	log.Info().Msgf("Webhook URL Base: %s", cfg.WebhookUrlBase)
+	log.Info().Msgf("Webhook URL Prefix: %s", cfg.UrlPrefix)
+	log.Info().Msgf("VCS Type: %s", cfg.VcsType)
+
+	return cfg, nil
 }

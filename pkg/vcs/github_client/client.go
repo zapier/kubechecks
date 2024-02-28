@@ -12,26 +12,24 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
-	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 type Client struct {
-	v4Client        *githubv4.Client
+	shurcoolClient *githubv4.Client
+	googleClient   *github.Client
+	cfg            config.ServerConfig
+
 	username, email string
-
-	*github.Client
 }
-
-var _ vcs.Client = new(Client)
 
 // CreateGithubClient creates a new GitHub client using the auth token provided. We
 // can't validate the token at this point, so if it exists we assume it works
-func CreateGithubClient() (*Client, error) {
+func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 	var (
 		err            error
 		googleClient   *github.Client
@@ -39,7 +37,7 @@ func CreateGithubClient() (*Client, error) {
 	)
 
 	// Initialize the GitLab client with access token
-	t := viper.GetString("vcs-token")
+	t := cfg.VcsToken
 	if t == "" {
 		log.Fatal().Msg("github token needs to be set")
 	}
@@ -50,7 +48,7 @@ func CreateGithubClient() (*Client, error) {
 	)
 	tc := oauth2.NewClient(ctx, ts)
 
-	githubUrl := viper.GetString("vcs-base-url")
+	githubUrl := cfg.VcsBaseUrl
 	if githubUrl == "" {
 		googleClient = github.NewClient(tc) // If this has failed, we'll catch it on first call
 
@@ -70,8 +68,9 @@ func CreateGithubClient() (*Client, error) {
 	}
 
 	client := &Client{
-		Client:   googleClient,
-		v4Client: shurcoolClient,
+		cfg:            cfg,
+		googleClient:   googleClient,
+		shurcoolClient: shurcoolClient,
 	}
 	if user != nil {
 		if user.Login != nil {
@@ -108,7 +107,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	}
 }
 
-func (c *Client) ParseHook(r *http.Request, request []byte) (*repo.Repo, error) {
+func (c *Client) ParseHook(r *http.Request, request []byte) (*vcs.Repo, error) {
 	payload, err := github.ParseWebHook(github.WebHookType(r), request)
 	if err != nil {
 		return nil, err
@@ -130,13 +129,13 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (*repo.Repo, error) 
 	}
 }
 
-func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
+func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) *vcs.Repo {
 	var labels []string
 	for _, label := range event.PullRequest.Labels {
 		labels = append(labels, label.GetName())
 	}
 
-	return &repo.Repo{
+	return &vcs.Repo{
 		BaseRef:       *event.PullRequest.Base.Ref,
 		HeadRef:       *event.PullRequest.Head.Ref,
 		DefaultBranch: *event.Repo.DefaultBranch,
@@ -149,6 +148,8 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) *repo.Repo {
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
+
+		Config: c.cfg,
 	}
 }
 
@@ -168,9 +169,9 @@ func toGithubCommitStatus(state pkg.CommitState) *string {
 	return pkg.Pointer("failure")
 }
 
-func (c *Client) CommitStatus(ctx context.Context, repo *repo.Repo, status pkg.CommitState) error {
+func (c *Client) CommitStatus(ctx context.Context, repo *vcs.Repo, status pkg.CommitState) error {
 	log.Info().Str("repo", repo.Name).Str("sha", repo.SHA).Str("status", status.BareString()).Msg("setting Github commit status")
-	repoStatus, _, err := c.Repositories.CreateStatus(ctx, repo.Owner, repo.Name, repo.SHA, &github.RepoStatus{
+	repoStatus, _, err := c.googleClient.Repositories.CreateStatus(ctx, repo.Owner, repo.Name, repo.SHA, &github.RepoStatus{
 		State:       toGithubCommitStatus(status),
 		Description: pkg.Pointer(status.BareString()),
 		ID:          pkg.Pointer(int64(repo.CheckID)),
@@ -199,7 +200,7 @@ func parseRepo(cloneUrl string) (string, string) {
 
 func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*vcs.WebHookConfig, error) {
 	owner, repoName := parseRepo(ownerAndRepoName)
-	items, _, err := c.Repositories.ListHooks(ctx, owner, repoName, nil)
+	items, _, err := c.googleClient.Repositories.ListHooks(ctx, owner, repoName, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list hooks")
 	}
@@ -218,7 +219,7 @@ func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl 
 
 func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, webhookSecret string) error {
 	owner, repoName := parseRepo(ownerAndRepoName)
-	_, _, err := c.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
+	_, _, err := c.googleClient.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
 		Active: pkg.Pointer(true),
 		Config: map[string]interface{}{
 			"content_type": "json",
@@ -240,7 +241,7 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 
 var rePullRequest = regexp.MustCompile(`(.*)/(.*)#(\d+)`)
 
-func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
+func (c *Client) LoadHook(ctx context.Context, id string) (*vcs.Repo, error) {
 	m := rePullRequest.FindStringSubmatch(id)
 	if len(m) != 4 {
 		return nil, errors.New("must be in format OWNER/REPO#PR")
@@ -253,12 +254,12 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
 		return nil, errors.Wrap(err, "failed to parse int")
 	}
 
-	repoInfo, _, err := c.Repositories.Get(ctx, ownerName, repoName)
+	repoInfo, _, err := c.googleClient.Repositories.Get(ctx, ownerName, repoName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get repo")
 	}
 
-	pullRequest, _, err := c.PullRequests.Get(ctx, ownerName, repoName, int(prNumber))
+	pullRequest, _, err := c.googleClient.PullRequests.Get(ctx, ownerName, repoName, int(prNumber))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get pull request")
 	}
@@ -302,7 +303,7 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
 		userEmail = "kubechecks@github.com"
 	}
 
-	return &repo.Repo{
+	return &vcs.Repo{
 		BaseRef:       baseRef,
 		HeadRef:       headRef,
 		DefaultBranch: unPtr(repoInfo.DefaultBranch),
@@ -315,6 +316,8 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*repo.Repo, error) {
 		Username:      userName,
 		Email:         userEmail,
 		Labels:        labels,
+
+		Config: c.cfg,
 	}, nil
 }
 

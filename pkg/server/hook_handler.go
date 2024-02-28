@@ -8,36 +8,28 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
-	"github.com/zapier/kubechecks/pkg/repo"
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
 type VCSHookHandler struct {
-	client vcs.Client
-	cfg    *config.ServerConfig
-	// labelFilter is a string specifying the required label name to filter merge events by; if empty, all merge events will pass the filter.
-	labelFilter string
+	ctr container.Container
 }
 
-func NewVCSHookHandler(cfg *config.ServerConfig) *VCSHookHandler {
-	labelFilter := viper.GetString("label-filter")
-
+func NewVCSHookHandler(ctr container.Container) *VCSHookHandler {
 	return &VCSHookHandler{
-		client:      cfg.VcsClient,
-		cfg:         cfg,
-		labelFilter: labelFilter,
+		ctr: ctr,
 	}
 }
 func (h *VCSHookHandler) AttachHandlers(grp *echo.Group) {
-	projectHookPath := fmt.Sprintf("/%s/project", h.cfg.VcsClient.GetName())
+	projectHookPath := fmt.Sprintf("/%s/project", h.ctr.VcsClient.GetName())
 	grp.POST(projectHookPath, h.groupHandler)
 }
 
@@ -45,13 +37,13 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	ctx := context.Background()
 	log.Debug().Msg("Received hook request")
 	// Always verify, even if no secret (no op if no secret)
-	payload, err := h.client.VerifyHook(c.Request(), h.cfg.WebhookSecret)
+	payload, err := h.ctr.VcsClient.VerifyHook(c.Request(), h.ctr.Config.WebhookSecret)
 	if err != nil {
 		log.Err(err).Msg("Failed to verify hook")
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 
-	r, err := h.client.ParseHook(c.Request(), payload)
+	r, err := h.ctr.VcsClient.ParseHook(c.Request(), payload)
 	if err != nil {
 		switch err {
 		case vcs.ErrInvalidType:
@@ -71,16 +63,16 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 
 // Takes a constructed Repo, and attempts to run the Kubechecks processing suite against it.
 // If the Repo is not yet populated, this will fail.
-func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *repo.Repo) {
+func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *vcs.Repo) {
 	if !h.passesLabelFilter(repo) {
-		log.Warn().Str("label-filter", h.labelFilter).Msg("ignoring event, did not have matching label")
+		log.Warn().Str("label-filter", h.ctr.Config.LabelFilter).Msg("ignoring event, did not have matching label")
 		return
 	}
 
-	ProcessCheckEvent(ctx, repo, h.cfg)
+	ProcessCheckEvent(ctx, repo, h.ctr.Config, h.ctr)
 }
 
-func ProcessCheckEvent(ctx context.Context, r *repo.Repo, cfg *config.ServerConfig) {
+func ProcessCheckEvent(ctx context.Context, r *vcs.Repo, cfg config.ServerConfig, ctr container.Container) {
 	var span trace.Span
 	ctx, span = otel.Tracer("Kubechecks").Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
@@ -95,7 +87,7 @@ func ProcessCheckEvent(ctx context.Context, r *repo.Repo, cfg *config.ServerConf
 	defer span.End()
 
 	// If we've gotten here, we can now begin running checks (or trying to)
-	cEvent := events.NewCheckEvent(r, cfg)
+	cEvent := events.NewCheckEvent(r, ctr)
 
 	err := cEvent.CreateTempDir()
 	if err != nil {
@@ -104,7 +96,7 @@ func ProcessCheckEvent(ctx context.Context, r *repo.Repo, cfg *config.ServerConf
 	}
 	defer cEvent.Cleanup(ctx)
 
-	err = repo.InitializeGitSettings(cfg.VcsClient.Username(), cfg.VcsClient.Email())
+	err = vcs.InitializeGitSettings(ctr.Config, ctr.VcsClient)
 	if err != nil {
 		telemetry.SetError(span, err, "Initialize Git")
 		log.Error().Err(err).Msg("unable to initialize git")
@@ -154,7 +146,7 @@ func ProcessCheckEvent(ctx context.Context, r *repo.Repo, cfg *config.ServerConf
 // and matches the handler's labelFilter. Returns true if there's a matching label or no
 // "kubechecks:" labels are found, and false if a "kubechecks:" label is found but none match
 // the labelFilter.
-func (h *VCSHookHandler) passesLabelFilter(repo *repo.Repo) bool {
+func (h *VCSHookHandler) passesLabelFilter(repo *vcs.Repo) bool {
 	foundKubechecksLabel := false
 
 	for _, label := range repo.Labels {
@@ -165,7 +157,7 @@ func (h *VCSHookHandler) passesLabelFilter(repo *repo.Repo) bool {
 
 			// Get the remaining string after "kubechecks:"
 			remainingString := strings.TrimPrefix(label, "kubechecks:")
-			if remainingString == h.labelFilter {
+			if remainingString == h.ctr.Config.LabelFilter {
 				log.Debug().Str("mr_label", label).Msg("label is match for our filter")
 				return true
 			}
@@ -178,7 +170,7 @@ func (h *VCSHookHandler) passesLabelFilter(repo *repo.Repo) bool {
 	}
 
 	// Return false if we have a label filter, but it did not match any labels on the event
-	if h.labelFilter != "" {
+	if h.ctr.Config.LabelFilter != "" {
 		return false
 	}
 

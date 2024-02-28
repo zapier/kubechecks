@@ -20,7 +20,7 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
+func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name string, tempRepoDir string, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
 	var err error
 
 	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetManifestsLocal")
@@ -33,7 +33,6 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 		duration := time.Since(start)
 		getManifestsDuration.WithLabelValues(name).Observe(duration.Seconds())
 	}()
-	argoClient := GetArgoClient()
 
 	clusterCloser, clusterClient := argoClient.GetClusterClient()
 	defer clusterCloser.Close()
@@ -97,9 +96,9 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	return res.Manifests, nil
 }
 
-func FormatManifestsYAML(manifestBytes []string) []string {
+func ConvertJsonToYamlManifests(jsonManifests []string) []string {
 	var manifests []string
-	for _, manifest := range manifestBytes {
+	for _, manifest := range jsonManifests {
 		ret, err := yaml.JSONToYAML([]byte(manifest))
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to format manifest")
