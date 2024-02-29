@@ -86,11 +86,13 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	return io.ReadAll(r.Body)
 }
 
+var nilPr vcs.PullRequest
+
 // ParseHook parses and validates a webhook event; return an err if this isn't valid
-func (c *Client) ParseHook(r *http.Request, request []byte) (*vcs.Repo, error) {
+func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, error) {
 	eventRequest, err := gitlab.ParseHook(gitlab.HookEventType(r), request)
 	if err != nil {
-		return nil, err
+		return nilPr, err
 	}
 
 	switch event := eventRequest.(type) {
@@ -105,13 +107,13 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (*vcs.Repo, error) {
 			return c.buildRepoFromEvent(event), nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
-			return nil, vcs.ErrInvalidType
+			return nilPr, vcs.ErrInvalidType
 		}
 	default:
 		log.Trace().Msgf("Unhandled Event: %T", event)
-		return nil, vcs.ErrInvalidType
+		return nilPr, vcs.ErrInvalidType
 	}
-	return nil, vcs.ErrInvalidType
+	return nilPr, vcs.ErrInvalidType
 }
 
 func parseRepoName(url string) (string, error) {
@@ -174,33 +176,32 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 
 var reMergeRequest = regexp.MustCompile(`(.*)!(\d+)`)
 
-func (c *Client) LoadHook(ctx context.Context, id string) (*vcs.Repo, error) {
+func (c *Client) LoadHook(ctx context.Context, id string) (vcs.PullRequest, error) {
 	m := reMergeRequest.FindStringSubmatch(id)
 	if len(m) != 3 {
-		return nil, errors.New("must be in format REPOPATH!MR")
+		return nilPr, errors.New("must be in format REPOPATH!MR")
 	}
 
 	repoPath := m[1]
 	mrNumber, err := strconv.ParseInt(m[2], 10, 32)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse merge request number")
+		return nilPr, errors.Wrap(err, "failed to parse merge request number")
 	}
 
 	project, _, err := c.c.Projects.GetProject(repoPath, nil)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get project '%s'", repoPath)
+		return nilPr, errors.Wrapf(err, "failed to get project '%s'", repoPath)
 	}
 
 	mergeRequest, _, err := c.c.MergeRequests.GetMergeRequest(repoPath, int(mrNumber), nil)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get merge request '%d' in project '%s'", mrNumber, repoPath)
+		return nilPr, errors.Wrapf(err, "failed to get merge request '%d' in project '%s'", mrNumber, repoPath)
 	}
 
-	return &vcs.Repo{
+	return vcs.PullRequest{
 		BaseRef:       mergeRequest.TargetBranch,
 		HeadRef:       mergeRequest.SourceBranch,
 		DefaultBranch: project.DefaultBranch,
-		RepoDir:       "",
 		Remote:        "",
 		CloneURL:      project.HTTPURLToRepo,
 		Name:          project.Name,
@@ -216,14 +217,14 @@ func (c *Client) LoadHook(ctx context.Context, id string) (*vcs.Repo, error) {
 	}, nil
 }
 
-func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) *vcs.Repo {
+func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) vcs.PullRequest {
 	// Convert all labels from this MR to a string array of label names
 	var labels []string
 	for _, label := range event.Labels {
 		labels = append(labels, label.Title)
 	}
 
-	return &vcs.Repo{
+	return vcs.PullRequest{
 		BaseRef:       event.ObjectAttributes.TargetBranch,
 		HeadRef:       event.ObjectAttributes.SourceBranch,
 		DefaultBranch: event.Project.DefaultBranch,

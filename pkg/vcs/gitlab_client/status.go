@@ -19,7 +19,7 @@ const GitlabCommitStatusContext = "kubechecks"
 
 var errNoPipelineStatus = errors.New("nil pipeline status")
 
-func (c *Client) CommitStatus(ctx context.Context, repo *vcs.Repo, state pkg.CommitState) error {
+func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg.CommitState) error {
 	description := fmt.Sprintf("%s %s", state.BareString(), c.ToEmoji(state))
 
 	status := &gitlab.SetCommitStatusOptions{
@@ -34,7 +34,7 @@ func (c *Client) CommitStatus(ctx context.Context, repo *vcs.Repo, state pkg.Com
 	var pipelineStatus *gitlab.PipelineInfo
 	getStatusFn := func() error {
 		log.Debug().Msg("getting pipeline status")
-		pipelineStatus = c.GetLastPipelinesForCommit(repo.FullName, repo.SHA)
+		pipelineStatus = c.GetLastPipelinesForCommit(pr.FullName, pr.SHA)
 		if pipelineStatus == nil {
 			return errNoPipelineStatus
 		}
@@ -50,14 +50,14 @@ func (c *Client) CommitStatus(ctx context.Context, repo *vcs.Repo, state pkg.Com
 	}
 
 	log.Debug().
-		Str("project", repo.FullName).
-		Str("commit_sha", repo.SHA).
+		Str("project", pr.FullName).
+		Str("commit_sha", pr.SHA).
 		Str("kubechecks_status", description).
 		Str("gitlab_status", string(status.State)).
 		Msg("gitlab client: updating commit status")
-	_, err = c.setCommitStatus(repo.FullName, repo.SHA, status)
+	_, err = c.setCommitStatus(pr.FullName, pr.SHA, status)
 	if err != nil {
-		log.Error().Err(err).Str("project", repo.FullName).Msg("gitlab client: could not set commit status")
+		log.Error().Err(err).Str("project", pr.FullName).Msg("gitlab client: could not set commit status")
 		return err
 	}
 	return nil

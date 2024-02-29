@@ -12,8 +12,10 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
+var tracer = otel.Tracer("pkg/diff")
+
 func AIDiffSummary(ctx context.Context, mrNote *msg.Message, cfg config.ServerConfig, name string, manifests []string, diff string) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "AIDiffSummary")
+	ctx, span := tracer.Start(ctx, "AIDiffSummary")
 	defer span.End()
 
 	log.Debug().Str("name", name).Msg("generating ai diff summary for application...")

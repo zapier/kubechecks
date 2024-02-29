@@ -8,7 +8,6 @@ import (
 	"github.com/google/go-github/v53/github"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
-	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/msg"
@@ -18,8 +17,8 @@ import (
 
 const MaxCommentLength = 64 * 1024
 
-func (c *Client) PostMessage(ctx context.Context, repo *vcs.Repo, prID int, message string) *msg.Message {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
+func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) *msg.Message {
+	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
 	if len(message) > MaxCommentLength {
@@ -27,12 +26,12 @@ func (c *Client) PostMessage(ctx context.Context, repo *vcs.Repo, prID int, mess
 		message = message[:MaxCommentLength]
 	}
 
-	log.Debug().Msgf("Posting message to PR %d in repo %s", prID, repo.FullName)
+	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
 	comment, _, err := c.googleClient.Issues.CreateComment(
 		ctx,
-		repo.Owner,
-		repo.Name,
-		prID,
+		pr.Owner,
+		pr.Name,
+		pr.CheckID,
 		&github.IssueComment{Body: &message},
 	)
 
@@ -41,11 +40,11 @@ func (c *Client) PostMessage(ctx context.Context, repo *vcs.Repo, prID int, mess
 		log.Error().Err(err).Msg("could not post message to PR")
 	}
 
-	return msg.NewMessage(repo.FullName, prID, int(*comment.ID), c)
+	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c)
 }
 
 func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "UpdateMessage")
+	_, span := tracer.Start(ctx, "UpdateMessage")
 	defer span.End()
 
 	if len(msg) > MaxCommentLength {
@@ -79,15 +78,15 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) 
 // Pull all comments for the specified PR, and delete any comments that already exist from the bot
 // This is different from updating an existing message, as this will delete comments from previous runs of the bot
 // Whereas updates occur mid-execution
-func (c *Client) pruneOldComments(ctx context.Context, repo *vcs.Repo, comments []*github.IssueComment) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "pruneOldComments")
+func (c *Client) pruneOldComments(ctx context.Context, pr vcs.PullRequest, comments []*github.IssueComment) error {
+	_, span := tracer.Start(ctx, "pruneOldComments")
 	defer span.End()
 
-	log.Debug().Msgf("Pruning messages from PR %d in repo %s", repo.CheckID, repo.FullName)
+	log.Debug().Msgf("Pruning messages from PR %d in repo %s", pr.CheckID, pr.FullName)
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) {
-			_, err := c.googleClient.Issues.DeleteComment(ctx, repo.Owner, repo.Name, *comment.ID)
+			_, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *comment.ID)
 			if err != nil {
 				return fmt.Errorf("failed to delete comment: %w", err)
 			}
@@ -97,11 +96,11 @@ func (c *Client) pruneOldComments(ctx context.Context, repo *vcs.Repo, comments 
 	return nil
 }
 
-func (c *Client) hideOutdatedMessages(ctx context.Context, repo *vcs.Repo, comments []*github.IssueComment) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "hideOutdatedComments")
+func (c *Client) hideOutdatedMessages(ctx context.Context, pr vcs.PullRequest, comments []*github.IssueComment) error {
+	_, span := tracer.Start(ctx, "hideOutdatedComments")
 	defer span.End()
 
-	log.Debug().Msgf("Hiding kubecheck messages in PR %d in repo %s", repo.CheckID, repo.FullName)
+	log.Debug().Msgf("Hiding kubecheck messages in PR %d in repo %s", pr.CheckID, pr.FullName)
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) {
@@ -130,15 +129,15 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, repo *vcs.Repo, comme
 
 }
 
-func (c *Client) TidyOutdatedComments(ctx context.Context, repo *vcs.Repo) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "TidyOutdatedComments")
+func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) error {
+	_, span := tracer.Start(ctx, "TidyOutdatedComments")
 	defer span.End()
 
 	var allComments []*github.IssueComment
 	nextPage := 0
 
 	for {
-		comments, resp, err := c.googleClient.Issues.ListComments(ctx, repo.Owner, repo.Name, repo.CheckID, &github.IssueListCommentsOptions{
+		comments, resp, err := c.googleClient.Issues.ListComments(ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueListCommentsOptions{
 			Sort:        pkg.Pointer("created"),
 			Direction:   pkg.Pointer("asc"),
 			ListOptions: github.ListOptions{Page: nextPage},
@@ -155,7 +154,7 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, repo *vcs.Repo) error
 	}
 
 	if strings.ToLower(c.cfg.TidyOutdatedCommentsMode) == "delete" {
-		return c.pruneOldComments(ctx, repo, allComments)
+		return c.pruneOldComments(ctx, pr, allComments)
 	}
-	return c.hideOutdatedMessages(ctx, repo, allComments)
+	return c.hideOutdatedMessages(ctx, pr, allComments)
 }

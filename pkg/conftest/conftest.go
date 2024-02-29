@@ -17,11 +17,14 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
 const passedMessage = "\nPassed all policy checks."
+
+var tracer = otel.Tracer("pkg/conftest")
 
 type emojiable interface {
 	ToEmoji(state pkg.CommitState) string
@@ -34,8 +37,9 @@ type emojiable interface {
 // pass a policy check currently does not block deploy.
 func Conftest(
 	ctx context.Context, ctr container.Container, app *v1alpha1.Application, repoPath string, policiesLocations []string, vcs emojiable,
+	gitManager *git.RepoManager,
 ) (msg.CheckResult, error) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "Conftest")
+	_, span := tracer.Start(ctx, "Conftest")
 	defer span.End()
 
 	confTestDir := filepath.Join(repoPath, app.Spec.Source.Path)
@@ -45,11 +49,11 @@ func Conftest(
 	var locations []string
 	for _, policiesLocation := range policiesLocations {
 		logger := log.With().Str("policies-location", policiesLocation).Logger()
-		if repoPath, err := ctr.ReposCache.Clone(ctx, policiesLocation); err != nil {
+		if repo, err := gitManager.Clone(ctx, policiesLocation, ""); err != nil {
 			logger.Warn().Err(err).Msg("failed to clone location")
 		} else if repoPath != "" {
-			logger.Info().Str("path", repoPath).Msg("cloned policies repo")
-			locations = append(locations, repoPath)
+			logger.Info().Str("path", repo.Directory).Msg("cloned policies repo")
+			locations = append(locations, repo.Directory)
 		} else {
 			logger.Warn().Msg("failed to clone schema policies location")
 		}

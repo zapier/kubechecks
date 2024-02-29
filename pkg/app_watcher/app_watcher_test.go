@@ -31,7 +31,7 @@ func initTestObjects() *ApplicationWatcher {
 	clientset := appclientsetfake.NewSimpleClientset(testApp1, testApp2)
 	ctrl := &ApplicationWatcher{
 		applicationClientset: clientset,
-		vcsToArgoMap:         appdir.NewVcsToArgoMap(),
+		vcsToArgoMap:         appdir.NewVcsToArgoMap("vcs-username"),
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 1)

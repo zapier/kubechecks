@@ -14,7 +14,6 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/zapier/kubechecks/telemetry"
@@ -23,7 +22,7 @@ import (
 func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
 	var err error
 
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetManifestsLocal")
+	ctx, span := tracer.Start(ctx, "GetManifestsLocal")
 	defer span.End()
 
 	log.Debug().Str("name", name).Msg("GetManifestsLocal")

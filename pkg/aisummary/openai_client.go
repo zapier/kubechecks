@@ -10,7 +10,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/sashabaranov/go-openai"
-	"go.opentelemetry.io/otel"
 )
 
 type OpenAiClient struct {
@@ -60,7 +59,7 @@ func createCompletionRequest(model, appName string, prompt string, content strin
 }
 
 func (c *OpenAiClient) makeCompletionRequestWithBackoff(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "MakeCompletionRequestWithBackoff")
+	ctx, span := tracer.Start(ctx, "MakeCompletionRequestWithBackoff")
 	defer span.End()
 	// Lets setup backoff logic to retry this request for 1 minute
 	bOff := backoff.NewExponentialBackOff()

@@ -7,21 +7,23 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/telemetry"
 )
+
+var tracer = otel.Tracer("pkg/argo_client")
 
 // GetApplicationByName takes a context and a name, then queries the Argo Application client to retrieve the Application with the specified name.
 // It returns the found Application and any error encountered during the process.
 // If successful, the Application client connection is closed before returning.
 func (argo *ArgoClient) GetApplicationByName(ctx context.Context, name string) (*v1alpha1.Application, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetApplicationByName")
+	ctx, span := tracer.Start(ctx, "GetApplicationByName")
 	defer span.End()
 
 	closer, appClient := argo.GetApplicationClient()
@@ -40,7 +42,7 @@ func (argo *ArgoClient) GetApplicationByName(ctx context.Context, name string) (
 // and returns the Kubernetes version of the destination cluster where the specified application is running.
 // It returns an error if the application or cluster information cannot be retrieved.
 func (argo *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, app v1alpha1.Application) (string, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetKubernetesVersionByApplicationName")
+	ctx, span := tracer.Start(ctx, "GetKubernetesVersionByApplicationName")
 	defer span.End()
 
 	// Get destination cluster
@@ -77,7 +79,7 @@ func (argo *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, a
 // It returns the found ApplicationList and any error encountered during the process.
 // If successful, the Application client connection is closed before returning.
 func (argo *ArgoClient) GetApplicationsByLabels(ctx context.Context, labels string) (*v1alpha1.ApplicationList, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetApplicationsByLabels")
+	ctx, span := tracer.Start(ctx, "GetApplicationsByLabels")
 	defer span.End()
 
 	closer, appClient := argo.GetApplicationClient()
@@ -100,7 +102,7 @@ func (argo *ArgoClient) GetApplicationsByAppset(ctx context.Context, name string
 }
 
 func (argo *ArgoClient) GetApplications(ctx context.Context) (*v1alpha1.ApplicationList, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetApplications")
+	ctx, span := tracer.Start(ctx, "GetApplications")
 	defer span.End()
 
 	closer, appClient := argo.GetApplicationClient()
@@ -115,7 +117,7 @@ func (argo *ArgoClient) GetApplications(ctx context.Context) (*v1alpha1.Applicat
 }
 
 func (argo *ArgoClient) GetApplicationSets(ctx context.Context) (*v1alpha1.ApplicationSetList, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetApplications")
+	ctx, span := tracer.Start(ctx, "GetApplications")
 	defer span.End()
 
 	closer, appClient := argo.GetApplicationSetClient()

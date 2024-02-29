@@ -17,6 +17,8 @@ import (
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
+var tracer = otel.Tracer("pkg/validate")
+
 func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPath string) []string {
 	cfg := ctr.Config
 
@@ -29,12 +31,6 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 	for _, schemasLocation := range cfg.SchemasLocations {
 		if strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "https://") {
 			locations = append(locations, schemasLocation)
-		} else if strings.HasSuffix(schemasLocation, ".git") {
-			if schemaPath, err := ctr.ReposCache.Clone(ctx, schemasLocation); err != nil {
-				log.Warn().Err(err).Msg("failed to clone schema repo")
-			} else if schemaPath != "" {
-				locations = append(locations, schemaPath)
-			}
 		} else {
 			locations = append(locations, filepath.Join(tempRepoPath, schemasLocation))
 		}
@@ -58,7 +54,7 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 }
 
 func ArgoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.CheckResult, error) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "ArgoCdAppValidate")
+	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
 	log.Debug().Str("app_name", appName).Str("k8s_version", targetKubernetesVersion).Msg("ArgoCDAppValidate")

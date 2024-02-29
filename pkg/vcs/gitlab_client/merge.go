@@ -11,6 +11,8 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
+var tracer = otel.Tracer("pkg/vcs/gitlab_client")
+
 type Changes struct {
 	OldPath     string `json:"old_path"`
 	NewPath     string `json:"new_path"`
@@ -23,7 +25,7 @@ type Changes struct {
 }
 
 func (c *Client) GetMergeChanges(ctx context.Context, projectId int, mergeReqId int) ([]*Changes, error) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "GetMergeChanges")
+	_, span := tracer.Start(ctx, "GetMergeChanges")
 	defer span.End()
 
 	var changes []*Changes
@@ -50,7 +52,7 @@ func (c *Client) GetMergeChanges(ctx context.Context, projectId int, mergeReqId 
 }
 
 func CheckForValidChanges(ctx context.Context, changes []*Changes, paths []string, fileTypes []string) bool {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "CheckForValidChanges")
+	_, span := tracer.Start(ctx, "CheckForValidChanges")
 	defer span.End()
 
 	for _, change := range changes {

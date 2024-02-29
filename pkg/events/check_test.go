@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 // TestCleanupGetManifestsError tests the cleanupGetManifestsError function.
 func TestCleanupGetManifestsError(t *testing.T) {
-	checkEvent := &CheckEvent{TempWorkingDir: "/tmp/work"}
+	repo := &git.Repo{Directory: "/some-dir"}
 
 	tests := []struct {
 		name          string
@@ -22,12 +24,12 @@ func TestCleanupGetManifestsError(t *testing.T) {
 		},
 		{
 			name:          "strip temp directory",
-			inputErr:      fmt.Errorf("Error: %s/tmpfile.yaml not found", checkEvent.TempWorkingDir),
+			inputErr:      fmt.Errorf("Error: %s/tmpfile.yaml not found", repo.Directory),
 			expectedError: "Error: tmpfile.yaml not found",
 		},
 		{
 			name:          "strip temp directory and helm error",
-			inputErr:      fmt.Errorf("`helm template . --name-template in-cluster-echo-server --namespace echo-server --kube-version 1.25 --values %s/apps/echo-server/in-cluster/values.yaml --values %s/apps/echo-server/in-cluster/notexist.yaml --api-versions admissionregistration.k8s.io/v1 --api-versions admissionregistration.k8s.io/v1/MutatingWebhookConfiguration --api-versions v1/Secret --api-versions v1/Service --api-versions v1/ServiceAccount --include-crds` failed exit status 1: Error: open %s/apps/echo-server/in-cluster/notexist.yaml: no such file or directory", checkEvent.TempWorkingDir, checkEvent.TempWorkingDir, checkEvent.TempWorkingDir),
+			inputErr:      fmt.Errorf("`helm template . --name-template in-cluster-echo-server --namespace echo-server --kube-version 1.25 --values %s/apps/echo-server/in-cluster/values.yaml --values %s/apps/echo-server/in-cluster/notexist.yaml --api-versions admissionregistration.k8s.io/v1 --api-versions admissionregistration.k8s.io/v1/MutatingWebhookConfiguration --api-versions v1/Secret --api-versions v1/Service --api-versions v1/ServiceAccount --include-crds` failed exit status 1: Error: open %s/apps/echo-server/in-cluster/notexist.yaml: no such file or directory", repo.Directory, repo.Directory, repo.Directory),
 			expectedError: "Helm Error: open apps/echo-server/in-cluster/notexist.yaml: no such file or directory",
 		},
 		{
@@ -39,7 +41,7 @@ func TestCleanupGetManifestsError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cleanedError := checkEvent.cleanupGetManifestsError(tt.inputErr)
+			cleanedError := cleanupGetManifestsError(tt.inputErr, repo)
 			if cleanedError != tt.expectedError {
 				t.Errorf("Expected error: %s, \n                    Received: %s", tt.expectedError, cleanedError)
 			}

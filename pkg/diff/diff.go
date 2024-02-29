@@ -21,7 +21,6 @@ import (
 	"github.com/go-logr/zerologr"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -53,7 +52,7 @@ func GetDiff(
 	ctr container.Container,
 	addApp, removeApp func(application2 argoappv1.Application),
 ) (msg.CheckResult, string, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetDiff")
+	ctx, span := tracer.Start(ctx, "GetDiff")
 	defer span.End()
 
 	argoClient := ctr.ArgoClient

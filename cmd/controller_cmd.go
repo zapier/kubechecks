@@ -16,8 +16,8 @@ import (
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/server"
-	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
@@ -80,7 +80,7 @@ func startWebserver(ctx context.Context, ctr container.Container) {
 }
 
 func initializeGit(ctr container.Container) error {
-	if err := vcs.InitializeGitSettings(ctr.Config, ctr.VcsClient); err != nil {
+	if err := git.SetCredentials(ctr.Config, ctr.VcsClient); err != nil {
 		return err
 	}
 

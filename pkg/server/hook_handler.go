@@ -14,9 +14,11 @@ import (
 
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/vcs"
-	"github.com/zapier/kubechecks/telemetry"
 )
+
+var tracer = otel.Tracer("pkg/server")
 
 type VCSHookHandler struct {
 	ctr container.Container
@@ -42,7 +44,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 
-	r, err := h.ctr.VcsClient.ParseHook(c.Request(), payload)
+	pr, err := h.ctr.VcsClient.ParseHook(c.Request(), payload)
 	if err != nil {
 		switch err {
 		case vcs.ErrInvalidType:
@@ -56,95 +58,51 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	}
 
 	// We now have a generic repo with all the info we need to start processing an event. Hand off to the event processor
-	go h.processCheckEvent(ctx, r)
+	go h.processCheckEvent(ctx, pr)
 	return c.String(http.StatusAccepted, "Accepted")
 }
 
 // Takes a constructed Repo, and attempts to run the Kubechecks processing suite against it.
 // If the Repo is not yet populated, this will fail.
-func (h *VCSHookHandler) processCheckEvent(ctx context.Context, repo *vcs.Repo) {
-	if !h.passesLabelFilter(repo) {
+func (h *VCSHookHandler) processCheckEvent(ctx context.Context, pullRequest vcs.PullRequest) {
+	if !h.passesLabelFilter(pullRequest) {
 		log.Warn().Str("label-filter", h.ctr.Config.LabelFilter).Msg("ignoring event, did not have matching label")
 		return
 	}
 
-	ProcessCheckEvent(ctx, repo, h.ctr)
+	ProcessCheckEvent(ctx, pullRequest, h.ctr)
 }
 
-func ProcessCheckEvent(ctx context.Context, r *vcs.Repo, ctr container.Container) {
-	var span trace.Span
-	ctx, span = otel.Tracer("Kubechecks").Start(ctx, "processCheckEvent",
+type RepoDirectory struct {
+}
+
+func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Container) {
+	ctx, span := tracer.Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
-			attribute.Int("mr_id", r.CheckID),
-			attribute.String("project", r.Name),
-			attribute.String("sha", r.SHA),
-			attribute.String("source", r.HeadRef),
-			attribute.String("target", r.BaseRef),
-			attribute.String("default_branch", r.DefaultBranch),
+			attribute.Int("mr_id", pr.CheckID),
+			attribute.String("project", pr.Name),
+			attribute.String("sha", pr.SHA),
+			attribute.String("source", pr.HeadRef),
+			attribute.String("target", pr.BaseRef),
+			attribute.String("default_branch", pr.DefaultBranch),
 		),
 	)
 	defer span.End()
 
+	// repo cache
+	repoMgr := git.NewRepoManager(ctr.Config)
+	defer repoMgr.Cleanup()
+
 	// If we've gotten here, we can now begin running checks (or trying to)
-	cEvent := events.NewCheckEvent(r, ctr)
-
-	err := cEvent.CreateTempDir()
-	if err != nil {
-		telemetry.SetError(span, err, "Create Temp Dir")
-		log.Error().Err(err).Msg("unable to create temp dir")
-	}
-	defer cEvent.Cleanup(ctx)
-
-	err = vcs.InitializeGitSettings(ctr.Config, ctr.VcsClient)
-	if err != nil {
-		telemetry.SetError(span, err, "Initialize Git")
-		log.Error().Err(err).Msg("unable to initialize git")
-		return
-	}
-
-	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
-	err = r.CloneRepoLocal(ctx, cEvent.TempWorkingDir)
-	if err != nil {
-		// TODO: Cancel event if gitlab etc
-		telemetry.SetError(span, err, "Clone Repo Local")
-		log.Error().Err(err).Msg("unable to clone repo locally")
-		return
-	}
-
-	// Merge the most recent changes into the branch we just cloned
-	err = r.MergeIntoTarget(ctx)
-	if err != nil {
-		// TODO: Cancel if gitlab etc
-		log.Error().Err(err).Msg("failed to merge into target")
-		return
-	}
-
-	// Get the diff between the two branches, storing them within the CheckEvent (also returns but discarded here)
-	if err = cEvent.UpdateListOfChangedFiles(ctx); err != nil {
-		// TODO: Cancel if gitlab etc
-		log.Error().Err(err).Msg("failed to get list of changed files")
-		return
-	}
-
-	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
-	err = cEvent.GenerateListOfAffectedApps(ctx, r.BaseRef)
-	if err != nil {
-		// TODO: Cancel if gitlab etc
-		//mEvent.CancelEvent(ctx, err, "Generate List of Affected Apps")
-		log.Error().Err(err).Msg("failed to generate a list of affected apps")
-		return
-	}
-
-	// At this stage, we've cloned the repo locally, merged the changes into a temp branch, and have calculated
-	// what apps/appsets and files have changed. We are now ready to run the Kubechecks suite!
-	cEvent.ProcessApps(ctx)
+	cEvent := events.NewCheckEvent(pr, ctr, repoMgr)
+	cEvent.Process(ctx)
 }
 
 // passesLabelFilter checks if the given mergeEvent has a label that starts with "kubechecks:"
 // and matches the handler's labelFilter. Returns true if there's a matching label or no
 // "kubechecks:" labels are found, and false if a "kubechecks:" label is found but none match
 // the labelFilter.
-func (h *VCSHookHandler) passesLabelFilter(repo *vcs.Repo) bool {
+func (h *VCSHookHandler) passesLabelFilter(repo vcs.PullRequest) bool {
 	foundKubechecksLabel := false
 
 	for _, label := range repo.Labels {

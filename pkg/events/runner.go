@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -20,10 +21,10 @@ type CheckData struct {
 	logger zerolog.Logger
 	note   *msg.Message
 	app    v1alpha1.Application
+	repo   *git.Repo
 
 	appName       string
 	k8sVersion    string
-	repoPath      string
 	jsonManifests []string
 	yamlManifests []string
 }
@@ -35,8 +36,8 @@ type Runner struct {
 }
 
 func newRunner(
-	span trace.Span, ctx context.Context, app v1alpha1.Application,
-	appName, k8sVersion, repoPath string, jsonManifests, yamlManifests []string,
+	span trace.Span, ctx context.Context, app v1alpha1.Application, repo *git.Repo,
+	appName, k8sVersion string, jsonManifests, yamlManifests []string,
 	logger zerolog.Logger, note *msg.Message,
 ) *Runner {
 	logger = logger.
@@ -49,7 +50,6 @@ func newRunner(
 			app:           app,
 			appName:       appName,
 			k8sVersion:    k8sVersion,
-			repoPath:      repoPath,
 			jsonManifests: jsonManifests,
 			yamlManifests: yamlManifests,
 
@@ -57,6 +57,7 @@ func newRunner(
 			logger: logger,
 			note:   note,
 			span:   span,
+			repo:   repo,
 		},
 	}
 }

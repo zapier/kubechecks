@@ -3,9 +3,9 @@ package events
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +23,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/conftest"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/diff"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/kubepug"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/repo_config"
@@ -31,17 +32,22 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
+var tracer = otel.Tracer("pkg/events")
+
 type CheckEvent struct {
-	fileList       []string // What files have changed in this PR/MR
-	TempWorkingDir string   // Location of the local repo
-	repo           *vcs.Repo
-	logger         zerolog.Logger
-	workerLimits   int
-	vcsNote        *msg.Message
+	fileList     []string // What files have changed in this PR/MR
+	pullRequest  vcs.PullRequest
+	logger       zerolog.Logger
+	workerLimits int
+	vcsNote      *msg.Message
 
 	affectedItems affected_apps.AffectedItems
 
-	ctr container.Container
+	ctr         container.Container
+	repoManager *git.RepoManager
+
+	repoLock    sync.Locker
+	clonedRepos map[string]*git.Repo
 
 	addedAppsSet map[string]v1alpha1.Application
 	appsSent     int32
@@ -49,44 +55,22 @@ type CheckEvent struct {
 	doneChannel  chan struct{}
 }
 
-var inFlight int32
-
-func NewCheckEvent(repo *vcs.Repo, ctr container.Container) *CheckEvent {
+func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager *git.RepoManager) *CheckEvent {
 	ce := &CheckEvent{
-		ctr:  ctr,
-		repo: repo,
+		ctr:         ctr,
+		pullRequest: pullRequest,
+		repoManager: repoManager,
 	}
 
-	ce.logger = log.Logger.With().Str("repo", repo.Name).Int("event_id", repo.CheckID).Logger()
+	ce.logger = log.Logger.With().Str("repo", pullRequest.Name).Int("event_id", pullRequest.CheckID).Logger()
 	return ce
 }
 
-func (ce *CheckEvent) CreateTempDir() error {
-	var err error
-	ce.TempWorkingDir, err = os.MkdirTemp("/tmp", "kubechecks-mr-clone")
-	if err != nil {
-		ce.logger.Error().Err(err).Msg("Unable to make temp directory")
-		return err
-	}
-	return nil
-}
-
-func (ce *CheckEvent) Cleanup(ctx context.Context) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "Cleanup")
+func (ce *CheckEvent) UpdateListOfChangedFiles(ctx context.Context, repo *git.Repo) error {
+	ctx, span := tracer.Start(ctx, "CheckEventGetListOfChangedFiles")
 	defer span.End()
 
-	if ce.TempWorkingDir != "" {
-		if err := os.RemoveAll(ce.TempWorkingDir); err != nil {
-			log.Warn().Err(err).Msgf("failed to remove %s", ce.TempWorkingDir)
-		}
-	}
-}
-
-func (ce *CheckEvent) UpdateListOfChangedFiles(ctx context.Context) error {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetListOfChangedFiles")
-	defer span.End()
-
-	files, err := ce.repo.GetListOfChangedFiles(ctx)
+	files, err := repo.GetListOfChangedFiles(ctx)
 	if err != nil {
 		return err
 	}
@@ -97,19 +81,19 @@ func (ce *CheckEvent) UpdateListOfChangedFiles(ctx context.Context) error {
 }
 
 // GenerateListOfAffectedApps walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
-func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, targetBranch string) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "GenerateListOfAffectedApps")
+func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.Repo, targetBranch string) error {
+	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 	var err error
 
 	var matcher affected_apps.Matcher
-	cfg, _ := repo_config.LoadRepoConfig(ce.TempWorkingDir)
+	cfg, _ := repo_config.LoadRepoConfig(repo.Directory)
 	if cfg != nil {
 		log.Debug().Msg("using the config matcher")
 		matcher = affected_apps.NewConfigMatcher(cfg, ce.ctr)
 	} else {
 		log.Debug().Msg("using an argocd matcher")
-		matcher, err = affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, ce.repo, ce.TempWorkingDir)
+		matcher, err = affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
 		if err != nil {
 			return errors.Wrap(err, "failed to create argocd matcher")
 		}
@@ -131,23 +115,89 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, targetBran
 	return err
 }
 
-func (ce *CheckEvent) ProcessApps(ctx context.Context) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "ProcessApps",
-		trace.WithAttributes(
-			attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.Applications)),
-			attribute.Int("workerLimits", ce.workerLimits),
-			attribute.Int("numAffectedApps", len(ce.affectedItems.Applications)),
-		))
+func canonicalize(cloneURL string) (pkg.RepoURL, error) {
+	parsed, _, err := pkg.NormalizeRepoUrl(cloneURL)
+	if err != nil {
+		return pkg.RepoURL{}, errors.Wrap(err, "failed to parse clone url")
+	}
+
+	return parsed, nil
+}
+
+func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) (*git.Repo, error) {
+	var (
+		err  error
+		repo *git.Repo
+	)
+
+	ce.repoLock.Lock()
+	defer ce.repoLock.Unlock()
+
+	parsed, err := canonicalize(cloneURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse clone url")
+	}
+	cloneURL = parsed.CloneURL(ce.ctr.VcsClient.Username())
+
+	branchName = strings.TrimSpace(branchName)
+	reposKey := fmt.Sprintf("%s|||%s", cloneURL, branchName)
+
+	if repo, ok := ce.clonedRepos[reposKey]; ok {
+		return repo, nil
+	}
+
+	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to clone repo")
+	}
+	ce.clonedRepos[reposKey] = repo
+	return repo, nil
+}
+
+func (ce *CheckEvent) Process(ctx context.Context) {
+	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 
-	err := ce.ctr.VcsClient.TidyOutdatedComments(ctx, ce.repo)
+	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
+	repo, err := ce.getRepo(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
 	if err != nil {
+		// TODO: Cancel event if gitlab etc
+		telemetry.SetError(span, err, "Clone Repo Local")
+		log.Error().Err(err).Msg("unable to clone repo locally")
+		return
+	}
+
+	// Merge the most recent changes into the branch we just cloned
+	err = repo.MergeIntoTarget(ctx, ce.pullRequest.HeadRef, ce.pullRequest.SHA)
+	if err != nil {
+		// TODO: Cancel if gitlab etc
+		log.Error().Err(err).Msg("failed to merge into target")
+		return
+	}
+
+	// Get the diff between the two branches, storing them within the CheckEvent (also returns but discarded here)
+	if err = ce.UpdateListOfChangedFiles(ctx, repo); err != nil {
+		// TODO: Cancel if gitlab etc
+		log.Error().Err(err).Msg("failed to get list of changed files")
+		return
+	}
+
+	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
+	err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef)
+	if err != nil {
+		// TODO: Cancel if gitlab etc
+		//mEvent.CancelEvent(ctx, err, "Generate List of Affected Apps")
+		log.Error().Err(err).Msg("failed to generate a list of affected apps")
+		return
+	}
+
+	if err = ce.ctr.VcsClient.TidyOutdatedComments(ctx, ce.pullRequest); err != nil {
 		ce.logger.Error().Err(err).Msg("Failed to tidy outdated comments")
 	}
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		ce.ctr.VcsClient.PostMessage(ctx, ce.repo, ce.repo.CheckID, "No changes")
+		ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "No changes")
 		return
 	}
 
@@ -233,10 +283,10 @@ func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
 // CommitStatus sets the commit status on the MR
 // To set the PR/MR status
 func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "CommitStatus")
+	_, span := tracer.Start(ctx, "CommitStatus")
 	defer span.End()
 
-	if err := ce.ctr.VcsClient.CommitStatus(ctx, ce.repo, status); err != nil {
+	if err := ce.ctr.VcsClient.CommitStatus(ctx, ce.pullRequest, status); err != nil {
 		log.Warn().Err(err).Msg("failed to update commit status")
 	}
 }
@@ -275,7 +325,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 			Logger()
 	)
 
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "processApp", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "processApp", trace.WithAttributes(
 		attribute.String("app", appName),
 		attribute.String("dir", appPath),
 	))
@@ -289,19 +339,22 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	// Build a new section for this app in the parent comment
 	ce.vcsNote.AddNewApp(ctx, appName)
 
-	repoPath := ce.TempWorkingDir
-	if appRepoUrl != ce.repo.CloneURL {
-		if repoPath, err = ce.ctr.ReposCache.CloneWithBranch(ctx, appRepoUrl, appSrc.Ref); err != nil {
-			logger.Error().Err(err).Str("clone-url", appRepoUrl)
-			return
-		}
+	repo, err := ce.getRepo(ctx, appRepoUrl, appSrc.Ref)
+	if err != nil {
+		logger.Error().Err(err).Str("clone-url", appRepoUrl)
+		return
 	}
+	repoPath := repo.Directory
 
 	logger.Debug().Str("repo_path", repoPath).Msg("Getting manifests")
 	jsonManifests, err := argo_client.GetManifestsLocal(ctx, ce.ctr.ArgoClient, appName, repoPath, appPath, app)
 	if err != nil {
 		logger.Error().Err(err).Msg("Unable to get manifests")
-		cr := msg.CheckResult{State: pkg.StateError, Summary: "Unable to get manifests", Details: fmt.Sprintf("```\n%s\n```", ce.cleanupGetManifestsError(err))}
+		cr := msg.CheckResult{
+			State:   pkg.StateError,
+			Summary: "Unable to get manifests",
+			Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo)),
+		}
 		ce.vcsNote.AddToAppMessage(ctx, appName, cr)
 		return
 	}
@@ -319,7 +372,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 		logger.Info().Msgf("Kubernetes version: %s", k8sVersion)
 	}
 
-	runner := newRunner(span, ctx, app, appName, k8sVersion, repoPath, jsonManifests, yamlManifests, logger, ce.vcsNote)
+	runner := newRunner(span, ctx, app, repo, appName, k8sVersion, jsonManifests, yamlManifests, logger, ce.vcsNote)
 
 	runner.Run("validating app against schema", ce.validateSchemas)
 	runner.Run("generating diff for app", ce.generateDiff)
@@ -332,7 +385,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 
 	runner.Wait()
 
-	ce.vcsNote.SetFooter(start, ce.repo.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo)
+	ce.vcsNote.SetFooter(start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo)
 }
 
 const (
@@ -363,7 +416,7 @@ func (ce *CheckEvent) validatePolicy(data CheckData) (msg.CheckResult, error) {
 		return EmptyCheckResult, errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", data.appName)
 	}
 
-	cr, err := conftest.Conftest(data.ctx, ce.ctr, argoApp, ce.TempWorkingDir, ce.ctr.Config.PoliciesLocation, ce.ctr.VcsClient)
+	cr, err := conftest.Conftest(data.ctx, ce.ctr, argoApp, data.repo.Directory, ce.ctr.Config.PoliciesLocation, ce.ctr.VcsClient, ce.repoManager)
 	if err != nil {
 		return EmptyCheckResult, err
 	}
@@ -383,7 +436,7 @@ func (ce *CheckEvent) generateDiff(data CheckData) (msg.CheckResult, error) {
 }
 
 func (ce *CheckEvent) validateSchemas(data CheckData) (msg.CheckResult, error) {
-	cr, err := validate.ArgoCdAppValidate(data.ctx, ce.ctr, data.appName, data.k8sVersion, data.repoPath, data.yamlManifests)
+	cr, err := validate.ArgoCdAppValidate(data.ctx, ce.ctr, data.appName, data.k8sVersion, data.repo.Directory, data.yamlManifests)
 	if err != nil {
 		return EmptyCheckResult, err
 	}
@@ -398,12 +451,12 @@ func (ce *CheckEvent) createNote(ctx context.Context) *msg.Message {
 
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.ctr.VcsClient.PostMessage(ctx, ce.repo, ce.repo.CheckID, ":hourglass: kubechecks running ... ")
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, ":hourglass: kubechecks running ... ")
 }
 
 // cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.
 // It reformats Helm error messages by removing excess information, and makes file paths relative to the git repo root.
-func (ce *CheckEvent) cleanupGetManifestsError(err error) string {
+func cleanupGetManifestsError(err error, repo *git.Repo) string {
 	// cleanup the chonky helm error message for a better DX
 	errStr := err.Error()
 	if strings.Contains(errStr, "helm template") && strings.Contains(errStr, "failed exit status") {
@@ -412,7 +465,7 @@ func (ce *CheckEvent) cleanupGetManifestsError(err error) string {
 	}
 
 	// strip the temp directory from any files mentioned to make file paths relative to git repo root
-	errStr = strings.ReplaceAll(errStr, ce.TempWorkingDir+"/", "")
+	errStr = strings.ReplaceAll(errStr, repo.Directory+"/", "")
 
 	return errStr
 }
