@@ -1,4 +1,4 @@
-package kubepug
+package preupgrade
 
 import (
 	"bytes"
@@ -22,7 +22,7 @@ const docLinkFmt = "[%s Deprecation Notes](https://kubernetes.io/docs/reference/
 
 var tracer = otel.Tracer("pkg/kubepug")
 
-func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, manifests []string) (msg.CheckResult, error) {
+func checkApp(ctx context.Context, appName, targetKubernetesVersion string, manifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "KubePug")
 	defer span.End()
 
@@ -36,7 +36,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 	if err != nil {
 		log.Error().Err(err).Msg("could not create temp directory to write manifests for kubepug check")
 		//return "", err
-		return msg.CheckResult{}, err
+		return msg.Result{}, err
 	}
 	defer os.RemoveAll(tempDir)
 
@@ -47,7 +47,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 
 	nextVersion, err := nextKubernetesVersion(targetKubernetesVersion)
 	if err != nil {
-		return msg.CheckResult{}, err
+		return msg.Result{}, err
 	}
 	config := lib.Config{
 		K8sVersion:      fmt.Sprintf("v%s", nextVersion.String()),
@@ -60,7 +60,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 
 	result, err := kubepug.GetDeprecated()
 	if err != nil {
-		return msg.CheckResult{}, err
+		return msg.Result{}, err
 	}
 
 	if len(result.DeprecatedAPIs) > 0 || len(result.DeletedAPIs) > 0 {
@@ -115,7 +115,7 @@ func CheckApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 		outputString = append(outputString, "No Deprecated or Deleted APIs found.")
 	}
 
-	return msg.CheckResult{
+	return msg.Result{
 		State:   checkStatus(result),
 		Summary: "<b>Show kubepug report:</b>",
 		Details: fmt.Sprintf(

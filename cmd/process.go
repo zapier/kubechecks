@@ -31,7 +31,12 @@ var processCmd = &cobra.Command{
 			return
 		}
 
-		server.ProcessCheckEvent(ctx, repo, ctr)
+		processors, err := getProcessors(ctr)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create processors")
+		}
+
+		server.ProcessCheckEvent(ctx, repo, ctr, processors)
 	},
 }
 

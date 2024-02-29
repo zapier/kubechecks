@@ -17,16 +17,16 @@ import (
 
 var tracer = otel.Tracer("pkg/msg")
 
-type CheckResult struct {
+type Result struct {
 	State            pkg.CommitState
 	Summary, Details string
 }
 
 type AppResults struct {
-	results []CheckResult
+	results []Result
 }
 
-func (ar *AppResults) AddCheckResult(result CheckResult) {
+func (ar *AppResults) AddCheckResult(result Result) {
 	ar.results = append(ar.results, result)
 }
 
@@ -108,7 +108,7 @@ func (m *Message) AddNewApp(ctx context.Context, app string) {
 	m.apps[app] = new(AppResults)
 }
 
-func (m *Message) AddToAppMessage(ctx context.Context, app string, result CheckResult) {
+func (m *Message) AddToAppMessage(ctx context.Context, app string, result Result) {
 	if m.isDeleted(app) {
 		return
 	}

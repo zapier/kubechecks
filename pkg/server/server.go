@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/ziflex/lecho/v3"
 
+	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
@@ -21,11 +22,12 @@ import (
 const KubeChecksHooksPathPrefix = "/hooks"
 
 type Server struct {
-	ctr container.Container
+	ctr        container.Container
+	processors []checks.ProcessorEntry
 }
 
-func NewServer(ctr container.Container) *Server {
-	return &Server{ctr: ctr}
+func NewServer(ctr container.Container, processors []checks.ProcessorEntry) *Server {
+	return &Server{ctr: ctr, processors: processors}
 }
 
 func (s *Server) Start(ctx context.Context) {
@@ -48,7 +50,7 @@ func (s *Server) Start(ctx context.Context) {
 
 	hooksGroup := e.Group(s.hooksPrefix())
 
-	ghHooks := NewVCSHookHandler(s.ctr)
+	ghHooks := NewVCSHookHandler(s.ctr, s.processors)
 	ghHooks.AttachHandlers(hooksGroup)
 
 	fmt.Println("Method\tPath")

@@ -1,4 +1,4 @@
-package validate
+package kubeconform
 
 import (
 	"context"
@@ -53,7 +53,7 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 	return locations
 }
 
-func ArgoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.CheckResult, error) {
+func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -85,7 +85,7 @@ func ArgoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
 		log.Error().Err(err).Msg("could not create kubeconform validator")
-		return msg.CheckResult{}, fmt.Errorf("could not create kubeconform validator: %v", err)
+		return msg.Result{}, fmt.Errorf("could not create kubeconform validator: %v", err)
 	}
 	result := v.Validate("-", io.NopCloser(strings.NewReader(strings.Join(appManifests, "\n"))))
 	var invalid, failedValidation bool
@@ -110,7 +110,7 @@ func ArgoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		}
 	}
 
-	var cr msg.CheckResult
+	var cr msg.Result
 	if invalid {
 		cr.State = pkg.StateWarning
 	} else if failedValidation {

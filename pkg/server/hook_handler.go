@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
 	"github.com/zapier/kubechecks/pkg/git"
@@ -21,12 +22,14 @@ import (
 var tracer = otel.Tracer("pkg/server")
 
 type VCSHookHandler struct {
-	ctr container.Container
+	ctr        container.Container
+	processors []checks.ProcessorEntry
 }
 
-func NewVCSHookHandler(ctr container.Container) *VCSHookHandler {
+func NewVCSHookHandler(ctr container.Container, processors []checks.ProcessorEntry) *VCSHookHandler {
 	return &VCSHookHandler{
-		ctr: ctr,
+		ctr:        ctr,
+		processors: processors,
 	}
 }
 func (h *VCSHookHandler) AttachHandlers(grp *echo.Group) {
@@ -70,13 +73,13 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, pullRequest vcs.
 		return
 	}
 
-	ProcessCheckEvent(ctx, pullRequest, h.ctr)
+	ProcessCheckEvent(ctx, pullRequest, h.ctr, h.processors)
 }
 
 type RepoDirectory struct {
 }
 
-func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Container) {
+func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry) {
 	ctx, span := tracer.Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
 			attribute.Int("mr_id", pr.CheckID),
@@ -94,7 +97,7 @@ func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Co
 	defer repoMgr.Cleanup()
 
 	// If we've gotten here, we can now begin running checks (or trying to)
-	cEvent := events.NewCheckEvent(pr, ctr, repoMgr)
+	cEvent := events.NewCheckEvent(pr, ctr, repoMgr, processors)
 	cEvent.Process(ctx)
 }
 

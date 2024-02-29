@@ -20,14 +20,11 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/argo_client"
-	"github.com/zapier/kubechecks/pkg/conftest"
+	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
-	"github.com/zapier/kubechecks/pkg/diff"
 	"github.com/zapier/kubechecks/pkg/git"
-	"github.com/zapier/kubechecks/pkg/kubepug"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/repo_config"
-	"github.com/zapier/kubechecks/pkg/validate"
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -45,7 +42,7 @@ type CheckEvent struct {
 
 	ctr         container.Container
 	repoManager *git.RepoManager
-
+	processors  []checks.ProcessorEntry
 	repoLock    sync.Locker
 	clonedRepos map[string]*git.Repo
 
@@ -55,9 +52,10 @@ type CheckEvent struct {
 	doneChannel  chan struct{}
 }
 
-func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager *git.RepoManager) *CheckEvent {
+func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager *git.RepoManager, processors []checks.ProcessorEntry) *CheckEvent {
 	ce := &CheckEvent{
 		ctr:         ctr,
+		processors:  processors,
 		pullRequest: pullRequest,
 		repoManager: repoManager,
 	}
@@ -350,7 +348,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	jsonManifests, err := argo_client.GetManifestsLocal(ctx, ce.ctr.ArgoClient, appName, repoPath, appPath, app)
 	if err != nil {
 		logger.Error().Err(err).Msg("Unable to get manifests")
-		cr := msg.CheckResult{
+		cr := msg.Result{
 			State:   pkg.StateError,
 			Summary: "Unable to get manifests",
 			Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo)),
@@ -372,16 +370,14 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 		logger.Info().Msgf("Kubernetes version: %s", k8sVersion)
 	}
 
-	runner := newRunner(span, ctx, app, repo, appName, k8sVersion, jsonManifests, yamlManifests, logger, ce.vcsNote)
+	runner := newRunner(
+		ce.ctr, app, repo, appName, k8sVersion, jsonManifests, yamlManifests, logger, ce.vcsNote,
+		ce.queueApp, ce.removeApp,
+	)
 
-	runner.Run("validating app against schema", ce.validateSchemas)
-	runner.Run("generating diff for app", ce.generateDiff)
-
-	if ce.ctr.Config.EnableConfTest {
-		runner.Run("validation policy", ce.validatePolicy)
+	for _, processor := range ce.processors {
+		runner.Run(ctx, processor.Name, processor.Processor)
 	}
-
-	runner.Run("running pre-upgrade check", ce.runPreupgradeCheck)
 
 	runner.Wait()
 
@@ -398,51 +394,6 @@ const (
 Check kubechecks application logs for more information.
 `
 )
-
-var EmptyCheckResult msg.CheckResult
-
-func (ce *CheckEvent) runPreupgradeCheck(data CheckData) (msg.CheckResult, error) {
-	s, err := kubepug.CheckApp(data.ctx, data.appName, data.k8sVersion, data.yamlManifests)
-	if err != nil {
-		return EmptyCheckResult, err
-	}
-
-	return s, nil
-}
-
-func (ce *CheckEvent) validatePolicy(data CheckData) (msg.CheckResult, error) {
-	argoApp, err := ce.ctr.ArgoClient.GetApplicationByName(data.ctx, data.appName)
-	if err != nil {
-		return EmptyCheckResult, errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", data.appName)
-	}
-
-	cr, err := conftest.Conftest(data.ctx, ce.ctr, argoApp, data.repo.Directory, ce.ctr.Config.PoliciesLocation, ce.ctr.VcsClient, ce.repoManager)
-	if err != nil {
-		return EmptyCheckResult, err
-	}
-
-	return cr, nil
-}
-
-func (ce *CheckEvent) generateDiff(data CheckData) (msg.CheckResult, error) {
-	cr, rawDiff, err := diff.GetDiff(data.ctx, data.jsonManifests, data.app, ce.ctr, ce.queueApp, ce.removeApp)
-	if err != nil {
-		return EmptyCheckResult, err
-	}
-
-	diff.AIDiffSummary(data.ctx, ce.vcsNote, ce.ctr.Config, data.appName, data.jsonManifests, rawDiff)
-
-	return cr, nil
-}
-
-func (ce *CheckEvent) validateSchemas(data CheckData) (msg.CheckResult, error) {
-	cr, err := validate.ArgoCdAppValidate(data.ctx, ce.ctr, data.appName, data.k8sVersion, data.repo.Directory, data.yamlManifests)
-	if err != nil {
-		return EmptyCheckResult, err
-	}
-
-	return cr, nil
-}
 
 // Creates a generic Note struct that we can write into across all worker threads
 func (ce *CheckEvent) createNote(ctx context.Context) *msg.Message {

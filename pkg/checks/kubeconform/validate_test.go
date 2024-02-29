@@ -1,4 +1,4 @@
-package validate
+package kubeconform
 
 import (
 	"context"

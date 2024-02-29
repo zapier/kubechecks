@@ -7,38 +7,25 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/checks"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-type CheckData struct {
-	span   trace.Span
-	ctx    context.Context
-	logger zerolog.Logger
-	note   *msg.Message
-	app    v1alpha1.Application
-	repo   *git.Repo
-
-	appName       string
-	k8sVersion    string
-	jsonManifests []string
-	yamlManifests []string
-}
-
 type Runner struct {
-	CheckData
+	checks.Request
 
 	wg sync.WaitGroup
 }
 
 func newRunner(
-	span trace.Span, ctx context.Context, app v1alpha1.Application, repo *git.Repo,
+	ctr container.Container, app v1alpha1.Application, repo *git.Repo,
 	appName, k8sVersion string, jsonManifests, yamlManifests []string,
-	logger zerolog.Logger, note *msg.Message,
+	logger zerolog.Logger, note *msg.Message, queueApp, removeApp func(application v1alpha1.Application),
 ) *Runner {
 	logger = logger.
 		With().
@@ -46,29 +33,31 @@ func newRunner(
 		Logger()
 
 	return &Runner{
-		CheckData: CheckData{
-			app:           app,
-			appName:       appName,
-			k8sVersion:    k8sVersion,
-			jsonManifests: jsonManifests,
-			yamlManifests: yamlManifests,
-
-			ctx:    ctx,
-			logger: logger,
-			note:   note,
-			span:   span,
-			repo:   repo,
+		Request: checks.Request{
+			App:               app,
+			AppName:           appName,
+			Container:         ctr,
+			JsonManifests:     jsonManifests,
+			KubernetesVersion: k8sVersion,
+			Log:               logger,
+			Note:              note,
+			QueueApp:          queueApp,
+			RemoveApp:         removeApp,
+			Repo:              repo,
+			YamlManifests:     yamlManifests,
 		},
 	}
 }
 
-type checkFunction func(data CheckData) (msg.CheckResult, error)
+type checkFunction func(ctx context.Context, data checks.Request) (msg.Result, error)
 
-func (r *Runner) Run(desc string, fn checkFunction) {
+func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction) {
 	r.wg.Add(1)
 
 	go func() {
-		logger := r.logger
+		logger := r.Log
+
+		ctx, span := tracer.Start(ctx, desc)
 
 		defer func() {
 			r.wg.Done()
@@ -76,13 +65,13 @@ func (r *Runner) Run(desc string, fn checkFunction) {
 			if err := recover(); err != nil {
 				logger.Error().Str("check", desc).Msgf("panic while running check")
 
-				telemetry.SetError(r.span, fmt.Errorf("%v", err), desc)
-				result := msg.CheckResult{
+				telemetry.SetError(span, fmt.Errorf("%v", err), desc)
+				result := msg.Result{
 					State:   pkg.StatePanic,
 					Summary: desc,
 					Details: fmt.Sprintf(errorCommentFormat, desc, err),
 				}
-				r.note.AddToAppMessage(r.ctx, r.appName, result)
+				r.Note.AddToAppMessage(ctx, r.AppName, result)
 			}
 		}()
 
@@ -91,20 +80,20 @@ func (r *Runner) Run(desc string, fn checkFunction) {
 			Logger()
 
 		logger.Info().Msgf("running check")
-		cr, err := fn(r.CheckData)
+		cr, err := fn(ctx, r.Request)
 		logger.Info().
 			Err(err).
 			Uint8("result", uint8(cr.State)).
 			Msg("check result")
 
 		if err != nil {
-			telemetry.SetError(r.span, err, desc)
-			result := msg.CheckResult{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}
-			r.note.AddToAppMessage(r.ctx, r.appName, result)
+			telemetry.SetError(span, err, desc)
+			result := msg.Result{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}
+			r.Note.AddToAppMessage(ctx, r.AppName, result)
 			return
 		}
 
-		r.note.AddToAppMessage(r.ctx, r.appName, cr)
+		r.Note.AddToAppMessage(ctx, r.AppName, cr)
 
 		logger.Info().
 			Str("result", cr.State.BareString()).

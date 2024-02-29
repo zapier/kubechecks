@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
@@ -45,6 +46,11 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to create container")
 		}
 
+		processors, err := getProcessors(ctr)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create processors")
+		}
+
 		t, err := initTelemetry(ctx, cfg)
 		if err != nil {
 			log.Panic().Err(err).Msg("Failed to initialize telemetry")
@@ -57,7 +63,7 @@ var ControllerCmd = &cobra.Command{
 		}
 
 		log.Info().Msgf("starting web server")
-		startWebserver(ctx, ctr)
+		startWebserver(ctx, ctr, processors)
 
 		log.Info().Msgf("listening for requests")
 		waitForShutdown()
@@ -74,8 +80,8 @@ func initTelemetry(ctx context.Context, cfg config.ServerConfig) (*telemetry.Ope
 	)
 }
 
-func startWebserver(ctx context.Context, ctr container.Container) {
-	srv := server.NewServer(ctr)
+func startWebserver(ctx context.Context, ctr container.Container, processors []checks.ProcessorEntry) {
+	srv := server.NewServer(ctr, processors)
 	go srv.Start(ctx)
 }
 

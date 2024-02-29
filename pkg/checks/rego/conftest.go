@@ -1,4 +1,4 @@
-package conftest
+package rego
 
 import (
 	"bytes"
@@ -16,8 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/container"
-	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -35,10 +33,9 @@ type emojiable interface {
 // as a GitLab comment. The validation checks resources against Zapier policies and
 // provides feedback for warnings or errors as informational messages. Failure to
 // pass a policy check currently does not block deploy.
-func Conftest(
-	ctx context.Context, ctr container.Container, app *v1alpha1.Application, repoPath string, policiesLocations []string, vcs emojiable,
-	gitManager *git.RepoManager,
-) (msg.CheckResult, error) {
+func conftest(
+	ctx context.Context, app *v1alpha1.Application, repoPath string, policiesLocations []string, vcs emojiable,
+) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "Conftest")
 	defer span.End()
 
@@ -46,32 +43,12 @@ func Conftest(
 
 	log.Debug().Str("dir", confTestDir).Str("app", app.Name).Msg("running conftest in dir for application")
 
-	var locations []string
-	for _, policiesLocation := range policiesLocations {
-		logger := log.With().Str("policies-location", policiesLocation).Logger()
-		if repo, err := gitManager.Clone(ctx, policiesLocation, ""); err != nil {
-			logger.Warn().Err(err).Msg("failed to clone location")
-		} else if repoPath != "" {
-			logger.Info().Str("path", repo.Directory).Msg("cloned policies repo")
-			locations = append(locations, repo.Directory)
-		} else {
-			logger.Warn().Msg("failed to clone schema policies location")
-		}
-	}
-
-	if len(locations) == 0 {
-		return msg.CheckResult{
-			State:   pkg.StateWarning,
-			Summary: "no policies locations configured",
-		}, nil
-	}
-
 	var r runner.TestRunner
 
 	r.NoColor = true
 	r.AllNamespaces = true
 	// PATH To Rego Polices
-	r.Policy = locations
+	r.Policy = policiesLocations
 	r.SuppressExceptions = false
 	r.Trace = false
 
@@ -83,7 +60,7 @@ func Conftest(
 	results, err := r.Run(ctx, []string{confTestDir})
 	if err != nil {
 		telemetry.SetError(span, err, "ConfTest Run")
-		return msg.CheckResult{}, err
+		return msg.Result{}, err
 	}
 
 	var b bytes.Buffer
@@ -107,7 +84,7 @@ func Conftest(
 		innerStrings = append(innerStrings, passedMessage)
 	}
 
-	var cr msg.CheckResult
+	var cr msg.Result
 	if failures {
 		cr.State = pkg.StateFailure
 	} else if warnings {
