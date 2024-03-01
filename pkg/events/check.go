@@ -55,12 +55,16 @@ type CheckEvent struct {
 func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager *git.RepoManager, processors []checks.ProcessorEntry) *CheckEvent {
 	ce := &CheckEvent{
 		ctr:         ctr,
+		clonedRepos: make(map[string]*git.Repo),
 		processors:  processors,
 		pullRequest: pullRequest,
 		repoManager: repoManager,
+		logger: log.Logger.With().
+			Str("repo", pullRequest.Name).
+			Int("event_id", pullRequest.CheckID).
+			Logger(),
 	}
 
-	ce.logger = log.Logger.With().Str("repo", pullRequest.Name).Int("event_id", pullRequest.CheckID).Logger()
 	return ce
 }
 
