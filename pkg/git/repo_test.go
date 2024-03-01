@@ -26,21 +26,39 @@ func TestRepoRoundTrip(t *testing.T) {
 	// initialize the test repo
 	cmd := exec.Command("/bin/sh", "-c", `#!/usr/bin/env bash
 set -e
+set -x
 
+# set up git repo
 cd $TEMPDIR
 git init
-git branch -m main
 git config user.email "user@test.com"
 git config user.name "Zap Zap"
 
-echo "hello" > abc.txt
-git add abc.txt
-git commit -m "initial commit"
+# set up main branch
+git branch -m main
 
-git checkout -b testing
-echo "world" > abc.txt
+echo "one" > abc.txt
 git add abc.txt
-git commit -a -m "updates"
+git commit -m "commit one on main"
+
+# set up testing branch
+git checkout -b testing
+echo "three" > abc.txt
+git add abc.txt
+git commit -m "commit two on testing"
+
+# add commit back to main
+git checkout main
+echo "four" > def.txt
+git add def.txt
+git commit -m "commit two on main"
+
+# pull main into testing
+git checkout testing
+git merge main
+echo "two" > ghi.txt
+git add ghi.txt
+git commit -m "commit three"
 `)
 	cmd.Env = append(cmd.Env, "TEMPDIR="+originRepo)
 	cmd.Stderr = os.Stderr
@@ -67,5 +85,5 @@ git commit -a -m "updates"
 
 	files, err := repo.GetListOfChangedFiles(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"abc.txt"}, files)
+	assert.Equal(t, []string{"abc.txt", "ghi.txt"}, files)
 }
