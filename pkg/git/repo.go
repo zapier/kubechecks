@@ -30,7 +30,6 @@ type Repo struct {
 
 	// exposed state
 	Directory string
-	Remote    string
 }
 
 func New(cfg config.ServerConfig, cloneUrl, branchName string) *Repo {
@@ -70,34 +69,6 @@ func (r *Repo) Clone(ctx context.Context) error {
 		return err
 	}
 
-	cmd = r.execCommand("git", "remote")
-	pipe, _ := cmd.StdoutPipe()
-	var wg sync.WaitGroup
-	scanner := bufio.NewScanner(pipe)
-	wg.Add(1)
-	go func() {
-		for scanner.Scan() {
-			line := scanner.Text()
-			r.Remote = line
-			// Just grab the first remote as it should be the default
-			break
-		}
-		wg.Done()
-	}()
-	err = cmd.Start()
-	if err != nil {
-		telemetry.SetError(span, err, "unable to get remote")
-		log.Error().Err(err).Msg("unable to get git remote")
-		return err
-	}
-	wg.Wait()
-	err = cmd.Wait()
-	if err != nil {
-		telemetry.SetError(span, err, "unable to get remote")
-		log.Error().Err(err).Msg("unable to get git remote")
-		return err
-	}
-
 	if log.Trace().Enabled() {
 		if err = filepath.WalkDir(r.Directory, printFile); err != nil {
 			log.Warn().Err(err).Msg("failed to walk directory")
@@ -128,10 +99,8 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, target, sha string) error {
 		))
 	defer span.End()
 
-	origin := "origin"
-
 	log.Debug().Msgf("Merging MR commit %s into a tmp branch off of %s for manifest generation...", sha, r.BranchName)
-	cmd := r.execCommand("git", "fetch", origin, r.BranchName)
+	cmd := r.execCommand("git", "fetch", "origin", r.BranchName)
 	err := cmd.Run()
 	if err != nil {
 		telemetry.SetError(span, err, "git fetch remote into target branch")
@@ -139,11 +108,11 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, target, sha string) error {
 		return err
 	}
 
-	cmd = r.execCommand("git", "checkout", "-b", "tmp", fmt.Sprintf("%s/%s", origin, r.BranchName))
+	cmd = r.execCommand("git", "checkout", "-b", "tmp", fmt.Sprintf("origin/%s", target))
 	_, err = cmd.Output()
 	if err != nil {
 		telemetry.SetError(span, err, "git checkout tmp branch")
-		log.Error().Err(err).Msgf("unable to checkout %s %s", origin, r.BranchName)
+		log.Error().Err(err).Msgf("unable to checkout %s %s", "origin", r.BranchName)
 		return err
 	}
 
@@ -160,7 +129,6 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, target, sha string) error {
 
 func (r *Repo) Update(ctx context.Context) error {
 	cmd := r.execCommand("git", "pull")
-	cmd.Dir = r.Directory
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stdout
 	return cmd.Run()
@@ -171,6 +139,9 @@ func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
 
 	log.Debug().Strs("args", argsToLog).Msg("building command")
 	cmd := exec.Command(name, args...)
+	if r.Directory != "" {
+		cmd.Dir = r.Directory
+	}
 	return cmd
 }
 
@@ -280,7 +251,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 
 	var fileList []string
 
-	cmd := r.execCommand("git", "diff", "--name-only", fmt.Sprintf("%s/%s", r.Remote, r.BranchName))
+	cmd := r.execCommand("git", "diff", "--name-only", fmt.Sprintf("%s/%s", "origin", r.BranchName))
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
 	scanner := bufio.NewScanner(pipe)
