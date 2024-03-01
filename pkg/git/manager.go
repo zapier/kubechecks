@@ -15,7 +15,7 @@ import (
 var tracer = otel.Tracer("pkg/git")
 
 type RepoManager struct {
-	lock  sync.Locker
+	lock  sync.Mutex
 	repos []*Repo
 	cfg   config.ServerConfig
 }

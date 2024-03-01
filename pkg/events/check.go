@@ -43,7 +43,7 @@ type CheckEvent struct {
 	ctr         container.Container
 	repoManager *git.RepoManager
 	processors  []checks.ProcessorEntry
-	repoLock    sync.Locker
+	repoLock    sync.Mutex
 	clonedRepos map[string]*git.Repo
 
 	addedAppsSet map[string]v1alpha1.Application
