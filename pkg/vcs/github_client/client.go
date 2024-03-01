@@ -2,6 +2,7 @@ package github_client
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
+	giturls "github.com/whilp/git-urls"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/oauth2"
 
@@ -191,16 +193,22 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, status pk
 }
 
 func parseRepo(cloneUrl string) (string, string) {
-	if strings.HasPrefix(cloneUrl, "git@") {
-		// parse ssh string
-		parts := strings.Split(cloneUrl, ":")
-		parts = strings.Split(parts[1], "/")
-		owner := parts[0]
-		repoName := strings.TrimSuffix(parts[1], ".git")
-		return owner, repoName
+	result, err := giturls.Parse(cloneUrl)
+	if err != nil {
+		panic(fmt.Errorf("%s: %s", cloneUrl, err.Error()))
 	}
 
-	panic(cloneUrl)
+	path := result.Path
+	path = strings.TrimPrefix(path, "/")
+	path = strings.TrimSuffix(path, ".git")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 {
+		panic(fmt.Errorf("%s: invalid path", cloneUrl))
+	}
+
+	owner := parts[0]
+	repoName := strings.TrimSuffix(parts[1], ".git")
+	return owner, repoName
 }
 
 func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*vcs.WebHookConfig, error) {
