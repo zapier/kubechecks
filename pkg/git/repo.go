@@ -99,20 +99,20 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, target, sha string) error {
 		))
 	defer span.End()
 
-	log.Debug().Msgf("Merging MR commit %s into a tmp branch off of %s for manifest generation...", sha, r.BranchName)
-	cmd := r.execCommand("git", "fetch", "origin", r.BranchName)
+	log.Debug().Msgf("Merging MR commit %s into a tmp branch off of %s for manifest generation...", sha, target)
+	cmd := r.execCommand("git", "fetch", "origin", target)
 	err := cmd.Run()
 	if err != nil {
 		telemetry.SetError(span, err, "git fetch remote into target branch")
-		log.Error().Err(err).Msgf("unable to fetch %s", r.BranchName)
+		log.Error().Err(err).Msgf("unable to fetch %s", target)
 		return err
 	}
 
-	cmd = r.execCommand("git", "checkout", "-b", "tmp", fmt.Sprintf("origin/%s", target))
+	cmd = r.execCommand("git", "checkout", "-b", "tmp", "origin/"+target)
 	_, err = cmd.Output()
 	if err != nil {
 		telemetry.SetError(span, err, "git checkout tmp branch")
-		log.Error().Err(err).Msgf("unable to checkout %s %s", "origin", r.BranchName)
+		log.Error().Err(err).Msgf("unable to checkout origin %s", target)
 		return err
 	}
 

@@ -37,7 +37,7 @@ echo "hello" > abc.txt
 git add abc.txt
 git commit -m "initial commit"
 
-git branch testing
+git checkout -b testing
 echo "world" > abc.txt
 git add abc.txt
 git commit -a -m "updates"
