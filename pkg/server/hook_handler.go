@@ -98,7 +98,10 @@ func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Co
 
 	// If we've gotten here, we can now begin running checks (or trying to)
 	cEvent := events.NewCheckEvent(pr, ctr, repoMgr, processors)
-	cEvent.Process(ctx)
+	if err := cEvent.Process(ctx); err != nil {
+		span.RecordError(err)
+		log.Error().Err(err).Msg("failed to process the request")
+	}
 }
 
 // passesLabelFilter checks if the given mergeEvent has a label that starts with "kubechecks:"

@@ -41,7 +41,7 @@ type CheckEvent struct {
 	affectedItems affected_apps.AffectedItems
 
 	ctr         container.Container
-	repoManager *git.RepoManager
+	repoManager repoManager
 	processors  []checks.ProcessorEntry
 	repoLock    sync.Mutex
 	clonedRepos map[string]*git.Repo
@@ -49,10 +49,14 @@ type CheckEvent struct {
 	addedAppsSet map[string]v1alpha1.Application
 	appsSent     int32
 	appChannel   chan *v1alpha1.Application
-	doneChannel  chan struct{}
+	wg           sync.WaitGroup
 }
 
-func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager *git.RepoManager, processors []checks.ProcessorEntry) *CheckEvent {
+type repoManager interface {
+	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
+}
+
+func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry) *CheckEvent {
 	ce := &CheckEvent{
 		ctr:         ctr,
 		clonedRepos: make(map[string]*git.Repo),
@@ -156,41 +160,29 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	return repo, nil
 }
 
-func (ce *CheckEvent) Process(ctx context.Context) {
+func (ce *CheckEvent) Process(ctx context.Context) error {
 	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 
 	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
 	repo, err := ce.getRepo(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
 	if err != nil {
-		// TODO: Cancel event if gitlab etc
-		telemetry.SetError(span, err, "Clone Repo Local")
-		log.Error().Err(err).Msg("unable to clone repo locally")
-		return
+		return errors.Wrap(err, "failed to clone repo")
 	}
 
 	// Merge the most recent changes into the branch we just cloned
-	err = repo.MergeIntoTarget(ctx, ce.pullRequest.HeadRef, ce.pullRequest.SHA)
-	if err != nil {
-		// TODO: Cancel if gitlab etc
-		log.Error().Err(err).Msg("failed to merge into target")
-		return
+	if err = repo.MergeIntoTarget(ctx, ce.pullRequest.HeadRef, ce.pullRequest.SHA); err != nil {
+		return errors.Wrap(err, "failed to merge into target")
 	}
 
 	// Get the diff between the two branches, storing them within the CheckEvent (also returns but discarded here)
 	if err = ce.UpdateListOfChangedFiles(ctx, repo); err != nil {
-		// TODO: Cancel if gitlab etc
-		log.Error().Err(err).Msg("failed to get list of changed files")
-		return
+		return errors.Wrap(err, "failed to get list of changed files")
 	}
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
-	err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef)
-	if err != nil {
-		// TODO: Cancel if gitlab etc
-		//mEvent.CancelEvent(ctx, err, "Generate List of Affected Apps")
-		log.Error().Err(err).Msg("failed to generate a list of affected apps")
-		return
+	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef); err != nil {
+		return errors.Wrap(err, "failed to generate a list of affected apps")
 	}
 
 	if err = ce.ctr.VcsClient.TidyOutdatedComments(ctx, ce.pullRequest); err != nil {
@@ -200,13 +192,12 @@ func (ce *CheckEvent) Process(ctx context.Context) {
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
 		ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "No changes")
-		return
+		return nil
 	}
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
 	ce.addedAppsSet = make(map[string]v1alpha1.Application)
 	ce.appChannel = make(chan *v1alpha1.Application, len(ce.affectedItems.Applications)*2)
-	ce.doneChannel = make(chan struct{}, len(ce.affectedItems.Applications)*2)
 
 	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
 	if ce.workerLimits > len(ce.affectedItems.Applications) {
@@ -225,32 +216,30 @@ func (ce *CheckEvent) Process(ctx context.Context) {
 		ce.queueApp(app)
 	}
 
-	var returnCount int32 = 0
-	for range ce.doneChannel {
-		ce.logger.Debug().Msg("finished an app")
+	ce.wg.Wait()
 
-		returnCount++
-		ce.logger.Debug().
-			Int32("done apps", returnCount).
-			Int("all apps", len(ce.addedAppsSet)).
-			Int32("sent apps", ce.appsSent).
-			Msg("completed apps")
+	close(ce.appChannel)
 
-		if returnCount == ce.appsSent {
-			ce.logger.Debug().Msg("Closing channels")
-			close(ce.appChannel)
-			close(ce.doneChannel)
-		}
-	}
+	ce.logger.Debug().Msg("finished an app")
+
+	ce.logger.Debug().
+		Int("all apps", len(ce.addedAppsSet)).
+		Int32("sent apps", ce.appsSent).
+		Msg("completed apps")
+
+	ce.logger.Debug().Msg("Closing channels")
+
 	ce.logger.Info().Msg("Finished")
 
 	comment := ce.vcsNote.BuildComment(ctx)
 	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
-		ce.logger.Error().Err(err).Msg("failed to push comment")
+		return errors.Wrap(err, "failed to push comment")
 	}
 
 	worstStatus := ce.vcsNote.WorstState()
 	ce.CommitStatus(ctx, worstStatus)
+
+	return nil
 }
 
 func (ce *CheckEvent) removeApp(app v1alpha1.Application) {
@@ -275,6 +264,7 @@ func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
 		Str("cluster-name", app.Spec.Destination.Name).
 		Str("cluster-server", app.Spec.Destination.Server)
 
+	ce.wg.Add(1)
 	atomic.AddInt32(&ce.appsSent, 1)
 
 	logger.Msg("producing app on channel")
@@ -303,7 +293,7 @@ func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
 			log.Warn().Msg("appWorkers received a nil app")
 		}
 
-		ce.doneChannel <- struct{}{}
+		ce.wg.Done()
 	}
 }
 
