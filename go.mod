@@ -24,8 +24,9 @@ require (
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rikatz/kubepug v1.4.0
 	github.com/rs/zerolog v1.31.0
-	github.com/sashabaranov/go-openai v1.19.3
+	github.com/sashabaranov/go-openai v1.20.2
 	github.com/shurcooL/githubv4 v0.0.0-20231126234147-1cffa1f02456
+	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
@@ -209,7 +210,6 @@ require (
 	github.com/sergi/go-diff v1.3.1 // indirect
 	github.com/shteou/go-ignore v0.3.1 // indirect
 	github.com/shurcooL/graphql v0.0.0-20230722043721-ed46e5a46466 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skeema/knownhosts v1.2.1 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spdx/tools-golang v0.5.3 // indirect
