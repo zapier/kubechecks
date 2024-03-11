@@ -15,7 +15,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/vcs/gitlab_client"
 )
 
-func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Container, error) {
+func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) (container.Container, error) {
 	var err error
 
 	var ctr = container.Container{
@@ -50,12 +50,14 @@ func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Conta
 			return ctr, errors.Wrap(err, "failed to build apps map")
 		}
 
-		ctr.ApplicationWatcher, err = app_watcher.NewApplicationWatcher(vcsToArgoMap)
-		if err != nil {
-			return ctr, errors.Wrap(err, "failed to create watch applications")
-		}
+		if watchApps {
+			ctr.ApplicationWatcher, err = app_watcher.NewApplicationWatcher(vcsToArgoMap, cfg)
+			if err != nil {
+				return ctr, errors.Wrap(err, "failed to create watch applications")
+			}
 
-		go ctr.ApplicationWatcher.Run(ctx, 1)
+			go ctr.ApplicationWatcher.Run(ctx, 1)
+		}
 	}
 
 	return ctr, nil

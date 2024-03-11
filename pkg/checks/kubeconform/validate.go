@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/yannh/kubeconform/pkg/validator"
 	"go.opentelemetry.io/otel"
@@ -32,7 +33,18 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 		if strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "https://") {
 			locations = append(locations, schemasLocation)
 		} else {
-			locations = append(locations, filepath.Join(tempRepoPath, schemasLocation))
+			if !filepath.IsAbs(schemasLocation) {
+				schemasLocation = filepath.Join(tempRepoPath, schemasLocation)
+			}
+
+			if _, err := os.Stat(schemasLocation); err != nil {
+				log.Warn().
+					Err(err).
+					Str("path", schemasLocation).
+					Msg("schemas location is invalid, skipping")
+			} else {
+				locations = append(locations, schemasLocation)
+			}
 		}
 	}
 
@@ -53,15 +65,29 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 	return locations
 }
 
+func wipeDir(dir string) {
+	if err := os.RemoveAll(dir); err != nil {
+		log.Error().
+			Err(err).
+			Str("path", dir).
+			Msg("failed to wipe path")
+	}
+}
+
 func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
 	log.Debug().Str("app_name", appName).Str("k8s_version", targetKubernetesVersion).Msg("ArgoCDAppValidate")
 
-	cwd, _ := os.Getwd()
+	schemaCachePath, err := os.MkdirTemp("", "kubechecks-schema-cache-")
+	if err != nil {
+		return msg.Result{}, errors.Wrap(err, "failed to create schema cache")
+	}
+	defer wipeDir(schemaCachePath)
+
 	vOpts := validator.Opts{
-		Cache:   filepath.Join(cwd, "schemas/"),
+		Cache:   schemaCachePath,
 		SkipTLS: false,
 		SkipKinds: map[string]struct{}{
 			"apiextensions.k8s.io/v1/CustomResourceDefinition": {},
@@ -84,7 +110,6 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
-		log.Error().Err(err).Msg("could not create kubeconform validator")
 		return msg.Result{}, fmt.Errorf("could not create kubeconform validator: %v", err)
 	}
 	result := v.Validate("-", io.NopCloser(strings.NewReader(strings.Join(appManifests, "\n"))))

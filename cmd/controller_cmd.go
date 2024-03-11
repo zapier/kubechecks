@@ -41,7 +41,7 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to parse configuration")
 		}
 
-		ctr, err := newContainer(ctx, cfg)
+		ctr, err := newContainer(ctx, cfg, true)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create container")
 		}

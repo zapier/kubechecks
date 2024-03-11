@@ -58,6 +58,7 @@ func init() {
 	stringFlag(flags, "argocd-api-token", "ArgoCD API token.")
 	stringFlag(flags, "argocd-api-server-addr", "ArgoCD API Server Address.", newStringOpts().withDefault("argocd-server"))
 	boolFlag(flags, "argocd-api-insecure", "Enable to use insecure connections to the ArgoCD API server.")
+	stringFlag(flags, "kubernetes-config", "Path to your kubernetes config file, used to monitor applications.")
 
 	stringFlag(flags, "otel-collector-port", "The OpenTelemetry collector port.")
 	stringFlag(flags, "otel-collector-host", "The OpenTelemetry collector host.")

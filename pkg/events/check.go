@@ -331,7 +331,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	// Build a new section for this app in the parent comment
 	ce.vcsNote.AddNewApp(ctx, appName)
 
-	repo, err := ce.getRepo(ctx, appRepoUrl, appSrc.Ref)
+	repo, err := ce.getRepo(ctx, appRepoUrl, appSrc.TargetRevision)
 	if err != nil {
 		logger.Error().Err(err).Str("clone-url", appRepoUrl)
 		return
@@ -345,7 +345,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 		cr := msg.Result{
 			State:   pkg.StateError,
 			Summary: "Unable to get manifests",
-			Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo)),
+			Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo.Directory)),
 		}
 		ce.vcsNote.AddToAppMessage(ctx, appName, cr)
 		return
@@ -401,7 +401,7 @@ func (ce *CheckEvent) createNote(ctx context.Context) *msg.Message {
 
 // cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.
 // It reformats Helm error messages by removing excess information, and makes file paths relative to the git repo root.
-func cleanupGetManifestsError(err error, repo *git.Repo) string {
+func cleanupGetManifestsError(err error, repoDirectory string) string {
 	// cleanup the chonky helm error message for a better DX
 	errStr := err.Error()
 	if strings.Contains(errStr, "helm template") && strings.Contains(errStr, "failed exit status") {
@@ -410,7 +410,7 @@ func cleanupGetManifestsError(err error, repo *git.Repo) string {
 	}
 
 	// strip the temp directory from any files mentioned to make file paths relative to git repo root
-	errStr = strings.ReplaceAll(errStr, repo.Directory+"/", "")
+	errStr = strings.ReplaceAll(errStr, repoDirectory+"/", "")
 
 	return errStr
 }
