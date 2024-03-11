@@ -171,7 +171,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	// Merge the most recent changes into the branch we just cloned
-	if err = repo.MergeIntoTarget(ctx, ce.pullRequest.HeadRef, ce.pullRequest.SHA); err != nil {
+	if err = repo.MergeIntoTarget(ctx, ce.pullRequest.SHA); err != nil {
 		return errors.Wrap(err, "failed to merge into target")
 	}
 
@@ -333,7 +333,12 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 
 	repo, err := ce.getRepo(ctx, appRepoUrl, appSrc.TargetRevision)
 	if err != nil {
-		logger.Error().Err(err).Str("clone-url", appRepoUrl)
+		logger.Error().Err(err).Msg("Unable to clone repository")
+		ce.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
+			State:   pkg.StateError,
+			Summary: "failed to clone repo",
+			Details: fmt.Sprintf("Clone URL: `%s`\nTarget Revision: `%s`\n```\n%s\n```", appRepoUrl, appSrc.TargetRevision, err.Error()),
+		})
 		return
 	}
 	repoPath := repo.Directory
@@ -342,12 +347,11 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	jsonManifests, err := argo_client.GetManifestsLocal(ctx, ce.ctr.ArgoClient, appName, repoPath, appPath, app)
 	if err != nil {
 		logger.Error().Err(err).Msg("Unable to get manifests")
-		cr := msg.Result{
+		ce.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
 			State:   pkg.StateError,
 			Summary: "Unable to get manifests",
 			Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo.Directory)),
-		}
-		ce.vcsNote.AddToAppMessage(ctx, appName, cr)
+		})
 		return
 	}
 

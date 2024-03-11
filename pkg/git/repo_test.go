@@ -80,7 +80,7 @@ git commit -m "commit three"
 	require.NoError(t, err)
 	defer wipe(t, repo.Directory)
 
-	err = repo.MergeIntoTarget(ctx, "testing", sha)
+	err = repo.MergeIntoTarget(ctx, sha)
 	require.NoError(t, err)
 
 	files, err := repo.GetListOfChangedFiles(ctx)

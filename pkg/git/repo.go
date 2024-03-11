@@ -88,7 +88,7 @@ func printFile(s string, d fs.DirEntry, err error) error {
 	return nil
 }
 
-func (r *Repo) MergeIntoTarget(ctx context.Context, target, sha string) error {
+func (r *Repo) MergeIntoTarget(ctx context.Context, sha string) error {
 	// Merge the last commit into a tmp branch off of the target branch
 	_, span := tracer.Start(ctx, "Repo - RepoMergeIntoTarget",
 		trace.WithAttributes(
@@ -99,27 +99,10 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, target, sha string) error {
 		))
 	defer span.End()
 
-	log.Debug().Msgf("Merging MR commit %s into a tmp branch off of %s for manifest generation...", sha, target)
-	cmd := r.execCommand("git", "fetch", "origin", target)
-	err := cmd.Run()
-	if err != nil {
-		telemetry.SetError(span, err, "git fetch remote into target branch")
-		log.Error().Err(err).Msgf("unable to fetch %s", target)
-		return err
-	}
-
-	cmd = r.execCommand("git", "checkout", "-b", "tmp", "origin/"+target)
-	_, err = cmd.Output()
-	if err != nil {
-		telemetry.SetError(span, err, "git checkout tmp branch")
-		log.Error().Err(err).Msgf("unable to checkout origin %s", target)
-		return err
-	}
-
-	cmd = r.execCommand("git", "merge", sha)
+	cmd := r.execCommand("git", "merge", sha)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		telemetry.SetError(span, err, "merge last commit id into tmp branch")
+		telemetry.SetError(span, err, "merge commit into branch")
 		log.Error().Err(err).Msgf("unable to merge %s, %s", sha, out)
 		return err
 	}
