@@ -14,16 +14,15 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name string, tempRepoDir string, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
+func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
 	var err error
 
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetManifestsLocal")
+	ctx, span := tracer.Start(ctx, "GetManifestsLocal")
 	defer span.End()
 
 	log.Debug().Str("name", name).Msg("GetManifestsLocal")
@@ -57,18 +56,6 @@ func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name string,
 		getManifestsFailed.WithLabelValues(name).Inc()
 		return nil, errors.Wrap(err, "failed to get settings")
 	}
-
-	// Code is commented out until Argo fixes the server side manifest generation
-	/*
-		localIncludes := []string{"*.yaml", "*.json", "*.yml"}
-		// sends files to argocd to generate a diff based on them.
-
-		client, err := appClient.GetManifestsWithFiles(context.Background(), grpc_retry.Disable())
-		errors.CheckError(err)
-
-		err = manifeststream.SendApplicationManifestQueryWithFiles(context.Background(), client, appName, appNamespace, changedFilePath, localIncludes)
-		errors.CheckError(err)
-	*/
 
 	source := app.Spec.GetSource()
 

@@ -15,16 +15,18 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 )
 
-type CheckResult struct {
+var tracer = otel.Tracer("pkg/msg")
+
+type Result struct {
 	State            pkg.CommitState
 	Summary, Details string
 }
 
 type AppResults struct {
-	results []CheckResult
+	results []Result
 }
 
-func (ar *AppResults) AddCheckResult(result CheckResult) {
+func (ar *AppResults) AddCheckResult(result Result) {
 	ar.results = append(ar.results, result)
 }
 
@@ -98,7 +100,7 @@ func (m *Message) AddNewApp(ctx context.Context, app string) {
 		return
 	}
 
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "AddNewApp")
+	_, span := tracer.Start(ctx, "AddNewApp")
 	defer span.End()
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -106,12 +108,12 @@ func (m *Message) AddNewApp(ctx context.Context, app string) {
 	m.apps[app] = new(AppResults)
 }
 
-func (m *Message) AddToAppMessage(ctx context.Context, app string, result CheckResult) {
+func (m *Message) AddToAppMessage(ctx context.Context, app string, result Result) {
 	if m.isDeleted(app) {
 		return
 	}
 
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "AddToAppMessage")
+	_, span := tracer.Start(ctx, "AddToAppMessage")
 	defer span.End()
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -146,7 +148,7 @@ func (m *Message) BuildComment(ctx context.Context) string {
 
 // Iterate the map of all apps in this message, building a final comment from their current state
 func (m *Message) buildComment(ctx context.Context) string {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "buildComment")
+	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
 
 	names := getSortedKeys(m.apps)

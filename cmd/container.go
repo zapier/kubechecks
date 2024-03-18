@@ -15,13 +15,14 @@ import (
 	"github.com/zapier/kubechecks/pkg/vcs/gitlab_client"
 )
 
-func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Container, error) {
+func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) (container.Container, error) {
 	var err error
 
 	var ctr = container.Container{
 		Config: cfg,
 	}
 
+	// create vcs client
 	switch cfg.VcsType {
 	case "gitlab":
 		ctr.VcsClient, err = gitlab_client.CreateGitlabClient(cfg)
@@ -34,24 +35,29 @@ func newContainer(ctx context.Context, cfg config.ServerConfig) (container.Conta
 		return ctr, errors.Wrap(err, "failed to create vcs client")
 	}
 
+	// create argo client
 	if ctr.ArgoClient, err = argo_client.NewArgoClient(cfg); err != nil {
 		return ctr, errors.Wrap(err, "failed to create argo client")
 	}
 
-	vcsToArgoMap := appdir.NewVcsToArgoMap()
+	// create vcs to argo map
+	vcsToArgoMap := appdir.NewVcsToArgoMap(ctr.VcsClient.Username())
 	ctr.VcsToArgoMap = vcsToArgoMap
 
+	// watch app modifications, if necessary
 	if cfg.MonitorAllApplications {
 		if err = buildAppsMap(ctx, ctr.ArgoClient, ctr.VcsToArgoMap); err != nil {
 			return ctr, errors.Wrap(err, "failed to build apps map")
 		}
 
-		ctr.ApplicationWatcher, err = app_watcher.NewApplicationWatcher(vcsToArgoMap)
-		if err != nil {
-			return ctr, errors.Wrap(err, "failed to create watch applications")
-		}
+		if watchApps {
+			ctr.ApplicationWatcher, err = app_watcher.NewApplicationWatcher(vcsToArgoMap, cfg)
+			if err != nil {
+				return ctr, errors.Wrap(err, "failed to create watch applications")
+			}
 
-		go ctr.ApplicationWatcher.Run(ctx, 1)
+			go ctr.ApplicationWatcher.Run(ctx, 1)
+		}
 	}
 
 	return ctr, nil

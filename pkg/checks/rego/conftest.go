@@ -1,4 +1,4 @@
-package conftest
+package rego
 
 import (
 	"bytes"
@@ -16,14 +16,13 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/local"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
 const passedMessage = "\nPassed all policy checks."
 
-var reposCache = local.NewReposDirectory()
+var tracer = otel.Tracer("pkg/conftest")
 
 type emojiable interface {
 	ToEmoji(state pkg.CommitState) string
@@ -34,38 +33,22 @@ type emojiable interface {
 // as a GitLab comment. The validation checks resources against Zapier policies and
 // provides feedback for warnings or errors as informational messages. Failure to
 // pass a policy check currently does not block deploy.
-func Conftest(
+func conftest(
 	ctx context.Context, app *v1alpha1.Application, repoPath string, policiesLocations []string, vcs emojiable,
-) (msg.CheckResult, error) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "Conftest")
+) (msg.Result, error) {
+	_, span := tracer.Start(ctx, "Conftest")
 	defer span.End()
 
 	confTestDir := filepath.Join(repoPath, app.Spec.Source.Path)
 
 	log.Debug().Str("dir", confTestDir).Str("app", app.Name).Msg("running conftest in dir for application")
 
-	var locations []string
-	for _, policiesLocation := range policiesLocations {
-		log.Debug().Str("policies-location", policiesLocation).Msg("viper")
-		schemaPath := reposCache.EnsurePath(ctx, repoPath, policiesLocation)
-		if schemaPath != "" {
-			locations = append(locations, schemaPath)
-		}
-	}
-
-	if len(locations) == 0 {
-		return msg.CheckResult{
-			State:   pkg.StateWarning,
-			Summary: "no policies locations configured",
-		}, nil
-	}
-
 	var r runner.TestRunner
 
 	r.NoColor = true
 	r.AllNamespaces = true
 	// PATH To Rego Polices
-	r.Policy = locations
+	r.Policy = policiesLocations
 	r.SuppressExceptions = false
 	r.Trace = false
 
@@ -77,7 +60,7 @@ func Conftest(
 	results, err := r.Run(ctx, []string{confTestDir})
 	if err != nil {
 		telemetry.SetError(span, err, "ConfTest Run")
-		return msg.CheckResult{}, err
+		return msg.Result{}, err
 	}
 
 	var b bytes.Buffer
@@ -101,7 +84,7 @@ func Conftest(
 		innerStrings = append(innerStrings, passedMessage)
 	}
 
-	var cr msg.CheckResult
+	var cr msg.Result
 	if failures {
 		cr.State = pkg.StateFailure
 	} else if warnings {

@@ -1,4 +1,4 @@
-package validate
+package kubeconform
 
 import (
 	"context"
@@ -8,19 +8,21 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/yannh/kubeconform/pkg/validator"
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/config"
-	"github.com/zapier/kubechecks/pkg/local"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
-var reposCache = local.NewReposDirectory()
+var tracer = otel.Tracer("pkg/validate")
 
-func getSchemaLocations(ctx context.Context, cfg config.ServerConfig, tempRepoPath string) []string {
+func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPath string) []string {
+	cfg := ctr.Config
+
 	locations := []string{
 		// schemas included in kubechecks
 		"default",
@@ -28,16 +30,27 @@ func getSchemaLocations(ctx context.Context, cfg config.ServerConfig, tempRepoPa
 
 	// schemas configured globally
 	for _, schemasLocation := range cfg.SchemasLocations {
-		log.Debug().Str("schemas-location", schemasLocation).Msg("viper")
-		schemaPath := reposCache.EnsurePath(ctx, tempRepoPath, schemasLocation)
-		if schemaPath != "" {
-			locations = append(locations, schemaPath)
+		if strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "https://") {
+			locations = append(locations, schemasLocation)
+		} else {
+			if !filepath.IsAbs(schemasLocation) {
+				schemasLocation = filepath.Join(tempRepoPath, schemasLocation)
+			}
+
+			if _, err := os.Stat(schemasLocation); err != nil {
+				log.Warn().
+					Err(err).
+					Str("path", schemasLocation).
+					Msg("schemas location is invalid, skipping")
+			} else {
+				locations = append(locations, schemasLocation)
+			}
 		}
 	}
 
 	for index := range locations {
 		location := locations[index]
-		if location == "default" {
+		if location == "default" || strings.Contains(location, "{{") {
 			continue
 		}
 
@@ -52,15 +65,29 @@ func getSchemaLocations(ctx context.Context, cfg config.ServerConfig, tempRepoPa
 	return locations
 }
 
-func ArgoCdAppValidate(ctx context.Context, cfg config.ServerConfig, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.CheckResult, error) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "ArgoCdAppValidate")
+func wipeDir(dir string) {
+	if err := os.RemoveAll(dir); err != nil {
+		log.Error().
+			Err(err).
+			Str("path", dir).
+			Msg("failed to wipe path")
+	}
+}
+
+func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.Result, error) {
+	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
 	log.Debug().Str("app_name", appName).Str("k8s_version", targetKubernetesVersion).Msg("ArgoCDAppValidate")
 
-	cwd, _ := os.Getwd()
+	schemaCachePath, err := os.MkdirTemp("", "kubechecks-schema-cache-")
+	if err != nil {
+		return msg.Result{}, errors.Wrap(err, "failed to create schema cache")
+	}
+	defer wipeDir(schemaCachePath)
+
 	vOpts := validator.Opts{
-		Cache:   filepath.Join(cwd, "schemas/"),
+		Cache:   schemaCachePath,
 		SkipTLS: false,
 		SkipKinds: map[string]struct{}{
 			"apiextensions.k8s.io/v1/CustomResourceDefinition": {},
@@ -74,7 +101,7 @@ func ArgoCdAppValidate(ctx context.Context, cfg config.ServerConfig, appName, ta
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(ctx, cfg, tempRepoPath)
+		schemaLocations = getSchemaLocations(ctx, ctr, tempRepoPath)
 	)
 
 	log.Debug().Msgf("cache location: %s", vOpts.Cache)
@@ -83,8 +110,7 @@ func ArgoCdAppValidate(ctx context.Context, cfg config.ServerConfig, appName, ta
 
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
-		log.Error().Err(err).Msg("could not create kubeconform validator")
-		return msg.CheckResult{}, fmt.Errorf("could not create kubeconform validator: %v", err)
+		return msg.Result{}, fmt.Errorf("could not create kubeconform validator: %v", err)
 	}
 	result := v.Validate("-", io.NopCloser(strings.NewReader(strings.Join(appManifests, "\n"))))
 	var invalid, failedValidation bool
@@ -109,7 +135,7 @@ func ArgoCdAppValidate(ctx context.Context, cfg config.ServerConfig, appName, ta
 		}
 	}
 
-	var cr msg.CheckResult
+	var cr msg.Result
 	if invalid {
 		cr.State = pkg.StateWarning
 	} else if failedValidation {

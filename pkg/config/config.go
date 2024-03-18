@@ -13,6 +13,7 @@ type ServerConfig struct {
 	ArgoCDToken      string
 	ArgoCDPathPrefix string
 	ArgoCDInsecure   bool
+	KubernetesConfig string
 
 	// otel
 	EnableOtel        bool
@@ -60,6 +61,7 @@ func New() (ServerConfig, error) {
 		EnableOtel:               viper.GetBool("otel-enabled"),
 		EnsureWebhooks:           viper.GetBool("ensure-webhooks"),
 		FallbackK8sVersion:       viper.GetString("fallback-k8s-version"),
+		KubernetesConfig:         viper.GetString("kubernetes-config"),
 		LabelFilter:              viper.GetString("label-filter"),
 		LogLevel:                 logLevel,
 		MonitorAllApplications:   viper.GetBool("monitor-all-applications"),

@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/zapier/kubechecks/pkg/appdir"
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 // ApplicationWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API
@@ -29,9 +30,9 @@ type ApplicationWatcher struct {
 }
 
 // NewApplicationWatcher creates new instance of ApplicationWatcher.
-func NewApplicationWatcher(vcsToArgoMap appdir.VcsToArgoMap) (*ApplicationWatcher, error) {
+func NewApplicationWatcher(vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerConfig) (*ApplicationWatcher, error) {
 	// this assumes kubechecks is running inside the cluster
-	kubeCfg, err := clientcmd.BuildConfigFromFlags("", "")
+	kubeCfg, err := clientcmd.BuildConfigFromFlags("", cfg.KubernetesConfig)
 	if err != nil {
 		log.Fatal().Msgf("Error building kubeconfig: %s", err.Error())
 	}

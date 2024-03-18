@@ -1,10 +1,12 @@
 package container
 
 import (
+	"context"
 	"io/fs"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/app_watcher"
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/argo_client"
@@ -18,7 +20,7 @@ type Container struct {
 
 	Config config.ServerConfig
 
-	VcsClient    vcs.VcsClient
+	VcsClient    vcs.Client
 	VcsToArgoMap VcsToArgoMap
 }
 
@@ -28,6 +30,11 @@ type VcsToArgoMap interface {
 	DeleteApp(*v1alpha1.Application)
 	GetVcsRepos() []string
 	GetAppsInRepo(string) *appdir.AppDirectory
-	GetMap() map[appdir.RepoURL]*appdir.AppDirectory
+	GetMap() map[pkg.RepoURL]*appdir.AppDirectory
 	WalkKustomizeApps(cloneURL string, fs fs.FS) *appdir.AppDirectory
+}
+
+type ReposCache interface {
+	Clone(ctx context.Context, repoUrl string) (string, error)
+	CloneWithBranch(ctx context.Context, repoUrl, targetBranch string) (string, error)
 }
