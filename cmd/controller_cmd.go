@@ -46,6 +46,11 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to create container")
 		}
 
+		log.Info().Msg("initializing git settings")
+		if err = initializeGit(ctr); err != nil {
+			log.Fatal().Err(err).Msg("failed to initialize git settings")
+		}
+
 		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
 			log.Fatal().Err(err).Msg("failed to process policy locations")
 		}
@@ -63,11 +68,6 @@ var ControllerCmd = &cobra.Command{
 			log.Panic().Err(err).Msg("Failed to initialize telemetry")
 		}
 		defer t.Shutdown()
-
-		log.Info().Msg("initializing git settings")
-		if err = initializeGit(ctr); err != nil {
-			log.Fatal().Err(err).Msg("failed to initialize git settings")
-		}
 
 		log.Info().Msgf("starting web server")
 		startWebserver(ctx, ctr, processors)
