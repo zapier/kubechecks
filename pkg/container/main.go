@@ -11,6 +11,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
@@ -19,6 +20,8 @@ type Container struct {
 	ArgoClient         *argo_client.ArgoClient
 
 	Config config.ServerConfig
+
+	RepoManager *git.RepoManager
 
 	VcsClient    vcs.Client
 	VcsToArgoMap VcsToArgoMap

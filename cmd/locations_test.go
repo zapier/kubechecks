@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"path/filepath"
+	"fmt"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -13,72 +13,107 @@ import (
 )
 
 type fakeCloner struct {
-	result *git.Repo
-	err    error
+	cloneUrl, branchName string
+	result               *git.Repo
+	err                  error
 }
 
-func (f fakeCloner) Clone(ctx context.Context, cloneUrl, branchName string) (*git.Repo, error) {
+func (f *fakeCloner) Clone(ctx context.Context, cloneUrl, branchName string) (*git.Repo, error) {
+	f.cloneUrl = cloneUrl
+	f.branchName = branchName
 	return f.result, f.err
 }
 
 const testRoot = "/tmp/path"
+const testUsername = "username"
 
 func TestMaybeCloneGitUrl_HappyPath(t *testing.T) {
 	var (
 		ctx = context.TODO()
 	)
 
-	testcases := []struct {
-		name, input, expected string
-	}{
+	type expected struct {
+		path, cloneUrl, branch string
+	}
+	type testcase struct {
+		name, input string
+		expected    expected
+	}
+
+	testcases := []testcase{
 		{
-			name:     "ssh clone url",
-			input:    "git@gitlab.com:org/team/project.git",
-			expected: testRoot,
+			name:  "ssh clone url",
+			input: "git@gitlab.com:org/team/project.git",
+			expected: expected{
+				path:     testRoot,
+				cloneUrl: fmt.Sprintf("https://%s@gitlab.com/org/team/project", testUsername),
+			},
 		},
 		{
-			name:     "http clone url",
-			input:    "https://gitlab.com/org/team/project.git",
-			expected: testRoot,
+			name:  "http clone url",
+			input: "https://gitlab.com/org/team/project.git",
+			expected: expected{
+				path:     testRoot,
+				cloneUrl: fmt.Sprintf("https://%s@gitlab.com/org/team/project", testUsername),
+			},
 		},
 		{
-			name:     "ssh clone url with subdir",
-			input:    "git@gitlab.com:org/team/project.git?subdir=/charts",
-			expected: filepath.Join(testRoot, "charts"),
+			name:  "ssh clone url with subdir",
+			input: "git@gitlab.com:org/team/project.git?subdir=/charts",
+			expected: expected{
+				cloneUrl: fmt.Sprintf("https://%s@gitlab.com/org/team/project", testUsername),
+				path:     fmt.Sprintf("%s/charts", testRoot),
+			},
 		},
 		{
-			name:     "http clone url with subdir",
-			input:    "https://gitlab.com/org/team/project.git?subdir=/charts",
-			expected: filepath.Join(testRoot, "charts"),
+			name:  "http clone url with subdir",
+			input: "https://gitlab.com/org/team/project.git?subdir=/charts",
+			expected: expected{
+				cloneUrl: fmt.Sprintf("https://%s@gitlab.com/org/team/project", testUsername),
+				path:     fmt.Sprintf("%s/charts", testRoot),
+			},
 		},
 		{
-			name:     "ssh clone url with subdir without slash prefix",
-			input:    "git@gitlab.com:org/team/project.git?subdir=charts",
-			expected: filepath.Join(testRoot, "charts"),
+			name:  "ssh clone url with subdir without slash prefix",
+			input: "git@gitlab.com:org/team/project.git?subdir=charts",
+			expected: expected{
+				cloneUrl: fmt.Sprintf("https://%s@gitlab.com/org/team/project", testUsername),
+				path:     fmt.Sprintf("%s/charts", testRoot),
+			},
 		},
 		{
-			name:     "http clone url with subdir without slash prefix",
-			input:    "https://gitlab.com/org/team/project.git?subdir=charts",
-			expected: filepath.Join(testRoot, "charts"),
+			name:  "http clone url with subdir without slash prefix",
+			input: "https://gitlab.com/org/team/project.git?subdir=charts",
+			expected: expected{
+				cloneUrl: fmt.Sprintf("https://%s@gitlab.com/org/team/project", testUsername),
+				path:     fmt.Sprintf("%s/charts", testRoot),
+			},
 		},
 		{
-			name:     "local path with slash prefix",
-			input:    "/tmp/output",
-			expected: "/tmp/output",
+			name:  "local path with slash prefix",
+			input: "/tmp/output",
+			expected: expected{
+				path: "/tmp/output",
+			},
 		},
 		{
-			name:     "local path without slash prefix",
-			input:    "tmp/output",
-			expected: "tmp/output",
+			name:  "local path without slash prefix",
+			input: "tmp/output",
+			expected: expected{
+				path: "tmp/output",
+			},
 		},
 	}
 
 	for _, tc := range testcases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := maybeCloneGitUrl(ctx, fakeCloner{&git.Repo{Directory: testRoot}, nil}, tc.input)
+			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: nil}
+			actual, err := maybeCloneGitUrl(ctx, fc, tc.input, testUsername)
 			require.NoError(t, err)
-			assert.Equal(t, tc.expected, actual)
+			assert.Equal(t, tc.expected.branch, fc.branchName)
+			assert.Equal(t, tc.expected.cloneUrl, fc.cloneUrl)
+			assert.Equal(t, tc.expected.path, actual)
 		})
 	}
 }
@@ -101,7 +136,8 @@ func TestMaybeCloneGitUrl_URLError(t *testing.T) {
 	for _, tc := range testcases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := maybeCloneGitUrl(ctx, fakeCloner{&git.Repo{Directory: testRoot}, nil}, tc.input)
+			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: nil}
+			result, err := maybeCloneGitUrl(ctx, fc, tc.input, testUsername)
 			require.ErrorContains(t, err, tc.expected)
 			require.Equal(t, "", result)
 		})
@@ -128,7 +164,8 @@ func TestMaybeCloneGitUrl_CloneError(t *testing.T) {
 	for _, tc := range testcases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := maybeCloneGitUrl(ctx, fakeCloner{&git.Repo{Directory: testRoot}, tc.cloneError}, tc.input)
+			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: tc.cloneError}
+			result, err := maybeCloneGitUrl(ctx, fc, tc.input, testUsername)
 			require.ErrorContains(t, err, tc.expected)
 			require.Equal(t, "", result)
 		})

@@ -41,18 +41,16 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to parse configuration")
 		}
 
-		repoManager := git.NewRepoManager(cfg)
-		defer repoManager.Cleanup()
-		if err = processLocations(ctx, repoManager, cfg.PoliciesLocation); err != nil {
-			log.Fatal().Err(err).Msg("failed to process policy locations")
-		}
-		if err = processLocations(ctx, repoManager, cfg.SchemasLocations); err != nil {
-			log.Fatal().Err(err).Msg("failed to process schema locations")
-		}
-
 		ctr, err := newContainer(ctx, cfg, true)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create container")
+		}
+
+		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
+			log.Fatal().Err(err).Msg("failed to process policy locations")
+		}
+		if err = processLocations(ctx, ctr, cfg.SchemasLocations); err != nil {
+			log.Fatal().Err(err).Msg("failed to process schema locations")
 		}
 
 		processors, err := getProcessors(ctr)
