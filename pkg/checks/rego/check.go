@@ -19,8 +19,8 @@ var ErrNoLocationsConfigured = errors.New("no policy locations configured")
 func NewChecker(cfg config.ServerConfig) (*Checker, error) {
 	var c Checker
 
-	var locations []string
-	if len(locations) == 0 {
+	c.locations = cfg.PoliciesLocation
+	if len(c.locations) == 0 {
 		return nil, ErrNoLocationsConfigured
 	}
 
