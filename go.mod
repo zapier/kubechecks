@@ -23,7 +23,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rikatz/kubepug v1.4.0
-	github.com/rs/zerolog v1.31.0
+	github.com/rs/zerolog v1.32.0
 	github.com/sashabaranov/go-openai v1.19.3
 	github.com/shurcooL/githubv4 v0.0.0-20231126234147-1cffa1f02456
 	github.com/sirupsen/logrus v1.9.3
@@ -48,7 +48,6 @@ require (
 	google.golang.org/grpc v1.61.1
 	gopkg.in/dealancer/validate.v2 v2.1.0
 	gopkg.in/yaml.v3 v3.0.1
-	gotest.tools/v3 v3.0.3
 	k8s.io/apimachinery v0.26.12
 	k8s.io/client-go v0.26.12
 )
