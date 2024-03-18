@@ -63,7 +63,7 @@ func (r *Repo) Clone(ctx context.Context) error {
 	defer span.End()
 
 	args := []string{"clone", r.CloneURL, r.Directory}
-	if r.BranchName != "" {
+	if r.BranchName != "" && r.BranchName != "HEAD" {
 		args = append(args, "--branch", r.BranchName)
 	}
 
