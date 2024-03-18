@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -82,7 +83,7 @@ func TestMaybeCloneGitUrl_HappyPath(t *testing.T) {
 	}
 }
 
-func TestMaybeCloneGitUrl_SadPath(t *testing.T) {
+func TestMaybeCloneGitUrl_URLError(t *testing.T) {
 	var (
 		ctx = context.TODO()
 	)
@@ -95,17 +96,39 @@ func TestMaybeCloneGitUrl_SadPath(t *testing.T) {
 			input:    "/blahblah?subdir=blah",
 			expected: "relative and absolute file paths cannot have query parameters",
 		},
-		{
-			name:     "invalid git url",
-			input:    "github.com:a:b:c",
-			expected: "invalid git url: github.com/?/?/?",
-		},
 	}
 
 	for _, tc := range testcases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := maybeCloneGitUrl(ctx, fakeCloner{&git.Repo{Directory: testRoot}, nil}, tc.input)
+			require.ErrorContains(t, err, tc.expected)
+			require.Equal(t, "", result)
+		})
+	}
+}
+
+func TestMaybeCloneGitUrl_CloneError(t *testing.T) {
+	var (
+		ctx = context.TODO()
+	)
+
+	testcases := []struct {
+		name, input, expected string
+		cloneError            error
+	}{
+		{
+			name:       "failed to clone",
+			input:      "github.com/blah/blah",
+			cloneError: errors.New("blahblah"),
+			expected:   "failed to clone: blahblah",
+		},
+	}
+
+	for _, tc := range testcases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := maybeCloneGitUrl(ctx, fakeCloner{&git.Repo{Directory: testRoot}, tc.cloneError}, tc.input)
 			require.ErrorContains(t, err, tc.expected)
 			require.Equal(t, "", result)
 		})
