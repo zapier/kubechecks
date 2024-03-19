@@ -203,8 +203,6 @@ func formatConftestResults(w io.Writer, checkResults []output.CheckResult, vcs e
 
 	var tableData [][]string
 	for _, checkResult := range checkResults {
-		tableData = append(tableData, []string{"success", checkResult.FileName, fmt.Sprintf("SUCCESS x%d", checkResult.Successes)})
-
 		for _, result := range checkResult.Exceptions {
 			tableData = append(tableData, []string{vcs.ToEmoji(pkg.StateError), code(checkResult.FileName), result.Message})
 		}
