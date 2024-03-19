@@ -145,10 +145,6 @@ func TestMaybeCloneGitUrl_URLError(t *testing.T) {
 }
 
 func TestMaybeCloneGitUrl_CloneError(t *testing.T) {
-	var (
-		ctx = context.TODO()
-	)
-
 	testcases := []struct {
 		name, input, expected string
 		cloneError            error
@@ -164,6 +160,10 @@ func TestMaybeCloneGitUrl_CloneError(t *testing.T) {
 	for _, tc := range testcases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
 			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: tc.cloneError}
 			result, err := maybeCloneGitUrl(ctx, fc, tc.input, testUsername)
 			require.ErrorContains(t, err, tc.expected)

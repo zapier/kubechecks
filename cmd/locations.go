@@ -4,9 +4,11 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/builder/remotecontext/urlutil"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/container"
@@ -50,6 +52,26 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, location, vcsUser
 	if err != nil {
 		return "", errors.Wrap(err, "failed to clone")
 	}
+
+	go func() {
+		tick := time.Tick(time.Minute * 5)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick:
+				break
+			}
+
+			if err := repo.Update(ctx); err != nil {
+				log.Warn().
+					Err(err).
+					Str("path", repo.Directory).
+					Str("url", repo.CloneURL).
+					Msg("failed to update repo")
+			}
+		}
+	}()
 
 	path := repo.Directory
 	subdir := query.Get("subdir")
