@@ -60,7 +60,6 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, location, vcsUser
 			case <-ctx.Done():
 				return
 			case <-tick:
-				break
 			}
 
 			if err := repo.Update(ctx); err != nil {
