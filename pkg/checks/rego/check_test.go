@@ -91,6 +91,33 @@ deny[msg] {
 			expected: pkg.StateFailure,
 		},
 		{
+			name: "good policy, missing key manifest",
+			policy: `package tests
+
+deny[msg] {
+  input.kind == "Deployment"
+  not input.spec.template.spec.securityContext.runAsNonRoot
+
+  msg := "Containers must not run as root"
+}
+`,
+			manifest: yamlMap{
+				"kind": "Deployment",
+				"metadata": yamlMap{
+					"name":      "test-deployment",
+					"namespace": "test-namespace",
+				},
+				"spec": yamlMap{
+					"template": yamlMap{
+						"spec": yamlMap{
+							"securityContext": yamlMap{},
+						},
+					},
+				},
+			},
+			expected: pkg.StateFailure,
+		},
+		{
 			name: "warn policy, bad manifest",
 			policy: `package tests
 

@@ -87,14 +87,25 @@ func dumpFiles(manifests []string) (string, error) {
 		return "", errors.Wrap(err, "failed to create temp dir")
 	}
 
-	for _, manifest := range manifests {
+	log.Debug().
+		Int("manifest_count", len(manifests)).
+		Msg("dumping manifests")
+
+	for index, manifest := range manifests {
 		filename, err := getFilenameFromRawManifest(manifest)
 		if err != nil {
 			return result, errors.Wrap(err, "failed to get filename from manifest")
 		}
 
 		fullPath := filepath.Join(result, filename)
-		if err = os.WriteFile(fullPath, []byte(manifest), 0o666); err != nil {
+		manifestBytes := []byte(manifest)
+		log.Debug().
+			Str("path", fullPath).
+			Int("index", index).
+			Int("size", len(manifestBytes)).
+			Msg("dumping manifest")
+
+		if err = os.WriteFile(fullPath, manifestBytes, 0o666); err != nil {
 			return result, errors.Wrapf(err, "failed to write %s", filename)
 		}
 	}
@@ -119,7 +130,11 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 		return msg.Result{}, errors.Wrap(err, "failed to write manifests to disk")
 	}
 
-	log.Debug().Str("dir", manifestsPath).Str("app", request.App.Name).Msg("running conftest in dir for application")
+	log.Debug().
+		Strs("policiesPaths", c.locations).
+		Str("manifestsPath", manifestsPath).
+		Str("app", request.App.Name).
+		Msg("running conftest in dir for application")
 
 	r := runner.TestRunner{
 		AllNamespaces:      true,
@@ -146,10 +161,14 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	warnings := false
 	for _, r := range results {
 		for _, f := range r.Warnings {
-			warnings = !f.Passed()
+			if !f.Passed() {
+				warnings = true
+			}
 		}
 		for _, f := range r.Failures {
-			failures = !f.Passed()
+			if !f.Passed() {
+				failures = true
+			}
 		}
 	}
 
@@ -184,10 +203,7 @@ func formatConftestResults(w io.Writer, checkResults []output.CheckResult, vcs e
 
 	var tableData [][]string
 	for _, checkResult := range checkResults {
-		for r := 0; r < checkResult.Successes; r++ {
-			// don't include these to be less noisy
-			//tableData = append(tableData, []string{"success", checkResult.FileName, "SUCCESS"})
-		}
+		tableData = append(tableData, []string{"success", checkResult.FileName, fmt.Sprintf("SUCCESS x%d", checkResult.Successes)})
 
 		for _, result := range checkResult.Exceptions {
 			tableData = append(tableData, []string{vcs.ToEmoji(pkg.StateError), code(checkResult.FileName), result.Message})
