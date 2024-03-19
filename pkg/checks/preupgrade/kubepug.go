@@ -20,7 +20,7 @@ import (
 
 const docLinkFmt = "[%s Deprecation Notes](https://kubernetes.io/docs/reference/using-api/deprecation-guide/#%s-v%d%d)"
 
-var tracer = otel.Tracer("pkg/kubepug")
+var tracer = otel.Tracer("pkg/checks/preupgrade")
 
 func checkApp(ctx context.Context, appName, targetKubernetesVersion string, manifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "KubePug")

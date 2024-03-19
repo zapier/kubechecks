@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -22,7 +21,7 @@ import (
 
 const passedMessage = "\nPassed all policy checks."
 
-var tracer = otel.Tracer("pkg/conftest")
+var tracer = otel.Tracer("pkg/checks/rego")
 
 type emojiable interface {
 	ToEmoji(state pkg.CommitState) string
@@ -34,30 +33,22 @@ type emojiable interface {
 // provides feedback for warnings or errors as informational messages. Failure to
 // pass a policy check currently does not block deploy.
 func conftest(
-	ctx context.Context, app *v1alpha1.Application, repoPath string, policiesLocations []string, vcs emojiable,
+	ctx context.Context, app v1alpha1.Application, manifestsPath string, policiesLocations []string, vcs emojiable,
 ) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "Conftest")
 	defer span.End()
 
-	confTestDir := filepath.Join(repoPath, app.Spec.Source.Path)
+	log.Debug().Str("dir", manifestsPath).Str("app", app.Name).Msg("running conftest in dir for application")
 
-	log.Debug().Str("dir", confTestDir).Str("app", app.Name).Msg("running conftest in dir for application")
+	r := runner.TestRunner{
+		AllNamespaces:      true,
+		NoColor:            true,
+		Policy:             policiesLocations,
+		SuppressExceptions: false,
+		Trace:              false,
+	}
 
-	var r runner.TestRunner
-
-	r.NoColor = true
-	r.AllNamespaces = true
-	// PATH To Rego Polices
-	r.Policy = policiesLocations
-	r.SuppressExceptions = false
-	r.Trace = false
-
-	//TODO only do the main values app yaml maybe >.>
-	innerStrings := []string{}
-	failures := false
-	warnings := false
-
-	results, err := r.Run(ctx, []string{confTestDir})
+	results, err := r.Run(ctx, []string{manifestsPath})
 	if err != nil {
 		telemetry.SetError(span, err, "ConfTest Run")
 		return msg.Result{}, err
@@ -65,10 +56,11 @@ func conftest(
 
 	var b bytes.Buffer
 	formatConftestResults(&b, results, vcs)
-	innerStrings = append(innerStrings, fmt.Sprintf("\n\n**%s**\n", app.Spec.Source.Path))
-	s := b.String()
-	s = strings.ReplaceAll(s, fmt.Sprintf("%s/", repoPath), "")
+	resultsMessage := b.String()
+	resultsMessage = strings.ReplaceAll(resultsMessage, fmt.Sprintf("%s/", manifestsPath), "")
 
+	failures := false
+	warnings := false
 	for _, r := range results {
 		for _, f := range r.Warnings {
 			warnings = !f.Passed()
@@ -78,10 +70,8 @@ func conftest(
 		}
 	}
 
-	if strings.TrimSpace(s) != "" {
-		innerStrings = append(innerStrings, s)
-	} else {
-		innerStrings = append(innerStrings, passedMessage)
+	if strings.TrimSpace(resultsMessage) != "" {
+		resultsMessage = passedMessage
 	}
 
 	var cr msg.Result
@@ -94,7 +84,7 @@ func conftest(
 	}
 
 	cr.Summary = "<b>Show Conftest Validation result</b>"
-	cr.Details = strings.Join(innerStrings, "\n")
+	cr.Details = resultsMessage
 
 	return cr, nil
 }

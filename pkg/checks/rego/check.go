@@ -2,9 +2,13 @@ package rego
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/msg"
@@ -27,17 +31,37 @@ func NewChecker(cfg config.ServerConfig) (*Checker, error) {
 	return &c, nil
 }
 
-func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result, error) {
-	argoApp, err := request.Container.ArgoClient.GetApplicationByName(ctx, request.AppName)
+func dumpFiles(manifests []string) (string, error) {
+	result, err := os.MkdirTemp("", "kubechecks-manifests-")
 	if err != nil {
-		return msg.Result{}, errors.Wrapf(err, "could not retrieve ArgoCD App data: %q", request.AppName)
+		return "", errors.Wrap(err, "failed to create temp dir")
+	}
+
+	for index, manifest := range manifests {
+		filename := fmt.Sprintf("%d.yaml", index)
+		fullPath := filepath.Join(result, filename)
+		if err = os.WriteFile(fullPath, []byte(manifest), 0o666); err != nil {
+			return result, errors.Wrapf(err, "failed to write %s", filename)
+		}
+	}
+
+	return result, nil
+}
+
+func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result, error) {
+	path, err := dumpFiles(request.JsonManifests)
+	if path != "" {
+		defer pkg.WipeDir(path)
+	}
+	if err != nil {
+		return msg.Result{}, errors.Wrap(err, "failed to write manifests to disk")
 	}
 
 	cr, err := conftest(
-		ctx, argoApp, request.Repo.Directory, c.locations, request.Container.VcsClient,
+		ctx, request.App, path, c.locations, request.Container.VcsClient,
 	)
 	if err != nil {
-		return msg.Result{}, err
+		return msg.Result{}, errors.Wrap(err, "failed to run conftest")
 	}
 
 	return cr, nil
