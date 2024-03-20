@@ -67,5 +67,12 @@ Create the name of the service account to use
 Create the name of the secret file to use
 */}}
 {{- define "kubechecks.secretsName" -}}
+{{- if .Values.secrets.existingSecretName }}
+{{- if .Values.secrets.create }}
+{{ fail "secrets.create and secrets.existingSecretName cannot be set at the same time" }}
+{{- end -}}
+{{- .Values.secrets.existingSecretName }}
+{{- else }}
 {{- tpl .Values.secrets.name . }}
+{{- end -}}
 {{- end -}}

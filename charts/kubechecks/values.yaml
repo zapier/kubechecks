@@ -91,6 +91,8 @@ deployment:
 secrets:
   create: false
   name: '{{ include "kubechecks.fullname" . }}'
+  # Set this to use an existing secret in this namespace
+  existingSecretName: ''
   # envs can be used for writing sensitive environment variables
   # to the secret resource. These should be passed into the
   # deployment as arguments.

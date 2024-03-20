@@ -168,6 +168,18 @@ tests:
                 name: new-configmap
             - secretMap:
                 name: new-secret
+  - it: can use existing secret
+    set:
+      secrets:
+        existingSecretName: existing-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom
+          value:
+            - configMapRef:
+                name: kubechecks
+            - secretRef:
+                name: existing-secret
   - it: should render tag as annotation
     chart:
       appVersion: 1.0.0

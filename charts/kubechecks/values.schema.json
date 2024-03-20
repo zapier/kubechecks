@@ -172,6 +172,9 @@
         "name": {
           "type": "string"
         },
+        "existingSecretName": {
+          "type": "string"
+        },
         "env": {
           "$ref": "#/$defs/key-value-map"
         }

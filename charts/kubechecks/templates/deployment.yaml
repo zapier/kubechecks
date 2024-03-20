@@ -47,7 +47,7 @@ spec:
             - configMapRef:
                 name: {{ include "kubechecks.name" . }}
             {{- end }}
-            {{- if .Values.secrets.create }}
+            {{- if or .Values.secrets.create (.Values.secrets).existingSecretName }}
             - secretRef:
                 name: {{ include "kubechecks.secretsName" . }}
             {{- end }}
