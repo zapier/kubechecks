@@ -22,5 +22,4 @@ func TestNew(t *testing.T) {
 	assert.Equal(t, zerolog.InfoLevel, cfg.LogLevel)
 	assert.Equal(t, true, cfg.ArgoCDInsecure)
 	assert.Equal(t, pkg.StateWarning, cfg.WorstConfTestState, "worst states can be overridden")
-
 }
