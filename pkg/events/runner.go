@@ -51,13 +51,18 @@ func newRunner(
 
 type checkFunction func(ctx context.Context, data checks.Request) (msg.Result, error)
 
-func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction) {
+func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstState pkg.CommitState) {
 	r.wg.Add(1)
 
 	go func() {
 		logger := r.Log
 
 		ctx, span := tracer.Start(ctx, desc)
+
+		addToAppMessage := func(result msg.Result) {
+			result.State = pkg.BestState(result.State, worstState)
+			r.Note.AddToAppMessage(ctx, r.AppName, result)
+		}
 
 		defer func() {
 			r.wg.Done()
@@ -71,7 +76,7 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction) {
 					Summary: desc,
 					Details: fmt.Sprintf(errorCommentFormat, desc, err),
 				}
-				r.Note.AddToAppMessage(ctx, r.AppName, result)
+				addToAppMessage(result)
 			}
 		}()
 
@@ -80,23 +85,23 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction) {
 			Logger()
 
 		logger.Info().Msgf("running check")
-		cr, err := fn(ctx, r.Request)
+		result, err := fn(ctx, r.Request)
 		logger.Info().
 			Err(err).
-			Uint8("result", uint8(cr.State)).
+			Uint8("result", uint8(result.State)).
 			Msg("check result")
 
 		if err != nil {
 			telemetry.SetError(span, err, desc)
-			result := msg.Result{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}
-			r.Note.AddToAppMessage(ctx, r.AppName, result)
+			result = msg.Result{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}
+			addToAppMessage(result)
 			return
 		}
 
-		r.Note.AddToAppMessage(ctx, r.AppName, cr)
+		addToAppMessage(result)
 
 		logger.Info().
-			Str("result", cr.State.BareString()).
+			Str("result", result.State.BareString()).
 			Msgf("check done")
 	}()
 }

@@ -8,6 +8,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 type ServerConfig struct {
@@ -34,14 +36,24 @@ type ServerConfig struct {
 	WebhookUrlBase string `mapstructure:"webhook-url-base"`
 	UrlPrefix      string `mapstructure:"webhook-url-prefix"`
 
+	// checks
+	// -- conftest
+	EnableConfTest     bool            `mapstructure:"enable-conftest"`
+	PoliciesLocation   []string        `mapstructure:"policies-location"`
+	WorstConfTestState pkg.CommitState `mapstructure:"worst-conftest-state"`
+	// -- kubeconform
+	EnableKubeConform     bool            `mapstructure:"enable-kubeconform"`
+	WorstKubeConformState pkg.CommitState `mapstructure:"worst-kubeconform-state"`
+	// -- preupgrade
+	EnablePreupgrade     bool            `mapstructure:"enable-preupgrade"`
+	WorstPreupgradeState pkg.CommitState `mapstructure:"worst-preupgrade-state"`
+
 	// misc
-	EnableConfTest           bool          `mapstructure:"enable-conftest"`
 	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`
 	LabelFilter              string        `mapstructure:"label-filter"`
 	LogLevel                 zerolog.Level `mapstructure:"log-level"`
 	MonitorAllApplications   bool          `mapstructure:"monitor-all-applications"`
 	OpenAIAPIToken           string        `mapstructure:"openai-api-token"`
-	PoliciesLocation         []string      `mapstructure:"policies-location"`
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
@@ -59,6 +71,12 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 				input := value.(string)
 				return zerolog.ParseLevel(input)
 			}
+
+			if in.String() == "string" && out.String() == "pkg.CommitState" {
+				input := value.(string)
+				return pkg.ParseCommitState(input)
+			}
+
 			return value, nil
 		}
 	}); err != nil {
