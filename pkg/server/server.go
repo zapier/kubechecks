@@ -7,13 +7,14 @@ import (
 	"strings"
 
 	"github.com/heptiolabs/healthcheck"
-	"github.com/labstack/echo-contrib/prometheus"
+	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/ziflex/lecho/v3"
 
+	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
@@ -21,11 +22,12 @@ import (
 const KubeChecksHooksPathPrefix = "/hooks"
 
 type Server struct {
-	ctr container.Container
+	ctr        container.Container
+	processors []checks.ProcessorEntry
 }
 
-func NewServer(ctr container.Container) *Server {
-	return &Server{ctr: ctr}
+func NewServer(ctr container.Container, processors []checks.ProcessorEntry) *Server {
+	return &Server{ctr: ctr, processors: processors}
 }
 
 func (s *Server) Start(ctx context.Context) {
@@ -35,20 +37,20 @@ func (s *Server) Start(ctx context.Context) {
 
 	e := echo.New()
 	e.HideBanner = true
-	e.Use(middleware.Recover())
 	e.Logger = lecho.New(log.Logger)
-	// Enable metrics middleware
-	p := prometheus.NewPrometheus("kubechecks_echo", nil)
-	p.Use(e)
+
+	e.Use(middleware.Recover())
+	e.Use(echoprometheus.NewMiddleware("kubechecks_echo"))
 
 	// add routes
 	health := healthcheck.NewHandler()
 	e.GET("/ready", echo.WrapHandler(health))
 	e.GET("/live", echo.WrapHandler(health))
+	e.GET("/metrics", echoprometheus.NewHandler())
 
 	hooksGroup := e.Group(s.hooksPrefix())
 
-	ghHooks := NewVCSHookHandler(s.ctr)
+	ghHooks := NewVCSHookHandler(s.ctr, s.processors)
 	ghHooks.AttachHandlers(hooksGroup)
 
 	fmt.Println("Method\tPath")

@@ -12,7 +12,7 @@ import (
 func TestAddApp(t *testing.T) {
 	// Setup your mocks and expected calls here.
 
-	v2a := NewVcsToArgoMap() // This would be mocked accordingly.
+	v2a := NewVcsToArgoMap("vcs-username") // This would be mocked accordingly.
 	app1 := &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},
 		Spec: v1alpha1.ApplicationSpec{
@@ -48,7 +48,7 @@ func TestAddApp(t *testing.T) {
 func TestDeleteApp(t *testing.T) {
 	// Setup your mocks and expected calls here.
 
-	v2a := NewVcsToArgoMap() // This would be mocked accordingly.
+	v2a := NewVcsToArgoMap("vcs-username") // This would be mocked accordingly.
 	app1 := &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},
 		Spec: v1alpha1.ApplicationSpec{

@@ -15,14 +15,19 @@ var processCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 
-		cfg := config.ServerConfig{
-			UrlPrefix:     "--unused--",
-			WebhookSecret: "--unused--",
+		cfg, err := config.New()
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to generate config")
 		}
 
-		ctr, err := newContainer(ctx, cfg)
+		ctr, err := newContainer(ctx, cfg, false)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create container")
+		}
+
+		log.Info().Msg("initializing git settings")
+		if err = initializeGit(ctr); err != nil {
+			log.Fatal().Err(err).Msg("failed to initialize git settings")
 		}
 
 		repo, err := ctr.VcsClient.LoadHook(ctx, args[0])
@@ -31,7 +36,12 @@ var processCmd = &cobra.Command{
 			return
 		}
 
-		server.ProcessCheckEvent(ctx, repo, cfg, ctr)
+		processors, err := getProcessors(ctr)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create processors")
+		}
+
+		server.ProcessCheckEvent(ctx, repo, ctr, processors)
 	},
 }
 

@@ -36,6 +36,10 @@ func boolFlag(flags *pflag.FlagSet, name, usage string, opts ...DocOpt[bool]) {
 	addFlag(name, usage, opts, flags.Bool, flags.BoolP)
 }
 
+func newBoolOpts() DocOpt[bool] {
+	return DocOpt[bool]{}
+}
+
 func newStringOpts() DocOpt[string] {
 	return DocOpt[string]{}
 }

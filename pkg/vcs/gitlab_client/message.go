@@ -7,7 +7,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
-	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/msg"
@@ -17,8 +16,8 @@ import (
 
 const MaxCommentLength = 1_000_000
 
-func (c *Client) PostMessage(ctx context.Context, repo *vcs.Repo, mergeRequestID int, message string) *msg.Message {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "PostMessageToMergeRequest")
+func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) *msg.Message {
+	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
 	if len(message) > MaxCommentLength {
@@ -27,7 +26,7 @@ func (c *Client) PostMessage(ctx context.Context, repo *vcs.Repo, mergeRequestID
 	}
 
 	n, _, err := c.c.Notes.CreateMergeRequestNote(
-		repo.FullName, mergeRequestID,
+		pr.FullName, pr.CheckID,
 		&gitlab.CreateMergeRequestNoteOptions{
 			Body: pkg.Pointer(message),
 		})
@@ -36,11 +35,11 @@ func (c *Client) PostMessage(ctx context.Context, repo *vcs.Repo, mergeRequestID
 		log.Error().Err(err).Msg("could not post message to MR")
 	}
 
-	return msg.NewMessage(repo.FullName, mergeRequestID, n.ID, c)
+	return msg.NewMessage(pr.FullName, pr.CheckID, n.ID, c)
 }
 
 func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "HideOutdatedMessages")
+	_, span := tracer.Start(ctx, "HideOutdatedMessages")
 	defer span.End()
 
 	log.Debug().Msg("hiding outdated comments")
@@ -108,7 +107,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 
 // Iterate over all comments for the Merge Request, deleting any from the authenticated user
 func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID int, notes []*gitlab.Note) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "pruneOldComments")
+	_, span := tracer.Start(ctx, "pruneOldComments")
 	defer span.End()
 
 	log.Debug().Msg("deleting outdated comments")
@@ -126,8 +125,8 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 	return nil
 }
 
-func (c *Client) TidyOutdatedComments(ctx context.Context, repo *vcs.Repo) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "TidyOutdatedMessages")
+func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) error {
+	_, span := tracer.Start(ctx, "TidyOutdatedMessages")
 	defer span.End()
 
 	log.Debug().Msg("Tidying outdated comments")
@@ -137,7 +136,7 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, repo *vcs.Repo) error
 
 	for {
 		// list merge request notes
-		notes, resp, err := c.c.Notes.ListMergeRequestNotes(repo.FullName, repo.CheckID, &gitlab.ListMergeRequestNotesOptions{
+		notes, resp, err := c.c.Notes.ListMergeRequestNotes(pr.FullName, pr.CheckID, &gitlab.ListMergeRequestNotesOptions{
 			Sort:    pkg.Pointer("asc"),
 			OrderBy: pkg.Pointer("created_at"),
 			ListOptions: gitlab.ListOptions{
@@ -157,8 +156,8 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, repo *vcs.Repo) error
 	}
 
 	if strings.ToLower(c.cfg.TidyOutdatedCommentsMode) == "delete" {
-		return c.pruneOldComments(ctx, repo.FullName, repo.CheckID, allNotes)
+		return c.pruneOldComments(ctx, pr.FullName, pr.CheckID, allNotes)
 	}
-	return c.hideOutdatedMessages(ctx, repo.FullName, repo.CheckID, allNotes)
+	return c.hideOutdatedMessages(ctx, pr.FullName, pr.CheckID, allNotes)
 
 }

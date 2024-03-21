@@ -14,18 +14,18 @@ type WebHookConfig struct {
 	Events    []string
 }
 
-// VcsClient represents a VCS client
-type VcsClient interface {
+// Client represents a VCS client
+type Client interface {
 	// PostMessage takes in project name in form "owner/repo" (ie zapier/kubechecks), the PR/MR id, and the actual message
-	PostMessage(context.Context, *Repo, int, string) *msg.Message
+	PostMessage(context.Context, PullRequest, string) *msg.Message
 	// UpdateMessage update a message with new content
 	UpdateMessage(context.Context, *msg.Message, string) error
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
 	VerifyHook(*http.Request, string) ([]byte, error)
 	// ParseHook parses webook payload for valid events
-	ParseHook(*http.Request, []byte) (*Repo, error)
+	ParseHook(*http.Request, []byte) (PullRequest, error)
 	// CommitStatus sets a status for a specific commit on the remote VCS
-	CommitStatus(context.Context, *Repo, pkg.CommitState) error
+	CommitStatus(context.Context, PullRequest, pkg.CommitState) error
 	// GetHookByUrl gets a webhook by url
 	GetHookByUrl(ctx context.Context, repoName, webhookUrl string) (*WebHookConfig, error)
 	// CreateHook creates a webhook that points at kubechecks
@@ -33,9 +33,9 @@ type VcsClient interface {
 	// GetName returns the VCS client name (e.g. "github" or "gitlab")
 	GetName() string
 	// TidyOutdatedComments either by hiding or deleting them
-	TidyOutdatedComments(context.Context, *Repo) error
+	TidyOutdatedComments(context.Context, PullRequest) error
 	// LoadHook creates an EventRequest from the ID of an actual request
-	LoadHook(ctx context.Context, repoAndId string) (*Repo, error)
+	LoadHook(ctx context.Context, repoAndId string) (PullRequest, error)
 
 	Username() string
 	Email() string

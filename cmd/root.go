@@ -58,6 +58,7 @@ func init() {
 	stringFlag(flags, "argocd-api-token", "ArgoCD API token.")
 	stringFlag(flags, "argocd-api-server-addr", "ArgoCD API Server Address.", newStringOpts().withDefault("argocd-server"))
 	boolFlag(flags, "argocd-api-insecure", "Enable to use insecure connections to the ArgoCD API server.")
+	stringFlag(flags, "kubernetes-config", "Path to your kubernetes config file, used to monitor applications.")
 
 	stringFlag(flags, "otel-collector-port", "The OpenTelemetry collector port.")
 	stringFlag(flags, "otel-collector-host", "The OpenTelemetry collector host.")
@@ -66,18 +67,32 @@ func init() {
 	stringFlag(flags, "tidy-outdated-comments-mode", "Sets the mode to use when tidying outdated comments.",
 		newStringOpts().
 			withChoices("hide", "delete").
-			withDefault("hide"),
-	)
+			withDefault("hide"))
 	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. Can be common paths inside the repos being checked or git urls in either git or http(s) format.",
 		newStringSliceOpts().
 			withDefault([]string{"./schemas"}))
 
+	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests.")
 	stringSliceFlag(flags, "policies-location", "Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.",
 		newStringSliceOpts().
 			withDefault([]string{"./policies"}))
+	stringFlag(flags, "worst-conftest-state", "The worst state that can be returned from conftest.",
+		newStringOpts().
+			withDefault("panic"))
+	boolFlag(flags, "enable-kubeconform", "Enable kubeconform checks.",
+		newBoolOpts().
+			withDefault(true))
+	stringFlag(flags, "worst-kubeconform-state", "The worst state that can be returned from kubeconform.",
+		newStringOpts().
+			withDefault("panic"))
+	boolFlag(flags, "enable-preupgrade", "Enable preupgrade checks.",
+		newBoolOpts().
+			withDefault(true))
+	stringFlag(flags, "worst-preupgrade-state", "The worst state that can be returned from preupgrade checks.",
+		newStringOpts().
+			withDefault("panic"))
 
 	panicIfError(viper.BindPFlags(flags))
-
 	setupLogOutput()
 }
 

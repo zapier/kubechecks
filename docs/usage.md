@@ -40,8 +40,11 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address.|`argocd-server`|
 |`KUBECHECKS_ARGOCD_API_TOKEN`|ArgoCD API token.||
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
+|`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
+|`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|
 |`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
 |`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks.|`1.23.0`|
+|`KUBECHECKS_KUBERNETES_CONFIG`|Path to your kubernetes config file, used to monitor applications.||
 |`KUBECHECKS_LABEL_FILTER`|(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook.||
 |`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of error, warn, info, debug, trace.|`info`|
 |`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`false`|
@@ -60,3 +63,6 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.||
 |`KUBECHECKS_WEBHOOK_URL_BASE`|The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.||
 |`KUBECHECKS_WEBHOOK_URL_PREFIX`|If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.||
+|`KUBECHECKS_WORST_CONFTEST_STATE`|The worst state that can be returned from conftest.|`panic`|
+|`KUBECHECKS_WORST_KUBECONFORM_STATE`|The worst state that can be returned from kubeconform.|`panic`|
+|`KUBECHECKS_WORST_PREUPGRADE_STATE`|The worst state that can be returned from preupgrade checks.|`panic`|

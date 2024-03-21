@@ -1,82 +1,86 @@
 package config
 
 import (
+	"reflect"
+
+	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 type ServerConfig struct {
 	// argocd
-	ArgoCDServerAddr string
-	ArgoCDToken      string
-	ArgoCDPathPrefix string
-	ArgoCDInsecure   bool
+	ArgoCDServerAddr string `mapstructure:"argocd-api-server-addr"`
+	ArgoCDToken      string `mapstructure:"argocd-api-token"`
+	ArgoCDPathPrefix string `mapstructure:"argocd-api-path-prefix"`
+	ArgoCDInsecure   bool   `mapstructure:"argocd-api-insecure"`
+	KubernetesConfig string `mapstructure:"kubernetes-config"`
 
 	// otel
-	EnableOtel        bool
-	OtelCollectorHost string
-	OtelCollectorPort string
+	EnableOtel        bool   `mapstructure:"otel-enabled"`
+	OtelCollectorHost string `mapstructure:"otel-collector-host"`
+	OtelCollectorPort string `mapstructure:"otel-collector-port"`
 
 	// vcs
-	VcsBaseUrl string
-	VcsToken   string
-	VcsType    string
+	VcsBaseUrl string `mapstructure:"vcs-base-url"`
+	VcsToken   string `mapstructure:"vcs-token"`
+	VcsType    string `mapstructure:"vcs-type"`
 
 	// webhooks
-	EnsureWebhooks bool
-	WebhookSecret  string
-	WebhookUrlBase string
+	EnsureWebhooks bool   `mapstructure:"ensure-webhooks"`
+	WebhookSecret  string `mapstructure:"webhook-secret"`
+	WebhookUrlBase string `mapstructure:"webhook-url-base"`
+	UrlPrefix      string `mapstructure:"webhook-url-prefix"`
+
+	// checks
+	// -- conftest
+	EnableConfTest     bool            `mapstructure:"enable-conftest"`
+	PoliciesLocation   []string        `mapstructure:"policies-location"`
+	WorstConfTestState pkg.CommitState `mapstructure:"worst-conftest-state"`
+	// -- kubeconform
+	EnableKubeConform     bool            `mapstructure:"enable-kubeconform"`
+	WorstKubeConformState pkg.CommitState `mapstructure:"worst-kubeconform-state"`
+	// -- preupgrade
+	EnablePreupgrade     bool            `mapstructure:"enable-preupgrade"`
+	WorstPreupgradeState pkg.CommitState `mapstructure:"worst-preupgrade-state"`
 
 	// misc
-	EnableConfTest           bool
-	FallbackK8sVersion       string
-	LabelFilter              string
-	LogLevel                 zerolog.Level
-	MonitorAllApplications   bool
-	OpenAIAPIToken           string
-	PoliciesLocation         []string
-	SchemasLocations         []string
-	ShowDebugInfo            bool
-	TidyOutdatedCommentsMode string
-	UrlPrefix                string
+	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`
+	LabelFilter              string        `mapstructure:"label-filter"`
+	LogLevel                 zerolog.Level `mapstructure:"log-level"`
+	MonitorAllApplications   bool          `mapstructure:"monitor-all-applications"`
+	OpenAIAPIToken           string        `mapstructure:"openai-api-token"`
+	SchemasLocations         []string      `mapstructure:"schemas-location"`
+	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
+	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
 }
 
 func New() (ServerConfig, error) {
-	logLevelString := viper.GetString("log-level")
-	logLevel, err := zerolog.ParseLevel(logLevelString)
-	if err != nil {
-		return ServerConfig{}, errors.Wrap(err, "failed to parse log level")
-	}
+	return NewWithViper(viper.GetViper())
+}
 
-	cfg := ServerConfig{
-		ArgoCDInsecure:   viper.GetBool("argocd-api-insecure"),
-		ArgoCDToken:      viper.GetString("argocd-api-token"),
-		ArgoCDPathPrefix: viper.GetString("argocd-api-path-prefix"),
-		ArgoCDServerAddr: viper.GetString("argocd-api-server-addr"),
+func NewWithViper(v *viper.Viper) (ServerConfig, error) {
+	var cfg ServerConfig
+	if err := v.Unmarshal(&cfg, func(config *mapstructure.DecoderConfig) {
+		config.DecodeHook = func(in reflect.Type, out reflect.Type, value interface{}) (interface{}, error) {
+			if in.String() == "string" && out.String() == "zerolog.Level" {
+				input := value.(string)
+				return zerolog.ParseLevel(input)
+			}
 
-		EnableConfTest:           viper.GetBool("enable-conftest"),
-		EnableOtel:               viper.GetBool("otel-enabled"),
-		EnsureWebhooks:           viper.GetBool("ensure-webhooks"),
-		FallbackK8sVersion:       viper.GetString("fallback-k8s-version"),
-		LabelFilter:              viper.GetString("label-filter"),
-		LogLevel:                 logLevel,
-		MonitorAllApplications:   viper.GetBool("monitor-all-applications"),
-		OpenAIAPIToken:           viper.GetString("openai-api-token"),
-		OtelCollectorHost:        viper.GetString("otel-collector-host"),
-		OtelCollectorPort:        viper.GetString("otel-collector-port"),
-		PoliciesLocation:         viper.GetStringSlice("policies-location"),
-		SchemasLocations:         viper.GetStringSlice("schemas-location"),
-		ShowDebugInfo:            viper.GetBool("show-debug-info"),
-		TidyOutdatedCommentsMode: viper.GetString("tidy-outdated-comments-mode"),
-		UrlPrefix:                viper.GetString("webhook-url-prefix"),
-		WebhookSecret:            viper.GetString("webhook-secret"),
-		WebhookUrlBase:           viper.GetString("webhook-url-base"),
+			if in.String() == "string" && out.String() == "pkg.CommitState" {
+				input := value.(string)
+				return pkg.ParseCommitState(input)
+			}
 
-		VcsBaseUrl: viper.GetString("vcs-base-url"),
-		VcsToken:   viper.GetString("vcs-token"),
-		VcsType:    viper.GetString("vcs-type"),
+			return value, nil
+		}
+	}); err != nil {
+		return cfg, errors.Wrap(err, "failed to read configuration")
 	}
 
 	log.Info().Msg("Server Configuration: ")

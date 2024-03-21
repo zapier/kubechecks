@@ -5,24 +5,28 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 type VcsToArgoMap struct {
-	appDirByRepo map[RepoURL]*AppDirectory
+	username     string
+	appDirByRepo map[pkg.RepoURL]*AppDirectory
 }
 
-func NewVcsToArgoMap() VcsToArgoMap {
+func NewVcsToArgoMap(vcsUsername string) VcsToArgoMap {
 	return VcsToArgoMap{
-		appDirByRepo: make(map[RepoURL]*AppDirectory),
+		username:     vcsUsername,
+		appDirByRepo: make(map[pkg.RepoURL]*AppDirectory),
 	}
 }
 
-func (v2a VcsToArgoMap) GetMap() map[RepoURL]*AppDirectory {
+func (v2a VcsToArgoMap) GetMap() map[pkg.RepoURL]*AppDirectory {
 	return v2a.appDirByRepo
 }
 
 func (v2a VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *AppDirectory {
-	repoUrl, err := NormalizeRepoUrl(repoCloneUrl)
+	repoUrl, _, err := pkg.NormalizeRepoUrl(repoCloneUrl)
 	if err != nil {
 		log.Warn().Err(err).Msgf("failed to parse %s", repoCloneUrl)
 	}
@@ -92,7 +96,7 @@ func (v2a VcsToArgoMap) GetVcsRepos() []string {
 	var repos []string
 
 	for key := range v2a.appDirByRepo {
-		repos = append(repos, key.CloneURL())
+		repos = append(repos, key.CloneURL(v2a.username))
 	}
 
 	return repos

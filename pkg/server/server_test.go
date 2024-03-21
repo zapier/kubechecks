@@ -3,6 +3,7 @@ package server
 import (
 	"testing"
 
+	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 )
@@ -51,7 +52,7 @@ func TestHooksPrefix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewServer(container.Container{Config: tt.cfg})
+			s := NewServer(container.Container{Config: tt.cfg}, []checks.ProcessorEntry{})
 			if got := s.hooksPrefix(); got != tt.want {
 				t.Errorf("hooksPrefix() = %v, want %v", got, tt.want)
 			}

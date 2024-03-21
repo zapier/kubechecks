@@ -7,20 +7,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zapier/kubechecks/pkg/appdir"
-	"github.com/zapier/kubechecks/pkg/vcs"
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 func TestCreateNewMatcherWithNilVcsMap(t *testing.T) {
 	// setup
 	var (
-		repo vcs.Repo
-		path string
+		repo git.Repo
 
-		vcsMap = appdir.NewVcsToArgoMap()
+		vcsMap = appdir.NewVcsToArgoMap("vcs-username")
 	)
 
 	// run test
-	matcher, err := NewArgocdMatcher(vcsMap, &repo, path)
+	matcher, err := NewArgocdMatcher(vcsMap, &repo)
 	require.NoError(t, err)
 
 	// verify results

@@ -6,7 +6,6 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/xanzy/go-gitlab"
-	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo_config"
@@ -25,7 +24,7 @@ func (c *Client) GetProjectByID(project int) (*gitlab.Project, error) {
 }
 
 func (c *Client) GetRepoConfigFile(ctx context.Context, projectId int, mergeReqId int) ([]byte, error) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "GetRepoConfigFile")
+	_, span := tracer.Start(ctx, "GetRepoConfigFile")
 	defer span.End()
 
 	// check MR branch
