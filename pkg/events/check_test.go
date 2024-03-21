@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/git"
 )
 
@@ -59,17 +60,10 @@ func (m mockVcsClient) Username() string {
 	return "username"
 }
 
-type mockRepoManager struct {
-	err error
-}
-
-func (m mockRepoManager) Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error) {
-	return &git.Repo{CloneURL: cloneURL, BranchName: branchName}, m.err
-}
-
 func TestCheckEventGetRepo(t *testing.T) {
 	cloneURL := "https://github.com/zapier/kubechecks.git"
 	canonical, err := canonicalize(cloneURL)
+	cfg := config.ServerConfig{}
 	require.NoError(t, err)
 
 	ctx := context.TODO()
@@ -77,9 +71,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 	t.Run("empty branch name", func(t *testing.T) {
 		ce := CheckEvent{
 			clonedRepos: make(map[string]*git.Repo),
-			repoManager: mockRepoManager{
-				err: nil,
-			},
+			repoManager: git.NewRepoManager(cfg),
 		}
 
 		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "")
@@ -93,9 +85,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 	t.Run("branch is HEAD", func(t *testing.T) {
 		ce := CheckEvent{
 			clonedRepos: make(map[string]*git.Repo),
-			repoManager: mockRepoManager{
-				err: nil,
-			},
+			repoManager: git.NewRepoManager(cfg),
 		}
 
 		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "HEAD")
@@ -109,9 +99,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 	t.Run("branch is the same as HEAD", func(t *testing.T) {
 		ce := CheckEvent{
 			clonedRepos: make(map[string]*git.Repo),
-			repoManager: mockRepoManager{
-				err: nil,
-			},
+			repoManager: git.NewRepoManager(cfg),
 		}
 
 		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "main")
@@ -125,9 +113,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 	t.Run("branch is not the same as HEAD", func(t *testing.T) {
 		ce := CheckEvent{
 			clonedRepos: make(map[string]*git.Repo),
-			repoManager: mockRepoManager{
-				err: nil,
-			},
+			repoManager: git.NewRepoManager(cfg),
 		}
 
 		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "gh-pages")
