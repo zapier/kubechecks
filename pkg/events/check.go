@@ -374,7 +374,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	)
 
 	for _, processor := range ce.processors {
-		runner.Run(ctx, processor.Name, processor.Processor)
+		runner.Run(ctx, processor.Name, processor.Processor, processor.WorstState)
 	}
 
 	runner.Wait()

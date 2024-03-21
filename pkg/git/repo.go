@@ -62,7 +62,12 @@ func (r *Repo) Clone(ctx context.Context) error {
 	_, span := tracer.Start(ctx, "CloneRepo")
 	defer span.End()
 
-	cmd := r.execCommand("git", "clone", r.CloneURL, r.Directory)
+	args := []string{"clone", r.CloneURL, r.Directory}
+	if r.BranchName != "" && r.BranchName != "HEAD" {
+		args = append(args, "--branch", r.BranchName)
+	}
+
+	cmd := r.execCommand("git", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to clone repository, %s", out)

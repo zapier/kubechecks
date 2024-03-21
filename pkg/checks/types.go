@@ -6,14 +6,16 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
 type ProcessorEntry struct {
-	Name      string
-	Processor func(ctx context.Context, request Request) (msg.Result, error)
+	Name       string
+	Processor  func(ctx context.Context, request Request) (msg.Result, error)
+	WorstState pkg.CommitState
 }
 
 type Processor interface {

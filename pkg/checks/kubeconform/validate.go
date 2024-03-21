@@ -18,7 +18,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
-var tracer = otel.Tracer("pkg/validate")
+var tracer = otel.Tracer("pkg/checks/kubeconform")
 
 func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPath string) []string {
 	cfg := ctr.Config
@@ -65,15 +65,6 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 	return locations
 }
 
-func wipeDir(dir string) {
-	if err := os.RemoveAll(dir); err != nil {
-		log.Error().
-			Err(err).
-			Str("path", dir).
-			Msg("failed to wipe path")
-	}
-}
-
 func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
@@ -84,7 +75,7 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 	if err != nil {
 		return msg.Result{}, errors.Wrap(err, "failed to create schema cache")
 	}
-	defer wipeDir(schemaCachePath)
+	defer pkg.WipeDir(schemaCachePath)
 
 	vOpts := validator.Opts{
 		Cache:   schemaCachePath,

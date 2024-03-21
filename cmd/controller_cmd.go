@@ -46,6 +46,18 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to create container")
 		}
 
+		log.Info().Msg("initializing git settings")
+		if err = initializeGit(ctr); err != nil {
+			log.Fatal().Err(err).Msg("failed to initialize git settings")
+		}
+
+		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
+			log.Fatal().Err(err).Msg("failed to process policy locations")
+		}
+		if err = processLocations(ctx, ctr, cfg.SchemasLocations); err != nil {
+			log.Fatal().Err(err).Msg("failed to process schema locations")
+		}
+
 		processors, err := getProcessors(ctr)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create processors")
@@ -56,11 +68,6 @@ var ControllerCmd = &cobra.Command{
 			log.Panic().Err(err).Msg("Failed to initialize telemetry")
 		}
 		defer t.Shutdown()
-
-		log.Info().Msg("initializing git settings")
-		if err = initializeGit(ctr); err != nil {
-			log.Fatal().Err(err).Msg("failed to initialize git settings")
-		}
 
 		log.Info().Msgf("starting web server")
 		startWebserver(ctx, ctr, processors)
@@ -129,7 +136,7 @@ func init() {
 	stringFlag(flags, "fallback-k8s-version", "Fallback target Kubernetes version for schema / upgrade checks (KUBECHECKS_FALLBACK_K8S_VERSION).",
 		newStringOpts().withDefault("1.23.0"))
 	boolFlag(flags, "show-debug-info", "Set to true to print debug info to the footer of MR comments (KUBECHECKS_SHOW_DEBUG_INFO).")
-	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests (KUBECHECKS_ENABLE_CONFTEST).")
+
 	stringFlag(flags, "label-filter", `(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook (KUBECHECKS_LABEL_FILTER).`)
 	stringFlag(flags, "openai-api-token", "OpenAI API Token.")
 	stringFlag(flags, "webhook-url-base", "The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.")

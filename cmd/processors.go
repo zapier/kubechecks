@@ -15,19 +15,25 @@ func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
 	var procs []checks.ProcessorEntry
 
 	procs = append(procs, checks.ProcessorEntry{
-		Name:      "validating app against schema",
-		Processor: kubeconform.Check,
-	})
-
-	procs = append(procs, checks.ProcessorEntry{
 		Name:      "generating diff for app",
 		Processor: diff.Check,
 	})
 
-	procs = append(procs, checks.ProcessorEntry{
-		Name:      "running pre-upgrade check",
-		Processor: preupgrade.Check,
-	})
+	if ctr.Config.EnableKubeConform {
+		procs = append(procs, checks.ProcessorEntry{
+			Name:       "validating app against schema",
+			Processor:  kubeconform.Check,
+			WorstState: ctr.Config.WorstKubeConformState,
+		})
+	}
+
+	if ctr.Config.EnablePreupgrade {
+		procs = append(procs, checks.ProcessorEntry{
+			Name:       "running pre-upgrade check",
+			Processor:  preupgrade.Check,
+			WorstState: ctr.Config.WorstPreupgradeState,
+		})
+	}
 
 	if ctr.Config.EnableConfTest {
 		checker, err := rego.NewChecker(ctr.Config)
@@ -36,8 +42,9 @@ func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
 		}
 
 		procs = append(procs, checks.ProcessorEntry{
-			Name:      "validation policy",
-			Processor: checker.Check,
+			Name:       "validation policy",
+			Processor:  checker.Check,
+			WorstState: ctr.Config.WorstConfTestState,
 		})
 	}
 

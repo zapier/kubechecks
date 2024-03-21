@@ -11,6 +11,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/vcs/github_client"
 	"github.com/zapier/kubechecks/pkg/vcs/gitlab_client"
 )
@@ -19,7 +20,8 @@ func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) 
 	var err error
 
 	var ctr = container.Container{
-		Config: cfg,
+		Config:      cfg,
+		RepoManager: git.NewRepoManager(cfg),
 	}
 
 	// create vcs client
