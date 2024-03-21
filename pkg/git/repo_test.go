@@ -87,3 +87,18 @@ git commit -m "commit three"
 	require.NoError(t, err)
 	assert.Equal(t, []string{"abc.txt", "ghi.txt"}, files)
 }
+
+func TestRepoGetRemoteHead(t *testing.T) {
+	cfg := config.ServerConfig{}
+	ctx := context.TODO()
+
+	repo := New(cfg, "https://github.com/zapier/kubechecks.git", "")
+	err := repo.Clone(ctx)
+	require.NoError(t, err)
+
+	t.Cleanup(repo.Wipe)
+
+	branch, err := repo.GetRemoteHead()
+	require.NoError(t, err)
+	assert.Equal(t, "main", branch)
+}

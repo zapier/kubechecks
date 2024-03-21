@@ -2,11 +2,9 @@ package git
 
 import (
 	"context"
-	"os"
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg/config"
@@ -38,20 +36,11 @@ func (rm *RepoManager) Clone(ctx context.Context, cloneUrl, branchName string) (
 	return repo, nil
 }
 
-func wipeDir(dir string) {
-	if err := os.RemoveAll(dir); err != nil {
-		log.Error().
-			Err(err).
-			Str("path", dir).
-			Msg("failed to wipe path")
-	}
-}
-
 func (rm *RepoManager) Cleanup() {
 	rm.lock.Lock()
 	defer rm.lock.Unlock()
 
 	for _, repo := range rm.repos {
-		wipeDir(repo.Directory)
+		repo.Wipe()
 	}
 }

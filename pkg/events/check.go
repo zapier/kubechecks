@@ -130,7 +130,15 @@ func canonicalize(cloneURL string) (pkg.RepoURL, error) {
 	return parsed, nil
 }
 
-func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) (*git.Repo, error) {
+func generateRepoKey(cloneURL pkg.RepoURL, branchName string) string {
+	return fmt.Sprintf("%s|||%s", cloneURL.CloneURL(""), branchName)
+}
+
+type hasUsername interface {
+	Username() string
+}
+
+func (ce *CheckEvent) getRepo(ctx context.Context, vcsClient hasUsername, cloneURL, branchName string) (*git.Repo, error) {
 	var (
 		err  error
 		repo *git.Repo
@@ -143,10 +151,13 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse clone url")
 	}
-	cloneURL = parsed.CloneURL(ce.ctr.VcsClient.Username())
+	cloneURL = parsed.CloneURL(vcsClient.Username())
 
 	branchName = strings.TrimSpace(branchName)
-	reposKey := fmt.Sprintf("%s|||%s", cloneURL, branchName)
+	if branchName == "" {
+		branchName = "HEAD"
+	}
+	reposKey := generateRepoKey(parsed, branchName)
 
 	if repo, ok := ce.clonedRepos[reposKey]; ok {
 		return repo, nil
@@ -156,7 +167,33 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to clone repo")
 	}
+
 	ce.clonedRepos[reposKey] = repo
+
+	// if we cloned 'HEAD', figure out its original branch and store a copy of the repo there
+	if branchName == "" || branchName == "HEAD" {
+		remoteHeadBranchName, err := repo.GetRemoteHead()
+		if err != nil {
+			return repo, errors.Wrap(err, "failed to determine remote head")
+		}
+
+		repo.BranchName = remoteHeadBranchName
+		ce.clonedRepos[generateRepoKey(parsed, remoteHeadBranchName)] = repo
+	}
+
+	// if we don't have a 'HEAD' saved for the cloned repo, figure out which branch HEAD points to,
+	// and if it's the one we just cloned, store a copy of it as 'HEAD' for usage later
+	headKey := generateRepoKey(parsed, "HEAD")
+	if _, ok := ce.clonedRepos[headKey]; !ok {
+		remoteHeadBranchName, err := repo.GetRemoteHead()
+		if err != nil {
+			return repo, errors.Wrap(err, "failed to determine remote head")
+		}
+		if remoteHeadBranchName == repo.BranchName {
+			ce.clonedRepos[headKey] = repo
+		}
+	}
+
 	return repo, nil
 }
 
@@ -165,7 +202,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	defer span.End()
 
 	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
-	repo, err := ce.getRepo(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
+	repo, err := ce.getRepo(ctx, ce.ctr.VcsClient, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
 	if err != nil {
 		return errors.Wrap(err, "failed to clone repo")
 	}
@@ -331,7 +368,7 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	// Build a new section for this app in the parent comment
 	ce.vcsNote.AddNewApp(ctx, appName)
 
-	repo, err := ce.getRepo(ctx, appRepoUrl, appSrc.TargetRevision)
+	repo, err := ce.getRepo(ctx, ce.ctr.VcsClient, appRepoUrl, appSrc.TargetRevision)
 	if err != nil {
 		logger.Error().Err(err).Msg("Unable to clone repository")
 		ce.vcsNote.AddToAppMessage(ctx, appName, msg.Result{

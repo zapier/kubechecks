@@ -1,9 +1,16 @@
 package events
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 // TestCleanupGetManifestsError tests the cleanupGetManifestsError function.
@@ -45,4 +52,74 @@ func TestCleanupGetManifestsError(t *testing.T) {
 			}
 		})
 	}
+}
+
+type mockVcsClient struct{}
+
+func (m mockVcsClient) Username() string {
+	return "username"
+}
+
+func TestCheckEventGetRepo(t *testing.T) {
+	cloneURL := "https://github.com/zapier/kubechecks.git"
+	canonical, err := canonicalize(cloneURL)
+	cfg := config.ServerConfig{}
+	require.NoError(t, err)
+
+	ctx := context.TODO()
+
+	t.Run("empty branch name", func(t *testing.T) {
+		ce := CheckEvent{
+			clonedRepos: make(map[string]*git.Repo),
+			repoManager: git.NewRepoManager(cfg),
+		}
+
+		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "")
+		require.NoError(t, err)
+		assert.Equal(t, "main", repo.BranchName)
+		assert.Len(t, ce.clonedRepos, 2)
+		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "HEAD"))
+		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "main"))
+	})
+
+	t.Run("branch is HEAD", func(t *testing.T) {
+		ce := CheckEvent{
+			clonedRepos: make(map[string]*git.Repo),
+			repoManager: git.NewRepoManager(cfg),
+		}
+
+		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "HEAD")
+		require.NoError(t, err)
+		assert.Equal(t, "main", repo.BranchName)
+		assert.Len(t, ce.clonedRepos, 2)
+		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "HEAD"))
+		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "main"))
+	})
+
+	t.Run("branch is the same as HEAD", func(t *testing.T) {
+		ce := CheckEvent{
+			clonedRepos: make(map[string]*git.Repo),
+			repoManager: git.NewRepoManager(cfg),
+		}
+
+		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "main")
+		require.NoError(t, err)
+		assert.Equal(t, "main", repo.BranchName)
+		assert.Len(t, ce.clonedRepos, 2)
+		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "HEAD"))
+		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "main"))
+	})
+
+	t.Run("branch is not the same as HEAD", func(t *testing.T) {
+		ce := CheckEvent{
+			clonedRepos: make(map[string]*git.Repo),
+			repoManager: git.NewRepoManager(cfg),
+		}
+
+		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "gh-pages")
+		require.NoError(t, err)
+		assert.Equal(t, "gh-pages", repo.BranchName)
+		assert.Len(t, ce.clonedRepos, 1)
+		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "gh-pages"))
+	})
 }
