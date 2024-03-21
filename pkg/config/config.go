@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"time"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
@@ -54,6 +55,7 @@ type ServerConfig struct {
 	LogLevel                 zerolog.Level `mapstructure:"log-level"`
 	MonitorAllApplications   bool          `mapstructure:"monitor-all-applications"`
 	OpenAIAPIToken           string        `mapstructure:"openai-api-token"`
+	RepoRefreshInterval      time.Duration `mapstructure:"repo-refresh-interval"`
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
@@ -75,6 +77,11 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 			if in.String() == "string" && out.String() == "pkg.CommitState" {
 				input := value.(string)
 				return pkg.ParseCommitState(input)
+			}
+
+			if in.String() == "string" && out.String() == "time.Duration" {
+				input := value.(string)
+				return time.ParseDuration(input)
 			}
 
 			return value, nil
