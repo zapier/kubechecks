@@ -144,6 +144,8 @@ func init() {
 	stringFlag(flags, "webhook-secret", "Optional secret key for validating the source of incoming webhooks.")
 	boolFlag(flags, "monitor-all-applications", "Monitor all applications in argocd automatically.")
 	boolFlag(flags, "ensure-webhooks", "Ensure that webhooks are created in repositories referenced by argo.")
+	stringFlag(flags, "repo-refresh-interval", "Interval between static repo refreshes (for schemas and policies).",
+		newStringOpts().withDefault("5m"))
 
 	panicIfError(viper.BindPFlags(flags))
 }

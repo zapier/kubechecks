@@ -43,7 +43,7 @@ jobs:
 
       - name: Build and push the helm charts
         run: |
-          earthly \
+          ./earthly \
             --push \
             +release-helm \
               --repo_owner ${{ github.repository_owner }} \
