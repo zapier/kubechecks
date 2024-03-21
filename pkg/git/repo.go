@@ -63,7 +63,7 @@ func (r *Repo) Clone(ctx context.Context) error {
 	defer span.End()
 
 	args := []string{"clone", r.CloneURL, r.Directory}
-	if r.BranchName != "" && r.BranchName != "HEAD" {
+	if r.BranchName != "HEAD" {
 		args = append(args, "--branch", r.BranchName)
 	}
 
@@ -91,6 +91,19 @@ func printFile(s string, d fs.DirEntry, err error) error {
 		println(s)
 	}
 	return nil
+}
+
+func (r *Repo) GetRemoteHead() (string, error) {
+	cmd := r.execCommand("git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to determine which branch HEAD points to")
+	}
+
+	branchName := strings.TrimSpace(string(out))
+	branchName = strings.TrimPrefix(branchName, "origin/")
+
+	return branchName, nil
 }
 
 func (r *Repo) MergeIntoTarget(ctx context.Context, sha string) error {

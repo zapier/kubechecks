@@ -130,6 +130,10 @@ func canonicalize(cloneURL string) (pkg.RepoURL, error) {
 	return parsed, nil
 }
 
+func generateRepoKey(cloneURL, branchName string) string {
+	return fmt.Sprintf("%s|||%s", cloneURL, branchName)
+}
+
 func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) (*git.Repo, error) {
 	var (
 		err  error
@@ -146,7 +150,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	cloneURL = parsed.CloneURL(ce.ctr.VcsClient.Username())
 
 	branchName = strings.TrimSpace(branchName)
-	reposKey := fmt.Sprintf("%s|||%s", cloneURL, branchName)
+	reposKey := generateRepoKey(cloneURL, branchName)
 
 	if repo, ok := ce.clonedRepos[reposKey]; ok {
 		return repo, nil
@@ -156,7 +160,29 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to clone repo")
 	}
+
 	ce.clonedRepos[reposKey] = repo
+
+	// this is all to ensure that one request for `main` and a follow up request for HEAD
+	// (or the other way around) retrieves the same repo
+	if branchName == "" || branchName == "HEAD" {
+		remoteHeadBranchName, err := repo.GetRemoteHead()
+		if err != nil {
+			return repo, errors.Wrap(err, "failed to determine remote head")
+		}
+
+		repo.BranchName = remoteHeadBranchName
+		ce.clonedRepos[generateRepoKey(cloneURL, remoteHeadBranchName)] = repo
+	} else if _, ok := ce.clonedRepos[generateRepoKey(cloneURL, "HEAD")]; !ok {
+		remoteHeadBranchName, err := repo.GetRemoteHead()
+		if err != nil {
+			return repo, errors.Wrap(err, "failed to determine remote head")
+		}
+		if remoteHeadBranchName == repo.BranchName {
+			ce.clonedRepos[generateRepoKey(cloneURL, "HEAD")] = repo
+		}
+	}
+
 	return repo, nil
 }
 
