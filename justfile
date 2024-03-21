@@ -65,4 +65,4 @@ unit_test_race:
 	go test -race ./...
 
 rebuild_docs:
-    earthly +rebuild-docs
+    ./earthly +rebuild-docs

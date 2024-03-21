@@ -17,6 +17,4 @@ jobs:
       - uses: earthly/actions-setup@v1
         with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
-      - run: |
-          earthly \
-            +ci-helm
+      - run: ./earthly +ci-helm

@@ -19,4 +19,4 @@ jobs:
       - uses: earthly/actions-setup@v1
         with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
-      - run: earthly +ci-golang
+      - run: ./earthly +ci-golang
