@@ -17,7 +17,7 @@ import (
 
 func processLocations(ctx context.Context, ctr container.Container, locations []string) error {
 	for index, location := range locations {
-		if newLocation, err := maybeCloneGitUrl(ctx, ctr.RepoManager, location, ctr.VcsClient.Username()); err != nil {
+		if newLocation, err := maybeCloneGitUrl(ctx, ctr.RepoManager, ctr.Config.RepoRefreshInterval, location, ctr.VcsClient.Username()); err != nil {
 			return errors.Wrapf(err, "failed to clone %q", location)
 		} else if newLocation != "" {
 			locations[index] = newLocation
@@ -33,7 +33,7 @@ type cloner interface {
 
 var ErrCannotUseQueryWithFilePath = errors.New("relative and absolute file paths cannot have query parameters")
 
-func maybeCloneGitUrl(ctx context.Context, repoManager cloner, location, vcsUsername string) (string, error) {
+func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDuration time.Duration, location, vcsUsername string) (string, error) {
 	result := strings.SplitN(location, "?", 2)
 	if !urlutil.IsGitURL(result[0]) {
 		if len(result) > 1 {
@@ -53,24 +53,26 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, location, vcsUser
 		return "", errors.Wrap(err, "failed to clone")
 	}
 
-	go func() {
-		tick := time.Tick(time.Minute * 5)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-tick:
-			}
+	if repoRefreshDuration != 0 {
+		go func() {
+			tick := time.Tick(repoRefreshDuration)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick:
+				}
 
-			if err := repo.Update(ctx); err != nil {
-				log.Warn().
-					Err(err).
-					Str("path", repo.Directory).
-					Str("url", repo.CloneURL).
-					Msg("failed to update repo")
+				if err := repo.Update(ctx); err != nil {
+					log.Warn().
+						Err(err).
+						Str("path", repo.Directory).
+						Str("url", repo.CloneURL).
+						Msg("failed to update repo")
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	path := repo.Directory
 	subdir := query.Get("subdir")
