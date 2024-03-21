@@ -37,12 +37,9 @@ runs:
 
     - name: Build and push the Docker image
       shell: bash
-      run: |
-        GIT_COMMIT=$(git rev-parse --short HEAD)
-        
-        earthly \
-          --push \
-          +build \
-            --GIT_TAG=${{ inputs.image_tag }} \
-            --GIT_COMMIT=${GIT_COMMIT} \
-            --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
+      run: >-       
+        ./earthly 
+        --push 
+        +build 
+        --GIT_TAG=${{ inputs.image_tag }}
+        --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}

@@ -26,15 +26,20 @@ func checkApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 	_, span := tracer.Start(ctx, "KubePug")
 	defer span.End()
 
+	logger := log.With().
+		Ctx(ctx).
+		Str("app_name", appName).
+		Logger()
+
 	var outputString []string
 
-	log.Debug().Str("app_name", appName).Msg("KubePug CheckApp")
+	logger.Debug().Msg("KubePug CheckApp")
 
 	// write manifests to temp file because kubepug can only read from file or STDIN
 	// Create a temporary directory
 	tempDir, err := os.MkdirTemp("/tmp", "kubechecks-kubepug")
 	if err != nil {
-		log.Error().Err(err).Msg("could not create temp directory to write manifests for kubepug check")
+		logger.Error().Err(err).Msg("could not create temp directory to write manifests for kubepug check")
 		//return "", err
 		return msg.Result{}, err
 	}
@@ -42,7 +47,9 @@ func checkApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 
 	for i, manifest := range manifests {
 		tmpFile := fmt.Sprintf("%s/%b.yaml", tempDir, i)
-		os.WriteFile(tmpFile, []byte(manifest), 0666)
+		if err = os.WriteFile(tmpFile, []byte(manifest), 0666); err != nil {
+			logger.Error().Err(err).Str("path", tmpFile).Msg("failed to write file")
+		}
 	}
 
 	nextVersion, err := nextKubernetesVersion(targetKubernetesVersion)

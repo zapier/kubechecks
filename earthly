@@ -21,7 +21,7 @@ read_tool_versions_write_to_env() {
         # ignore comments, comments always start with #
         if [[ ${key:0:1} != "#" ]]; then
             full_key="${key/-/_}_tool_version"
-            export "${full_key}=${value}"
+            export "${full_key/-/_}=${value}"
         fi
     done <"$tool_versions_file"
 }
@@ -30,9 +30,13 @@ read_tool_versions_write_to_env '.tool-versions'
 
 set -x
 
+# shellcheck disable=SC2048
 earthly $* \
   --CHART_RELEASER_VERSION=${helm_cr_tool_version} \
   --GOLANG_VERSION=${golang_tool_version} \
+  --GOLANGCI_LINT_VERSION=${golangci_lint_tool_version} \
   --HELM_VERSION=${helm_tool_version} \
   --KUBECONFORM_VERSION=${kubeconform_tool_version} \
-  --KUSTOMIZE_VERSION=${kustomize_tool_version}
+  --KUSTOMIZE_VERSION=${kustomize_tool_version} \
+  --STATICCHECK_VERSION=${staticcheck_tool_version} \
+  --GIT_COMMIT=$(git rev-parse --short HEAD)

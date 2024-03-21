@@ -1,7 +1,6 @@
 VERSION 0.7
 
 ARG --global USERARCH
-ARG --global GOLANG_VERSION="1.21"
 
 test:
     BUILD +ci-golang
@@ -9,7 +8,8 @@ test:
 
 ci-golang:
     BUILD +fmt-golang
-    BUILD +lint-golang
+    BUILD +staticcheck-golang
+    BUILD +golang-ci-lint
     BUILD +validate-golang
     BUILD +test-golang
 
@@ -27,6 +27,7 @@ release:
 go-deps:
     ARG GOOS=linux
     ARG GOARCH=$USERARCH
+    ARG --required GOLANG_VERSION
 
     FROM --platform=linux/$USERARCH golang:$GOLANG_VERSION-bullseye
 
@@ -131,6 +132,8 @@ docker:
     SAVE IMAGE --push $IMAGE_NAME
 
 dlv:
+    ARG --required GOLANG_VERSION
+
     FROM golang:$GOLANG_VERSION-bullseye
 
     RUN apt update && apt install -y ca-certificates curl git
@@ -159,8 +162,18 @@ fmt-golang:
     RUN go fmt \
         && ./hacks/exit-on-changed-files.sh
 
-lint-golang:
-    ARG STATICCHECK_VERSION="2023.1.6"
+golang-ci-lint:
+    ARG --required GOLANGCI_LINT_VERSION
+
+    FROM golangci/golangci-lint:v${GOLANGCI_LINT_VERSION}
+
+    WORKDIR /src
+    COPY . .
+
+    RUN golangci-lint --timeout 15m run --verbose
+
+staticcheck-golang:
+    ARG --required STATICCHECK_VERSION
 
     FROM +go-deps
 

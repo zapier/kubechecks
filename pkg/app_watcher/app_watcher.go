@@ -135,7 +135,7 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout t
 			DeleteFunc: ctrl.onApplicationDeleted,
 		},
 	); err != nil {
-		log.Error().Err(err).Msg("failed to add event handlers")
+		log.Error().Err(err).Msg("failed to add event handler")
 	}
 	return informer, lister
 }
