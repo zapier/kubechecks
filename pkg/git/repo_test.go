@@ -92,7 +92,7 @@ func TestRepoGetRemoteHead(t *testing.T) {
 	cfg := config.ServerConfig{}
 	ctx := context.TODO()
 
-	repo := New(cfg, "git@github.com:zapier/kubechecks.git", "")
+	repo := New(cfg, "https://github.com/zapier/kubechecks.git", "")
 	err := repo.Clone(ctx)
 	require.NoError(t, err)
 
