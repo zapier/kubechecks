@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
@@ -144,6 +145,10 @@ func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
 		cmd.Dir = r.Directory
 	}
 	return cmd
+}
+
+func (r *Repo) Wipe() {
+	pkg.WipeDir(r.Directory)
 }
 
 func (r *Repo) censorVcsToken(args []string) []string {
