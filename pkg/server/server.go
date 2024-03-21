@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/heptiolabs/healthcheck"
-	"github.com/labstack/echo-contrib/prometheus"
+	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
@@ -37,16 +37,16 @@ func (s *Server) Start(ctx context.Context) {
 
 	e := echo.New()
 	e.HideBanner = true
-	e.Use(middleware.Recover())
 	e.Logger = lecho.New(log.Logger)
-	// Enable metrics middleware
-	p := prometheus.NewPrometheus("kubechecks_echo", nil)
-	p.Use(e)
+
+	e.Use(middleware.Recover())
+	e.Use(echoprometheus.NewMiddleware("kubechecks_echo"))
 
 	// add routes
 	health := healthcheck.NewHandler()
 	e.GET("/ready", echo.WrapHandler(health))
 	e.GET("/live", echo.WrapHandler(health))
+	e.GET("/metrics", echoprometheus.NewHandler())
 
 	hooksGroup := e.Group(s.hooksPrefix())
 
