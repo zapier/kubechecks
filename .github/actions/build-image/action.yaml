@@ -5,6 +5,9 @@ inputs:
   image_tag:
     description: The image tag
     required: true
+  tag_latest:
+    description: Tag latest as well as the provided tag
+    default: "false"
   token:
     description: Github token
     required: true
@@ -40,6 +43,7 @@ runs:
       run: >-       
         ./earthly 
         --push 
-        +build 
+        +docker-multiarch
+        ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }} 
         --GIT_TAG=${{ inputs.image_tag }}
         --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
