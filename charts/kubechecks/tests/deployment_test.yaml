@@ -5,9 +5,21 @@ templates: [deployment.yaml]
 values: [basics.min-values.yaml]
 
 tests:
+  - it: defaults to latest image tag
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/version"]
+          value: latest
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/zapier/kubechecks:latest
+
   - it: should render
+    set:
+      deployment:
+        image:
+          tag: v1.0.0
     chart:
-      appVersion: 1.0.0
       version: 0.1.0
     release:
       name: kubechecks
@@ -16,15 +28,16 @@ tests:
           of: Deployment
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/zapier/kubechecks:v1.0.0 # App Version, not chart versions
+          value: ghcr.io/zapier/kubechecks:v1.0.0
       - equal:
           path: metadata.labels
           value:
             app.kubernetes.io/instance: kubechecks
             app.kubernetes.io/managed-by: Helm
             app.kubernetes.io/name: kubechecks
-            app.kubernetes.io/version: 1.0.0
+            app.kubernetes.io/version: v1.0.0
             helm.sh/chart: kubechecks-0.1.0
+
   - it: should allow arbitrary annotations
     set:
       deployment:
