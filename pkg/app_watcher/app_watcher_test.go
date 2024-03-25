@@ -146,3 +146,105 @@ func TestIsGitRepo(t *testing.T) {
 		}
 	}
 }
+
+func TestCanProcessApp(t *testing.T) {
+	tests := []struct {
+		name                     string
+		resource                 interface{}
+		expectedApp              *v1alpha1.Application
+		returnApp, canProcessApp bool
+	}{
+		{
+			name:          "nil resource",
+			resource:      nil,
+			expectedApp:   nil,
+			returnApp:     false,
+			canProcessApp: false,
+		},
+		{
+			name:          "not an app",
+			resource:      new(string),
+			expectedApp:   nil,
+			returnApp:     false,
+			canProcessApp: false,
+		},
+		{
+			name:          "empty app",
+			resource:      new(v1alpha1.Application),
+			expectedApp:   nil,
+			returnApp:     true,
+			canProcessApp: false,
+		},
+		{
+			name: "single source without git repo",
+			resource: &v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						RepoURL: "file://../../../",
+					},
+				},
+			},
+			returnApp:     true,
+			canProcessApp: false,
+		},
+		{
+			name: "single source without git repo",
+			resource: &v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						RepoURL: "git@github.com:user/repo.git",
+					},
+				},
+			},
+			returnApp:     true,
+			canProcessApp: true,
+		},
+		{
+			name: "multi source without git repo",
+			resource: &v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Sources: v1alpha1.ApplicationSources{
+						{
+							RepoURL: "file://../../../",
+						},
+					},
+				},
+			},
+			returnApp:     true,
+			canProcessApp: false,
+		},
+		{
+			name: "multi source with git repo",
+			resource: &v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Sources: v1alpha1.ApplicationSources{
+						{
+							RepoURL: "git@github.com:user/repo.git",
+						},
+					},
+				},
+			},
+			returnApp:     true,
+			canProcessApp: true,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			app, canProcess := canProcessApp(tc.resource)
+
+			if tc.canProcessApp {
+				assert.True(t, canProcess)
+			} else {
+				assert.False(t, canProcess)
+			}
+
+			if tc.returnApp {
+				assert.Equal(t, tc.resource, app)
+			} else {
+				assert.Nil(t, app)
+			}
+		})
+	}
+}

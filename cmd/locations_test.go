@@ -25,6 +25,33 @@ func (f *fakeCloner) Clone(ctx context.Context, cloneUrl, branchName string) (*g
 	return f.result, f.err
 }
 
+func TestMaybeCloneGitUrl_NonGitUrl(t *testing.T) {
+	ctx := context.TODO()
+
+	type testcase struct {
+		name, input string
+	}
+
+	testcases := []testcase{
+		{
+			name:  "https url",
+			input: "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
+		},
+	}
+
+	for _, tc := range testcases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			fc := &fakeCloner{result: nil, err: nil}
+			actual, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername)
+			require.NoError(t, err)
+			assert.Equal(t, "", fc.branchName)
+			assert.Equal(t, "", fc.cloneUrl)
+			assert.Equal(t, tc.input, actual)
+		})
+	}
+}
+
 const testRoot = "/tmp/path"
 const testUsername = "username"
 

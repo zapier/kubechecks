@@ -143,7 +143,7 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout t
 func canProcessApp(obj interface{}) (*appv1alpha1.Application, bool) {
 	app, ok := obj.(*appv1alpha1.Application)
 	if !ok {
-		return &appv1alpha1.Application{}, false
+		return nil, false
 	}
 
 	for _, src := range app.Spec.Sources {
@@ -152,11 +152,13 @@ func canProcessApp(obj interface{}) (*appv1alpha1.Application, bool) {
 		}
 	}
 
-	if !isGitRepo(app.Spec.Source.RepoURL) {
-		return app, false
+	if app.Spec.Source != nil {
+		if isGitRepo(app.Spec.Source.RepoURL) {
+			return app, true
+		}
 	}
 
-	return app, true
+	return app, false
 }
 
 func isGitRepo(url string) bool {
