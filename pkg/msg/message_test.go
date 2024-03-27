@@ -30,7 +30,52 @@ func TestBuildComment(t *testing.T) {
 	}
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.buildComment(context.TODO())
+	comment := m.BuildComment(context.TODO())
+	assert.Equal(t, `# Kubechecks Report
+<details>
+<summary>
+
+## ArgoCD Application Checks: `+"`myapp`"+` :test:
+</summary>
+
+<details>
+<summary>this failed bigly Error :test:</summary>
+
+should add some important details here
+</details></details>`, comment)
+}
+
+func TestBuildComment_SkipUnchanged(t *testing.T) {
+	appResults := map[string]*AppResults{
+		"myapp": {
+			results: []Result{
+				{
+					State:   pkg.StateError,
+					Summary: "this failed bigly",
+					Details: "should add some important details here",
+				},
+			},
+		},
+		"myapp2": {
+			results: []Result{
+				{
+					State:   pkg.StateError,
+					Summary: "this thing failed",
+					Details: "should add some important details here",
+				},
+				{
+					State:             pkg.StateError,
+					Summary:           "this also failed",
+					Details:           "there are no important details",
+					NoChangesDetected: true, // this should remove the app entirely
+				},
+			},
+		},
+	}
+
+	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
+	m.apps = appResults
+	comment := m.BuildComment(context.TODO())
 	assert.Equal(t, `# Kubechecks Report
 <details>
 <summary>
