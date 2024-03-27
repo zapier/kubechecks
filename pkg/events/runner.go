@@ -88,7 +88,7 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstSt
 		result, err := fn(ctx, r.Request)
 		logger.Info().
 			Err(err).
-			Uint8("result", uint8(result.State)).
+			Str("result", result.State.BareString()).
 			Msg("check result")
 
 		if err != nil {
@@ -99,10 +99,6 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstSt
 		}
 
 		addToAppMessage(result)
-
-		logger.Info().
-			Str("result", result.State.BareString()).
-			Msgf("check done")
 	}()
 }
 

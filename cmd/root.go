@@ -91,6 +91,12 @@ func init() {
 	stringFlag(flags, "worst-preupgrade-state", "The worst state that can be returned from preupgrade checks.",
 		newStringOpts().
 			withDefault("panic"))
+	int64Flag(flags, "max-queue-size", "Size of app diff check queue.",
+		newInt64Opts().
+			withDefault(1024))
+	int64Flag(flags, "max-concurrenct-checks", "Number of concurrent checks to run.",
+		newInt64Opts().
+			withDefault(32))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()

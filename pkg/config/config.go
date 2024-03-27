@@ -59,6 +59,8 @@ type ServerConfig struct {
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
+	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
+	MaxConcurrenctChecks     int           `mapstructure:"max-concurrenct-checks"`
 }
 
 func New() (ServerConfig, error) {

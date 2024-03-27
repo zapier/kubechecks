@@ -32,11 +32,10 @@ import (
 var tracer = otel.Tracer("pkg/events")
 
 type CheckEvent struct {
-	fileList     []string // What files have changed in this PR/MR
-	pullRequest  vcs.PullRequest
-	logger       zerolog.Logger
-	workerLimits int
-	vcsNote      *msg.Message
+	fileList    []string // What files have changed in this PR/MR
+	pullRequest vcs.PullRequest
+	logger      zerolog.Logger
+	vcsNote     *msg.Message
 
 	affectedItems affected_apps.AffectedItems
 
@@ -234,17 +233,12 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	// Concurrently process all apps, with a corresponding error channel for reporting back failures
 	ce.addedAppsSet = make(map[string]v1alpha1.Application)
-	ce.appChannel = make(chan *v1alpha1.Application, len(ce.affectedItems.Applications)*2)
-
-	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
-	if ce.workerLimits > len(ce.affectedItems.Applications) {
-		ce.workerLimits = len(ce.affectedItems.Applications)
-	}
+	ce.appChannel = make(chan *v1alpha1.Application, ce.ctr.Config.MaxQueueSize)
 
 	// We make one comment per run, containing output for all the apps
 	ce.vcsNote = ce.createNote(ctx)
 
-	for w := 0; w <= ce.workerLimits; w++ {
+	for w := 0; w <= ce.ctr.Config.MaxConcurrenctChecks; w++ {
 		go ce.appWorkers(ctx, w)
 	}
 
