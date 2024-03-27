@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -40,20 +40,31 @@ func isAppMissingErr(err error) bool {
 	return strings.Contains(err.Error(), "PermissionDenied")
 }
 
+//func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
+//	cr, rawDiff, err := getDiff(ctx, request.JsonManifests, request.App, request.Container, request.QueueApp, request.RemoveApp)
+//	if err != nil {
+//		return cr, err
+//	}
+//
+//	return cr, nil
+//}
+
 /*
-getDiff takes cli output and return as a string or an array of strings instead of printing
+Check takes cli output and return as a string or an array of strings instead of printing
 
 changedFilePath should be the root of the changed folder
 
 from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
 */
-func getDiff(
-	ctx context.Context, manifests []string, app argoappv1.Application,
-	ctr container.Container,
-	addApp, removeApp func(application2 argoappv1.Application),
-) (msg.Result, string, error) {
+func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 	ctx, span := tracer.Start(ctx, "getDiff")
 	defer span.End()
+
+	ctr := request.Container
+	app := request.App
+	manifests := request.JsonManifests
+	removeApp := request.RemoveApp
+	addApp := request.QueueApp
 
 	argoClient := ctr.ArgoClient
 
@@ -71,7 +82,7 @@ func getDiff(
 	if err != nil {
 		if !isAppMissingErr(err) {
 			telemetry.SetError(span, err, "Get Argo Managed Resources")
-			return msg.Result{}, "", err
+			return msg.Result{}, err
 		}
 
 		resources = new(application.ManagedResourcesResponse)
@@ -91,22 +102,22 @@ func getDiff(
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Cluster Settings")
-		return msg.Result{}, "", err
+		return msg.Result{}, err
 	}
 
 	liveObjs, err := cmdutil.LiveObjects(resources.Items)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Live Objects")
-		return msg.Result{}, "", err
+		return msg.Result{}, err
 	}
 
 	groupedObjs, err := groupObjsByKey(unstructureds, liveObjs, app.Spec.Destination.Namespace)
 	if err != nil {
-		return msg.Result{}, "", err
+		return msg.Result{}, err
 	}
 
 	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name); err != nil {
-		return msg.Result{}, "", err
+		return msg.Result{}, err
 	}
 
 	diffBuffer := &strings.Builder{}
@@ -134,13 +145,13 @@ func getDiff(
 			Build()
 		if err != nil {
 			telemetry.SetError(span, err, "Build Diff")
-			return msg.Result{}, "failed to build diff", err
+			return msg.Result{}, err
 		}
 
 		diffRes, err := argodiff.StateDiff(item.live, item.target, diffConfig)
 		if err != nil {
 			telemetry.SetError(span, err, "State Diff")
-			return msg.Result{}, "failed to state diff", err
+			return msg.Result{}, err
 		}
 
 		if diffRes.Modified || item.target == nil || item.live == nil {
@@ -162,7 +173,7 @@ func getDiff(
 			err := PrintDiff(diffBuffer, live, target)
 			if err != nil {
 				telemetry.SetError(span, err, "Print Diff")
-				return msg.Result{}, "", err
+				return msg.Result{}, err
 			}
 			switch {
 			case item.target == nil:
@@ -183,20 +194,23 @@ func getDiff(
 			}
 		}
 	}
-	var summary string
+
+	var cr msg.Result
+
 	if added != 0 || modified != 0 || removed != 0 {
-		summary = fmt.Sprintf("%d added, %d modified, %d removed", added, modified, removed)
+		cr.Summary = fmt.Sprintf("%d added, %d modified, %d removed", added, modified, removed)
 	} else {
-		summary = "No changes"
+		cr.Summary = "No changes"
+		cr.NoChangesDetected = true
 	}
 
 	diff := diffBuffer.String()
 
-	var cr msg.Result
-	cr.Summary = summary
 	cr.Details = fmt.Sprintf("```diff\n%s\n```", diff)
 
-	return cr, diff, nil
+	aiDiffSummary(ctx, request.Note, request.Container.Config, request.AppName, request.JsonManifests, diff)
+
+	return cr, nil
 }
 
 var nilApp = argoappv1.Application{}
