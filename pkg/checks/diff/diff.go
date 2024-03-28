@@ -156,7 +156,7 @@ func processResources(item objKeyLiveTarget, diffRes diff.DiffResult, request ch
 }
 
 func addResourceDiffToMessage(ctx context.Context, diffBuffer *strings.Builder, resourceId string, item objKeyLiveTarget, diffRes diff.DiffResult) error {
-	ctx, span := tracer.Start(ctx, "addResourceDiffToMessage")
+	_, span := tracer.Start(ctx, "addResourceDiffToMessage")
 	defer span.End()
 
 	diffBuffer.WriteString(fmt.Sprintf("===== %s ======\n", resourceId))
@@ -185,7 +185,7 @@ func addResourceDiffToMessage(ctx context.Context, diffBuffer *strings.Builder, 
 }
 
 func generateDiff(ctx context.Context, request checks.Request, argoSettings *settings.Settings, item objKeyLiveTarget) (diff.DiffResult, error) {
-	ctx, span := tracer.Start(ctx, "getResources")
+	_, span := tracer.Start(ctx, "getResources")
 	defer span.End()
 
 	overrides := make(map[string]argoappv1.ResourceOverride)
