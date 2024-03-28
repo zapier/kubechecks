@@ -14,6 +14,7 @@ import (
 	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/util/argo"
 	argodiff "github.com/argoproj/argo-cd/v2/util/argo/diff"
+	"github.com/argoproj/gitops-engine/pkg/diff"
 	"github.com/argoproj/gitops-engine/pkg/sync/hook"
 	"github.com/argoproj/gitops-engine/pkg/sync/ignore"
 	"github.com/argoproj/gitops-engine/pkg/utils/kube"
@@ -60,37 +61,13 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 	ctx, span := tracer.Start(ctx, "getDiff")
 	defer span.End()
 
-	ctr := request.Container
 	app := request.App
-	manifests := request.JsonManifests
-	removeApp := request.RemoveApp
-	addApp := request.QueueApp
-
-	argoClient := ctr.ArgoClient
 
 	log.Debug().Str("name", app.Name).Msg("generating diff for application...")
 
-	settingsCloser, settingsClient := argoClient.GetSettingsClient()
-	defer settingsCloser.Close()
-
-	closer, appClient := argoClient.GetApplicationClient()
-	defer closer.Close()
-
-	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
-		ApplicationName: &app.Name,
-	})
-	if err != nil {
-		if !isAppMissingErr(err) {
-			telemetry.SetError(span, err, "Get Argo Managed Resources")
-			return msg.Result{}, err
-		}
-
-		resources = new(application.ManagedResourcesResponse)
-	}
-
 	items := make([]objKeyLiveTarget, 0)
 	var unstructureds []*unstructured.Unstructured
-	for _, mfst := range manifests {
+	for _, mfst := range request.JsonManifests {
 		obj, err := argoappv1.UnmarshalToUnstructured(mfst)
 		if err != nil {
 			log.Warn().Err(err).Msg("failed to unmarshal to unstructured")
@@ -99,13 +76,18 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 
 		unstructureds = append(unstructureds, obj)
 	}
-	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
+
+	argoSettings, err := getArgoSettings(ctx, request)
 	if err != nil {
-		telemetry.SetError(span, err, "Get Argo Cluster Settings")
 		return msg.Result{}, err
 	}
 
-	liveObjs, err := cmdutil.LiveObjects(resources.Items)
+	resources, err := getResources(ctx, request)
+	if err != nil {
+		return msg.Result{}, err
+	}
+
+	liveObjs, err := cmdutil.LiveObjects(resources)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Live Objects")
 		return msg.Result{}, err
@@ -120,7 +102,7 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 		return msg.Result{}, err
 	}
 
-	diffBuffer := &strings.Builder{}
+	var diffBuffer strings.Builder
 	var added, modified, removed int
 	for _, item := range items {
 		resourceId := fmt.Sprintf("%s/%s %s/%s", item.key.Group, item.key.Kind, item.key.Namespace, item.key.Name)
@@ -128,70 +110,19 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 		if item.target != nil && hook.IsHook(item.target) || item.live != nil && hook.IsHook(item.live) {
 			continue
 		}
-		overrides := make(map[string]argoappv1.ResourceOverride)
-		for k := range argoSettings.ResourceOverrides {
-			val := argoSettings.ResourceOverrides[k]
-			overrides[k] = *val
-		}
 
-		// TODO remove hardcoded IgnoreAggregatedRoles and retrieve the
-		// compareOptions in the protobuf
-		ignoreAggregatedRoles := false
-		diffConfig, err := argodiff.NewDiffConfigBuilder().
-			WithLogger(zerologr.New(&log.Logger)).
-			WithDiffSettings(app.Spec.IgnoreDifferences, overrides, ignoreAggregatedRoles).
-			WithTracking(argoSettings.AppLabelKey, argoSettings.TrackingMethod).
-			WithNoCache().
-			Build()
+		diffRes, err := generateDiff(ctx, request, argoSettings, item)
 		if err != nil {
-			telemetry.SetError(span, err, "Build Diff")
-			return msg.Result{}, err
-		}
-
-		diffRes, err := argodiff.StateDiff(item.live, item.target, diffConfig)
-		if err != nil {
-			telemetry.SetError(span, err, "State Diff")
 			return msg.Result{}, err
 		}
 
 		if diffRes.Modified || item.target == nil || item.live == nil {
-			diffBuffer.WriteString(fmt.Sprintf("===== %s ======\n", resourceId))
-			var live *unstructured.Unstructured
-			var target *unstructured.Unstructured
-			if item.target != nil && item.live != nil {
-				target = &unstructured.Unstructured{}
-				live = item.live
-				if err = json.Unmarshal(diffRes.PredictedLive, target); err != nil {
-					telemetry.SetError(span, err, "JSON Unmarshall")
-					log.Warn().Err(err).Msg("failed to unmarshall json")
-				}
-			} else {
-				live = item.live
-				target = item.target
-			}
-
-			err := PrintDiff(diffBuffer, live, target)
+			err := addResourceDiffToMessage(ctx, &diffBuffer, resourceId, item, diffRes)
 			if err != nil {
-				telemetry.SetError(span, err, "Print Diff")
 				return msg.Result{}, err
 			}
-			switch {
-			case item.target == nil:
-				removed++
-				if app, ok := isApp(item, diffRes.NormalizedLive); ok {
-					removeApp(app)
-				}
-			case item.live == nil:
-				added++
-				if app, ok := isApp(item, diffRes.PredictedLive); ok {
-					addApp(app)
-				}
-			case diffRes.Modified:
-				modified++
-				if app, ok := isApp(item, diffRes.PredictedLive); ok {
-					addApp(app)
-				}
-			}
+
+			processResources(item, diffRes, request, &added, &modified, &removed)
 		}
 	}
 
@@ -204,13 +135,128 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 		cr.NoChangesDetected = true
 	}
 
-	diff := diffBuffer.String()
+	renderedDiff := diffBuffer.String()
 
-	cr.Details = fmt.Sprintf("```diff\n%s\n```", diff)
+	cr.Details = fmt.Sprintf("```diff\n%s\n```", renderedDiff)
 
-	aiDiffSummary(ctx, request.Note, request.Container.Config, request.AppName, request.JsonManifests, diff)
+	aiDiffSummary(ctx, request.Note, request.Container.Config, request.AppName, request.JsonManifests, renderedDiff)
 
 	return cr, nil
+}
+
+func processResources(item objKeyLiveTarget, diffRes diff.DiffResult, request checks.Request, added, modified, removed *int) {
+	switch {
+	case item.target == nil:
+		*removed++
+		if app, ok := isApp(item, diffRes.NormalizedLive); ok {
+			request.RemoveApp(app)
+		}
+	case item.live == nil:
+		*added++
+		if app, ok := isApp(item, diffRes.PredictedLive); ok {
+			request.QueueApp(app)
+		}
+	case diffRes.Modified:
+		*modified++
+		if app, ok := isApp(item, diffRes.PredictedLive); ok {
+			request.QueueApp(app)
+		}
+	}
+}
+
+func addResourceDiffToMessage(ctx context.Context, diffBuffer *strings.Builder, resourceId string, item objKeyLiveTarget, diffRes diff.DiffResult) error {
+	ctx, span := tracer.Start(ctx, "addResourceDiffToMessage")
+	defer span.End()
+
+	diffBuffer.WriteString(fmt.Sprintf("===== %s ======\n", resourceId))
+
+	var live *unstructured.Unstructured
+	var target *unstructured.Unstructured
+	if item.target != nil && item.live != nil {
+		target = &unstructured.Unstructured{}
+		live = item.live
+		if err := json.Unmarshal(diffRes.PredictedLive, target); err != nil {
+			telemetry.SetError(span, err, "JSON Unmarshall")
+			log.Warn().Err(err).Msg("failed to unmarshall json")
+		}
+	} else {
+		live = item.live
+		target = item.target
+	}
+
+	err := PrintDiff(diffBuffer, live, target)
+	if err != nil {
+		telemetry.SetError(span, err, "Print Diff")
+		return err
+	}
+
+	return nil
+}
+
+func generateDiff(ctx context.Context, request checks.Request, argoSettings *settings.Settings, item objKeyLiveTarget) (diff.DiffResult, error) {
+	ctx, span := tracer.Start(ctx, "getResources")
+	defer span.End()
+
+	overrides := make(map[string]argoappv1.ResourceOverride)
+	for k := range argoSettings.ResourceOverrides {
+		val := argoSettings.ResourceOverrides[k]
+		overrides[k] = *val
+	}
+
+	ignoreAggregatedRoles := false
+	diffConfig, err := argodiff.NewDiffConfigBuilder().
+		WithLogger(zerologr.New(&log.Logger)).
+		WithDiffSettings(request.App.Spec.IgnoreDifferences, overrides, ignoreAggregatedRoles).
+		WithTracking(argoSettings.AppLabelKey, argoSettings.TrackingMethod).
+		WithNoCache().
+		Build()
+	if err != nil {
+		telemetry.SetError(span, err, "Build Diff")
+		return diff.DiffResult{}, err
+	}
+
+	diffRes, err := argodiff.StateDiff(item.live, item.target, diffConfig)
+	if err != nil {
+		telemetry.SetError(span, err, "State Diff")
+		return diff.DiffResult{}, err
+	}
+	return diffRes, nil
+}
+
+func getResources(ctx context.Context, request checks.Request) ([]*argoappv1.ResourceDiff, error) {
+	ctx, span := tracer.Start(ctx, "getResources")
+	defer span.End()
+
+	closer, appClient := request.Container.ArgoClient.GetApplicationClient()
+	defer closer.Close()
+
+	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
+		ApplicationName: &request.App.Name,
+	})
+	if err != nil {
+		if !isAppMissingErr(err) {
+			telemetry.SetError(span, err, "Get Argo Managed Resources")
+			return nil, nil
+		}
+
+		resources = new(application.ManagedResourcesResponse)
+	}
+	return resources.Items, err
+}
+
+func getArgoSettings(ctx context.Context, request checks.Request) (*settings.Settings, error) {
+	ctx, span := tracer.Start(ctx, "getArgoSettings")
+	defer span.End()
+
+	settingsCloser, settingsClient := request.Container.ArgoClient.GetSettingsClient()
+	defer settingsCloser.Close()
+
+	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
+	if err != nil {
+		telemetry.SetError(span, err, "Get Argo Cluster Settings")
+		return nil, err
+	}
+	return argoSettings, nil
 }
 
 var nilApp = argoappv1.Application{}
@@ -259,9 +305,9 @@ func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructu
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
-func groupObjsForDiff(resources *application.ManagedResourcesResponse, objs map[kube.ResourceKey]*unstructured.Unstructured, items []objKeyLiveTarget, argoSettings *settings.Settings, appName string) ([]objKeyLiveTarget, error) {
+func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.ResourceKey]*unstructured.Unstructured, items []objKeyLiveTarget, argoSettings *settings.Settings, appName string) ([]objKeyLiveTarget, error) {
 	resourceTracking := argo.NewResourceTracking()
-	for _, res := range resources.Items {
+	for _, res := range resources {
 		var live = &unstructured.Unstructured{}
 		if err := json.Unmarshal([]byte(res.NormalizedLiveState), &live); err != nil {
 			return nil, err
