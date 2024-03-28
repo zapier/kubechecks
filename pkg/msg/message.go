@@ -18,8 +18,9 @@ import (
 var tracer = otel.Tracer("pkg/msg")
 
 type Result struct {
-	State            pkg.CommitState
-	Summary, Details string
+	State             pkg.CommitState
+	Summary, Details  string
+	NoChangesDetected bool
 }
 
 type AppResults struct {
@@ -142,12 +143,8 @@ func (m *Message) SetFooter(start time.Time, commitSHA, labelFilter string, show
 	m.footer = fmt.Sprintf("<small>_Done: Pod: %s, Dur: %v, SHA: %s%s_<small>\n", hostname, duration, pkg.GitCommit, envStr)
 }
 
+// BuildComment iterates the map of all apps in this message, building a final comment from their current state
 func (m *Message) BuildComment(ctx context.Context) string {
-	return m.buildComment(ctx)
-}
-
-// Iterate the map of all apps in this message, building a final comment from their current state
-func (m *Message) buildComment(ctx context.Context) string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
 
@@ -165,7 +162,14 @@ func (m *Message) buildComment(ctx context.Context) string {
 		results := m.apps[appName]
 
 		appState := pkg.StateSuccess
+		noChangesDetected := false
+
 		for _, check := range results.results {
+			if check.NoChangesDetected {
+				noChangesDetected = true
+				continue
+			}
+
 			var summary string
 			if check.State == pkg.StateNone {
 				summary = check.Summary
@@ -176,6 +180,10 @@ func (m *Message) buildComment(ctx context.Context) string {
 			msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
 			checkStrings = append(checkStrings, msg)
 			appState = pkg.WorstState(appState, check.State)
+		}
+
+		if noChangesDetected {
+			continue
 		}
 
 		sb.WriteString("<details>\n")
