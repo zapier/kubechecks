@@ -41,15 +41,6 @@ func isAppMissingErr(err error) bool {
 	return strings.Contains(err.Error(), "PermissionDenied")
 }
 
-//func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
-//	cr, rawDiff, err := getDiff(ctx, request.JsonManifests, request.App, request.Container, request.QueueApp, request.RemoveApp)
-//	if err != nil {
-//		return cr, err
-//	}
-//
-//	return cr, nil
-//}
-
 /*
 Check takes cli output and return as a string or an array of strings instead of printing
 
