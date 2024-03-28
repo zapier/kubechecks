@@ -153,6 +153,7 @@ func (m *Message) BuildComment(ctx context.Context) string {
 	var sb strings.Builder
 	sb.WriteString("# Kubechecks Report\n")
 
+	updateWritten := false
 	for _, appName := range names {
 		if m.isDeleted(appName) {
 			continue
@@ -192,6 +193,12 @@ func (m *Message) BuildComment(ctx context.Context) string {
 		sb.WriteString("</summary>\n\n")
 		sb.WriteString(strings.Join(checkStrings, "\n\n---\n\n"))
 		sb.WriteString("</details>")
+
+		updateWritten = true
+	}
+
+	if !updateWritten {
+		sb.WriteString("No changes")
 	}
 
 	return sb.String()
