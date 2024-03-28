@@ -67,8 +67,5 @@ unit_test_race:
 rebuild_docs:
     ./earthly +rebuild-docs
 
-lint-golang:
-    ./earthly +lint-golang
-
 ci-golang:
     ./earthly +ci-golang
