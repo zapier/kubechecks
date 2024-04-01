@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.21.6
 
 require (
-	github.com/argoproj/argo-cd/v2 v2.10.4
+	github.com/argoproj/argo-cd/v2 v2.10.5
 	github.com/argoproj/gitops-engine v0.7.1-0.20240122213038-792124280fcc
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/creasty/defaults v1.7.0
