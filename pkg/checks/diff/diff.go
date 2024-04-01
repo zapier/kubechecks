@@ -15,8 +15,6 @@ import (
 	"github.com/argoproj/argo-cd/v2/util/argo"
 	argodiff "github.com/argoproj/argo-cd/v2/util/argo/diff"
 	"github.com/argoproj/gitops-engine/pkg/diff"
-	"github.com/argoproj/gitops-engine/pkg/sync/hook"
-	"github.com/argoproj/gitops-engine/pkg/sync/ignore"
 	"github.com/argoproj/gitops-engine/pkg/utils/kube"
 	"github.com/ghodss/yaml"
 	"github.com/go-logr/zerologr"
@@ -98,9 +96,6 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 	for _, item := range items {
 		resourceId := fmt.Sprintf("%s/%s %s/%s", item.key.Group, item.key.Kind, item.key.Namespace, item.key.Name)
 		log.Trace().Str("resource", resourceId).Msg("diffing object")
-		if item.target != nil && hook.IsHook(item.target) || item.live != nil && hook.IsHook(item.live) {
-			continue
-		}
 
 		diffRes, err := generateDiff(ctx, request, argoSettings, item)
 		if err != nil {
@@ -288,9 +283,7 @@ func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructu
 	objByKey := make(map[kube.ResourceKey]*unstructured.Unstructured)
 	for i := range localObs {
 		obj := localObs[i]
-		if !(hook.IsHook(obj) || ignore.Ignore(obj)) {
-			objByKey[kube.GetResourceKey(obj)] = obj
-		}
+		objByKey[kube.GetResourceKey(obj)] = obj
 	}
 	return objByKey, nil
 }
