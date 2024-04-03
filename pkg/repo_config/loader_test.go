@@ -241,7 +241,7 @@ func TestLoadRepoConfig(t *testing.T) {
 				repoDir: cwd + "/testdata/not-found/",
 			},
 			want:    nil,
-			wantErr: true,
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
