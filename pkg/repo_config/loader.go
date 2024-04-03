@@ -1,12 +1,11 @@
 package repo_config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/dealancer/validate.v2"
 	"gopkg.in/yaml.v3"
@@ -23,17 +22,23 @@ var ErrConfigFileNotFound = errors.New("project config file not found")
 func LoadRepoConfig(repoDir string) (*Config, error) {
 	file, err := searchConfigFile(repoDir)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, ErrConfigFileNotFound) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "failed to find config file")
 	}
-	cfg, err := LoadRepoConfigFile(file)
+
+	cfg, err := loadRepoConfigFile(file)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to load repo config file")
 	}
+
 	return cfg, nil
 }
 
 func RepoConfigFilenameVariations() []string {
-	filenames := []string{}
+	var filenames []string
 	for _, ext := range RepoConfigFileExtensions {
 		filenames = append(filenames, RepoConfigFilenamePrefix+ext)
 	}
@@ -44,7 +49,7 @@ func searchConfigFile(repoDir string) (string, error) {
 	for _, ext := range RepoConfigFileExtensions {
 		fn := filepath.Join(repoDir, RepoConfigFilenamePrefix+ext)
 		fi, err := os.Stat(fn)
-		if err != nil && err != os.ErrNotExist && !strings.Contains(err.Error(), "no such file or directory") {
+		if err != nil && !os.IsNotExist(err) {
 			log.Warn().Err(err).Str("filename", fn).Msg("error while attempting to read project config file")
 			continue
 		}
@@ -56,7 +61,7 @@ func searchConfigFile(repoDir string) (string, error) {
 	return "", ErrConfigFileNotFound
 }
 
-func LoadRepoConfigFile(file string) (*Config, error) {
+func loadRepoConfigFile(file string) (*Config, error) {
 	b, err := os.ReadFile(file)
 	if err != nil {
 		log.Error().Err(err).Str("filename", file).Msg("could not read project config file")

@@ -95,9 +95,9 @@ func Test_loadProjectConfigFile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LoadRepoConfigFile(tt.args.file)
+			got, err := loadRepoConfigFile(tt.args.file)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("LoadRepoConfigFile() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("loadRepoConfigFile() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
