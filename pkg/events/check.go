@@ -354,6 +354,21 @@ func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) 
 	))
 	defer span.End()
 
+	defer func() {
+		if err := recover(); err != nil {
+			desc := fmt.Sprintf("panic while checking %s", appName)
+			ce.logger.Error().Str("app", appName).Msgf("panic while running check")
+
+			telemetry.SetError(span, fmt.Errorf("%v", err), "panic while running check")
+			result := msg.Result{
+				State:   pkg.StatePanic,
+				Summary: desc,
+				Details: fmt.Sprintf(errorCommentFormat, desc, err),
+			}
+			ce.vcsNote.AddToAppMessage(ctx, appName, result)
+		}
+	}()
+
 	atomic.AddInt32(&inFlight, 1)
 	defer atomic.AddInt32(&inFlight, -1)
 
