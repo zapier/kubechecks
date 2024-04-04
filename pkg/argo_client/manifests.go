@@ -19,7 +19,7 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
+func (argo *ArgoClient) GetManifestsLocal(ctx context.Context, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
 	var err error
 
 	ctx, span := tracer.Start(ctx, "GetManifestsLocal")
@@ -33,10 +33,10 @@ func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRe
 		getManifestsDuration.WithLabelValues(name).Observe(duration.Seconds())
 	}()
 
-	clusterCloser, clusterClient := argoClient.GetClusterClient()
+	clusterCloser, clusterClient := argo.GetClusterClient()
 	defer clusterCloser.Close()
 
-	settingsCloser, settingsClient := argoClient.GetSettingsClient()
+	settingsCloser, settingsClient := argo.GetSettingsClient()
 	defer settingsCloser.Close()
 
 	log.Debug().
@@ -57,20 +57,8 @@ func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRe
 		return nil, errors.Wrap(err, "failed to get settings")
 	}
 
-	source := app.Spec.GetSource()
-
 	log.Debug().Str("name", name).Msg("generating diff for application...")
-	res, err := repository.GenerateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, source.TargetRevision, &repoapiclient.ManifestRequest{
-		Repo:              &argoappv1.Repository{Repo: source.RepoURL},
-		AppLabelKey:       argoSettings.AppLabelKey,
-		AppName:           app.Name,
-		Namespace:         app.Spec.Destination.Namespace,
-		ApplicationSource: &source,
-		KustomizeOptions:  argoSettings.KustomizeOptions,
-		KubeVersion:       cluster.Info.ServerVersion,
-		ApiVersions:       cluster.Info.APIVersions,
-		TrackingMethod:    argoSettings.TrackingMethod,
-	}, true, &git.NoopCredsStore{}, resource.MustParse("0"), nil)
+	res, err := argo.generateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, app, argoSettings, cluster)
 	if err != nil {
 		telemetry.SetError(span, err, "Generate Manifests")
 		return nil, errors.Wrap(err, "failed to generate manifests")
@@ -81,6 +69,37 @@ func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRe
 	}
 	getManifestsSuccess.WithLabelValues(name).Inc()
 	return res.Manifests, nil
+}
+
+func (argo *ArgoClient) generateManifests(
+	ctx context.Context, appPath, tempRepoDir string, app argoappv1.Application, argoSettings *settings.Settings, cluster *argoappv1.Cluster,
+) (*repoapiclient.ManifestResponse, error) {
+	argo.manifestsLock.Lock()
+	defer argo.manifestsLock.Unlock()
+
+	source := app.Spec.GetSource()
+
+	return repository.GenerateManifests(
+		ctx,
+		appPath,
+		tempRepoDir,
+		source.TargetRevision,
+		&repoapiclient.ManifestRequest{
+			Repo:              &argoappv1.Repository{Repo: source.RepoURL},
+			AppLabelKey:       argoSettings.AppLabelKey,
+			AppName:           app.Name,
+			Namespace:         app.Spec.Destination.Namespace,
+			ApplicationSource: &source,
+			KustomizeOptions:  argoSettings.KustomizeOptions,
+			KubeVersion:       cluster.Info.ServerVersion,
+			ApiVersions:       cluster.Info.APIVersions,
+			TrackingMethod:    argoSettings.TrackingMethod,
+		},
+		true,
+		new(git.NoopCredsStore),
+		resource.MustParse("0"),
+		nil,
+	)
 }
 
 func ConvertJsonToYamlManifests(jsonManifests []string) []string {

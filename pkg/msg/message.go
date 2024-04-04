@@ -57,10 +57,9 @@ type Message struct {
 	NoteID  int
 
 	// Key = Appname, value = Results
-	apps   map[string]*AppResults
-	footer string
-	lock   sync.Mutex
-	vcs    toEmoji
+	apps map[string]*AppResults
+	lock sync.Mutex
+	vcs  toEmoji
 
 	deletedAppsSet map[string]struct{}
 }
@@ -128,10 +127,9 @@ func init() {
 	hostname, _ = os.Hostname()
 }
 
-func (m *Message) SetFooter(start time.Time, commitSHA, labelFilter string, showDebugInfo bool) {
+func (m *Message) buildFooter(start time.Time, commitSHA, labelFilter string, showDebugInfo bool) string {
 	if !showDebugInfo {
-		m.footer = fmt.Sprintf("<small>_Done. CommitSHA: %s_<small>\n", commitSHA)
-		return
+		return fmt.Sprintf("<small> _Done. CommitSHA: %s_ <small>\n", commitSHA)
 	}
 
 	envStr := ""
@@ -140,11 +138,11 @@ func (m *Message) SetFooter(start time.Time, commitSHA, labelFilter string, show
 	}
 	duration := time.Since(start)
 
-	m.footer = fmt.Sprintf("<small>_Done: Pod: %s, Dur: %v, SHA: %s%s_<small>\n", hostname, duration, pkg.GitCommit, envStr)
+	return fmt.Sprintf("<small> _Done: Pod: %s, Dur: %v, SHA: %s%s_ <small>\n", hostname, duration, pkg.GitCommit, envStr)
 }
 
 // BuildComment iterates the map of all apps in this message, building a final comment from their current state
-func (m *Message) BuildComment(ctx context.Context) string {
+func (m *Message) BuildComment(ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool) string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
 
@@ -200,6 +198,9 @@ func (m *Message) BuildComment(ctx context.Context) string {
 	if !updateWritten {
 		sb.WriteString("No changes")
 	}
+
+	footer := m.buildFooter(start, commitSHA, labelFilter, showDebugInfo)
+	sb.WriteString(fmt.Sprintf("\n\n%s", footer))
 
 	return sb.String()
 }

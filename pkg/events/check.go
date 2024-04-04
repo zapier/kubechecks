@@ -15,11 +15,9 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
-	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
@@ -45,10 +43,12 @@ type CheckEvent struct {
 	repoLock    sync.Mutex
 	clonedRepos map[string]*git.Repo
 
-	addedAppsSet map[string]v1alpha1.Application
-	appsSent     int32
-	appChannel   chan *v1alpha1.Application
-	wg           sync.WaitGroup
+	addedAppsSet     map[string]v1alpha1.Application
+	addedAppsSetLock sync.Mutex
+
+	appsSent   int32
+	appChannel chan *v1alpha1.Application
+	wg         sync.WaitGroup
 }
 
 type repoManager interface {
@@ -57,11 +57,13 @@ type repoManager interface {
 
 func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry) *CheckEvent {
 	ce := &CheckEvent{
-		ctr:         ctr,
-		clonedRepos: make(map[string]*git.Repo),
-		processors:  processors,
-		pullRequest: pullRequest,
-		repoManager: repoManager,
+		addedAppsSet: make(map[string]v1alpha1.Application),
+		appChannel:   make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
+		ctr:          ctr,
+		clonedRepos:  make(map[string]*git.Repo),
+		processors:   processors,
+		pullRequest:  pullRequest,
+		repoManager:  repoManager,
 		logger: log.Logger.With().
 			Str("repo", pullRequest.Name).
 			Int("event_id", pullRequest.CheckID).
@@ -197,6 +199,8 @@ func (ce *CheckEvent) getRepo(ctx context.Context, vcsClient hasUsername, cloneU
 }
 
 func (ce *CheckEvent) Process(ctx context.Context) error {
+	start := time.Now()
+
 	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 
@@ -231,15 +235,24 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		return nil
 	}
 
-	// Concurrently process all apps, with a corresponding error channel for reporting back failures
-	ce.addedAppsSet = make(map[string]v1alpha1.Application)
-	ce.appChannel = make(chan *v1alpha1.Application, ce.ctr.Config.MaxQueueSize)
-
 	// We make one comment per run, containing output for all the apps
 	ce.vcsNote = ce.createNote(ctx)
 
-	for w := 0; w <= ce.ctr.Config.MaxConcurrenctChecks; w++ {
-		go ce.appWorkers(ctx, w)
+	for num := 0; num <= ce.ctr.Config.MaxConcurrenctChecks; num++ {
+
+		w := worker{
+			appChannel: ce.appChannel,
+			ctr:        ce.ctr,
+			logger:     ce.logger.With().Int("workerID", num).Logger(),
+			processors: ce.processors,
+			vcsNote:    ce.vcsNote,
+
+			done:      ce.wg.Done,
+			getRepo:   ce.getRepo,
+			queueApp:  ce.queueApp,
+			removeApp: ce.removeApp,
+		}
+		go w.run(ctx)
 	}
 
 	// Produce apps onto channel
@@ -262,7 +275,8 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	ce.logger.Info().Msg("Finished")
 
-	comment := ce.vcsNote.BuildComment(ctx)
+	comment := ce.vcsNote.BuildComment(ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo)
+
 	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
 		return errors.Wrap(err, "failed to push comment")
 	}
@@ -274,10 +288,15 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 }
 
 func (ce *CheckEvent) removeApp(app v1alpha1.Application) {
+	ce.logger.Info().Str("app", app.Name).Msg("removing app")
+
 	ce.vcsNote.RemoveApp(app.Name)
 }
 
 func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
+	ce.addedAppsSetLock.Lock()
+	defer ce.addedAppsSetLock.Unlock()
+
 	name := app.Name
 	dir := app.Spec.GetSource().Path
 
@@ -289,18 +308,20 @@ func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
 
 	ce.addedAppsSet[name] = app
 
-	logger := ce.logger.Debug().
+	logger := ce.logger.With().
 		Str("app", name).
 		Str("dir", dir).
 		Str("cluster-name", app.Spec.Destination.Name).
-		Str("cluster-server", app.Spec.Destination.Server)
+		Str("cluster-server", app.Spec.Destination.Server).
+		Logger()
+	logger.Info().Msg("adding app for processing")
 
 	ce.wg.Add(1)
 	atomic.AddInt32(&ce.appsSent, 1)
 
-	logger.Msg("producing app on channel")
+	logger.Debug().Msg("producing app on channel")
 	ce.appChannel <- &app
-	logger.Msg("finished producing app")
+	logger.Debug().Msg("finished producing app")
 }
 
 // CommitStatus sets the commit status on the MR
@@ -312,120 +333,6 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 	if err := ce.ctr.VcsClient.CommitStatus(ctx, ce.pullRequest, status); err != nil {
 		log.Warn().Err(err).Msg("failed to update commit status")
 	}
-}
-
-// Process all apps on the provided channel
-func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int) {
-	for app := range ce.appChannel {
-		if app != nil {
-			ce.logger.Info().Int("workerID", workerID).Str("app", app.Name).Msg("Processing App")
-			ce.processApp(ctx, *app)
-		} else {
-			log.Warn().Msg("appWorkers received a nil app")
-		}
-
-		ce.wg.Done()
-	}
-}
-
-// processApp is a function that validates and processes a given application manifest against various checks,
-// such as ArgoCD schema validation, diff generation, conftest policy validation, and pre-upgrade checks using kubepug.
-// It takes a context (ctx), application name (app), directory (dir) as input and returns an error if any check fails.
-// The processing is performed concurrently using Go routines and error groups. Any check results are sent through
-// the returnChan. The function also manages the inFlight atomic counter to track active processing routines.
-func (ce *CheckEvent) processApp(ctx context.Context, app v1alpha1.Application) {
-	var (
-		err error
-
-		appName    = app.Name
-		appSrc     = app.Spec.Source
-		appPath    = appSrc.Path
-		appRepoUrl = appSrc.RepoURL
-
-		logger = ce.logger.With().
-			Str("app_name", appName).
-			Str("app_path", appPath).
-			Logger()
-	)
-
-	ctx, span := tracer.Start(ctx, "processApp", trace.WithAttributes(
-		attribute.String("app", appName),
-		attribute.String("dir", appPath),
-	))
-	defer span.End()
-
-	defer func() {
-		if err := recover(); err != nil {
-			desc := fmt.Sprintf("panic while checking %s", appName)
-			ce.logger.Error().Str("app", appName).Msgf("panic while running check")
-
-			telemetry.SetError(span, fmt.Errorf("%v", err), "panic while running check")
-			result := msg.Result{
-				State:   pkg.StatePanic,
-				Summary: desc,
-				Details: fmt.Sprintf(errorCommentFormat, desc, err),
-			}
-			ce.vcsNote.AddToAppMessage(ctx, appName, result)
-		}
-	}()
-
-	atomic.AddInt32(&inFlight, 1)
-	defer atomic.AddInt32(&inFlight, -1)
-
-	start := time.Now()
-	logger.Info().Str("app", appName).Msg("Adding new app")
-	// Build a new section for this app in the parent comment
-	ce.vcsNote.AddNewApp(ctx, appName)
-
-	repo, err := ce.getRepo(ctx, ce.ctr.VcsClient, appRepoUrl, appSrc.TargetRevision)
-	if err != nil {
-		logger.Error().Err(err).Msg("Unable to clone repository")
-		ce.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
-			State:   pkg.StateError,
-			Summary: "failed to clone repo",
-			Details: fmt.Sprintf("Clone URL: `%s`\nTarget Revision: `%s`\n```\n%s\n```", appRepoUrl, appSrc.TargetRevision, err.Error()),
-		})
-		return
-	}
-	repoPath := repo.Directory
-
-	logger.Debug().Str("repo_path", repoPath).Msg("Getting manifests")
-	jsonManifests, err := argo_client.GetManifestsLocal(ctx, ce.ctr.ArgoClient, appName, repoPath, appPath, app)
-	if err != nil {
-		logger.Error().Err(err).Msg("Unable to get manifests")
-		ce.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
-			State:   pkg.StateError,
-			Summary: "Unable to get manifests",
-			Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo.Directory)),
-		})
-		return
-	}
-
-	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
-	yamlManifests := argo_client.ConvertJsonToYamlManifests(jsonManifests)
-	logger.Trace().Msgf("Manifests:\n%+v\n", yamlManifests)
-
-	k8sVersion, err := ce.ctr.ArgoClient.GetKubernetesVersionByApplication(ctx, app)
-	if err != nil {
-		logger.Error().Err(err).Msg("Error retrieving the Kubernetes version")
-		k8sVersion = ce.ctr.Config.FallbackK8sVersion
-	} else {
-		k8sVersion = fmt.Sprintf("%s.0", k8sVersion)
-		logger.Info().Msgf("Kubernetes version: %s", k8sVersion)
-	}
-
-	runner := newRunner(
-		ce.ctr, app, repo, appName, k8sVersion, jsonManifests, yamlManifests, logger, ce.vcsNote,
-		ce.queueApp, ce.removeApp,
-	)
-
-	for _, processor := range ce.processors {
-		runner.Run(ctx, processor.Name, processor.Processor, processor.WorstState)
-	}
-
-	runner.Wait()
-
-	ce.vcsNote.SetFooter(start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo)
 }
 
 const (
