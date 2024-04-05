@@ -1,0 +1,136 @@
+package hooks
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/gitops-engine/pkg/sync/common"
+	"github.com/argoproj/gitops-engine/pkg/sync/hook"
+	"github.com/ghodss/yaml"
+	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/checks"
+	"github.com/zapier/kubechecks/pkg/msg"
+)
+
+var tracer = otel.Tracer("pkg/checks/hooks")
+
+const triple = "```"
+
+func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
+	ctx, span := tracer.Start(ctx, "Check")
+	defer span.End()
+
+	grouped := make(groupedSyncWaves)
+
+	for _, manifest := range request.JsonManifests {
+		obj, err := v1alpha1.UnmarshalToUnstructured(manifest)
+		if err != nil {
+			return msg.Result{}, errors.Wrap(err, "failed to parse manifest")
+		}
+
+		waves, err := phasesAndWaves(obj)
+		if err != nil {
+			return msg.Result{}, errors.Wrap(err, "failed to get phases and waves")
+		}
+		for _, hookInfo := range waves {
+			grouped.addResource(hookInfo.hookType, hookInfo.hookWave, obj)
+		}
+	}
+
+	var phaseNames []common.HookType
+	var phaseDetails []string
+	for _, pw := range grouped.getSortedPhasesAndWaves() {
+		if !slices.Contains(phaseNames, pw.phase) {
+			phaseNames = append(phaseNames, pw.phase)
+		}
+
+		var renderedResources []string
+		for _, r := range pw.resources {
+			data, err := yaml.Marshal(r.Object)
+			if err != nil {
+				return msg.Result{}, errors.Wrap(err, "failed to unmarshal yaml")
+			}
+
+			renderedResource := fmt.Sprintf(
+				"===== %s/%s %s/%s =====\n\n%s\n",
+				r.GetAPIVersion(), r.GetKind(),
+				r.GetNamespace(), r.GetName(),
+				string(data),
+			)
+			renderedResources = append(renderedResources, renderedResource)
+		}
+
+		var countFmt string
+		resourceCount := len(renderedResources)
+		switch resourceCount {
+		case 0:
+			continue
+		case 1:
+			countFmt = "%d resource"
+		default:
+			countFmt = "%d resources"
+		}
+
+		sectionName := fmt.Sprintf("%s phase, wave %d (%s)", pw.phase, pw.wave, countFmt)
+		sectionName = fmt.Sprintf(sectionName, len(renderedResources))
+
+		phaseDetail := fmt.Sprintf(`<details>
+<summary>%s</summary>
+
+`+triple+`diff
+%s
+`+triple+`
+
+</details>`, sectionName, strings.Join(renderedResources, "\n---\n"))
+
+		phaseDetails = append(phaseDetails, phaseDetail)
+	}
+
+	return msg.Result{
+		State:             pkg.StateNone,
+		Summary:           fmt.Sprintf("<b>Sync Phases: %s</b>", strings.Join(toStringSlice(phaseNames), ", ")),
+		Details:           strings.Join(phaseDetails, "\n\n"),
+		NoChangesDetected: false,
+	}, nil
+}
+
+func toStringSlice(hookTypes []common.HookType) []string {
+	result := make([]string, len(hookTypes))
+	for idx := range hookTypes {
+		result[idx] = string(hookTypes[idx])
+	}
+	return result
+}
+
+type hookInfo struct {
+	hookType common.HookType
+	hookWave waveNum
+}
+
+func phasesAndWaves(obj *unstructured.Unstructured) ([]hookInfo, error) {
+	var (
+		syncWave  int64
+		err       error
+		hookInfos []hookInfo
+	)
+
+	if syncWaveStr, ok := obj.GetAnnotations()[common.AnnotationSyncWave]; ok {
+		if syncWave, err = strconv.ParseInt(syncWaveStr, 10, waveNumBits); err != nil {
+			return nil, errors.Wrapf(err, "failed to parse sync wave %s", syncWaveStr)
+		}
+	}
+
+	for _, hookType := range hook.Types(obj) {
+		hookInfos = append(hookInfos, hookInfo{hookType: hookType, hookWave: waveNum(syncWave)})
+	}
+
+	return hookInfos, nil
+}
