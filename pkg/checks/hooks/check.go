@@ -12,7 +12,6 @@ import (
 	"github.com/argoproj/gitops-engine/pkg/sync/hook"
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/zapier/kubechecks/pkg"
@@ -20,14 +19,9 @@ import (
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
-var tracer = otel.Tracer("pkg/checks/hooks")
-
 const triple = "```"
 
-func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
-	ctx, span := tracer.Start(ctx, "Check")
-	defer span.End()
-
+func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 	grouped := make(groupedSyncWaves)
 
 	for _, manifest := range request.JsonManifests {
