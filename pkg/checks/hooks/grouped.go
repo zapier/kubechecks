@@ -20,7 +20,7 @@ func (g groupedSyncWaves) addResource(phase common.HookType, wave waveNum, resou
 		g[phase] = syncWaves
 	}
 
-	phaseResources, ok := syncWaves[wave]
+	phaseResources := syncWaves[wave]
 	phaseResources = append(phaseResources, resource)
 	syncWaves[wave] = phaseResources
 }
