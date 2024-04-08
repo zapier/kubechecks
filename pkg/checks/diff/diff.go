@@ -220,14 +220,14 @@ func getResources(ctx context.Context, request checks.Request) ([]*argoappv1.Res
 		ApplicationName: &request.App.Name,
 	})
 	if err != nil {
-		if !isAppMissingErr(err) {
-			telemetry.SetError(span, err, "Get Argo Managed Resources")
+		if isAppMissingErr(err) {
+			span.RecordError(err)
 			return nil, nil
 		}
 
-		resources = new(application.ManagedResourcesResponse)
+		return nil, err
 	}
-	return resources.Items, err
+	return resources.Items, nil
 }
 
 func getArgoSettings(ctx context.Context, request checks.Request) (*settings.Settings, error) {
