@@ -3,7 +3,6 @@ package hooks
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -24,7 +23,6 @@ func toJson(obj data) string {
 	}
 
 	return string(data)
-
 }
 
 func toYaml(obj data) string {
@@ -38,7 +36,7 @@ func toYaml(obj data) string {
 	}
 
 	text := buf.String()
-	return text
+	return strings.TrimSpace(text)
 }
 
 func TestCheck(t *testing.T) {
@@ -82,11 +80,38 @@ func TestCheck(t *testing.T) {
 		},
 	}
 
+	helmPostInstallHook := data{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata": data{
+			"name":      "helmPostInstallHook",
+			"namespace": "other-namespace",
+			"annotations": data{
+				"helm.sh/hook": "post-install",
+			},
+		},
+	}
+
+	helmPostInstallHookWithWeight := data{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata": data{
+			"name":      "helmPostInstallHookWithWeight",
+			"namespace": "other-namespace",
+			"annotations": data{
+				"helm.sh/hook":        "post-install",
+				"helm.sh/hook-weight": "5",
+			},
+		},
+	}
+
 	req := checks.Request{
 		JsonManifests: []string{
 			toJson(preSyncHookAndDefaultSyncWave),
 			toJson(preSyncHookAndNonDefaultSyncWave),
 			toJson(postSyncHookAndNonDefaultSyncWave),
+			toJson(helmPostInstallHook),
+			toJson(helmPostInstallHookWithWeight),
 		},
 	}
 
@@ -96,39 +121,45 @@ func TestCheck(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, pkg.StateNone, res.State)
 	assert.Equal(t, "<b>Sync Phases: PreSync, PostSync</b>", res.Summary)
-	assert.Equal(t, fmt.Sprintf(`<details>
+
+	expected := `<details>
 <summary>PreSync phase, wave 0 (1 resource)</summary>
 
-`+triple+`diff
-===== v1/ConfigMap some-namespace/preSyncHookAndDefaultSyncWave =====
-
-%s
-
-`+triple+`
+` + triple + `yaml
+` + toYaml(preSyncHookAndDefaultSyncWave) + `
+` + triple + `
 
 </details>
 
 <details>
 <summary>PreSync phase, wave 5 (1 resource)</summary>
 
-`+triple+`diff
-===== v1/ConfigMap some-namespace/preSyncHookAndNonDefaultSyncWave =====
-
-%s
-
-`+triple+`
+` + triple + `yaml
+` + toYaml(preSyncHookAndNonDefaultSyncWave) + `
+` + triple + `
 
 </details>
 
 <details>
-<summary>PostSync phase, wave 5 (1 resource)</summary>
+<summary>PostSync phase, wave 0 (1 resource)</summary>
 
-`+triple+`diff
-===== v1/ConfigMap some-namespace/postSyncHookAndNonDefaultSyncWave =====
+` + triple + `yaml
+` + toYaml(helmPostInstallHook) + `
+` + triple + `
 
-%s
+</details>
 
-`+triple+`
+<details>
+<summary>PostSync phase, wave 5 (2 resources)</summary>
 
-</details>`, toYaml(preSyncHookAndDefaultSyncWave), toYaml(preSyncHookAndNonDefaultSyncWave), toYaml(postSyncHookAndNonDefaultSyncWave)), res.Details)
+` + triple + `yaml
+` + toYaml(postSyncHookAndNonDefaultSyncWave) + `
+
+---
+
+` + toYaml(helmPostInstallHookWithWeight) + `
+` + triple + `
+
+</details>`
+	assert.Equal(t, expected, res.Details)
 }

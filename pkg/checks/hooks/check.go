@@ -8,8 +8,7 @@ import (
 	"strings"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/argoproj/gitops-engine/pkg/sync/common"
-	"github.com/argoproj/gitops-engine/pkg/sync/hook"
+	"github.com/argoproj/gitops-engine/pkg/sync/resource"
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -39,9 +38,10 @@ func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 		}
 	}
 
-	var phaseNames []common.HookType
+	var phaseNames []argocdSyncPhase
 	var phaseDetails []string
-	for _, pw := range grouped.getSortedPhasesAndWaves() {
+	results := grouped.getSortedPhasesAndWaves()
+	for _, pw := range results {
 		if !slices.Contains(phaseNames, pw.phase) {
 			phaseNames = append(phaseNames, pw.phase)
 		}
@@ -53,13 +53,7 @@ func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 				return msg.Result{}, errors.Wrap(err, "failed to unmarshal yaml")
 			}
 
-			renderedResource := fmt.Sprintf(
-				"===== %s/%s %s/%s =====\n\n%s\n",
-				r.GetAPIVersion(), r.GetKind(),
-				r.GetNamespace(), r.GetName(),
-				string(data),
-			)
-			renderedResources = append(renderedResources, renderedResource)
+			renderedResources = append(renderedResources, "\n"+string(data))
 		}
 
 		var countFmt string
@@ -79,9 +73,7 @@ func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 		phaseDetail := fmt.Sprintf(`<details>
 <summary>%s</summary>
 
-`+triple+`diff
-%s
-`+triple+`
+`+triple+`yaml%s`+triple+`
 
 </details>`, sectionName, strings.Join(renderedResources, "\n---\n"))
 
@@ -96,7 +88,7 @@ func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 	}, nil
 }
 
-func toStringSlice(hookTypes []common.HookType) []string {
+func toStringSlice(hookTypes []argocdSyncPhase) []string {
 	result := make([]string, len(hookTypes))
 	for idx := range hookTypes {
 		result[idx] = string(hookTypes[idx])
@@ -105,7 +97,7 @@ func toStringSlice(hookTypes []common.HookType) []string {
 }
 
 type hookInfo struct {
-	hookType common.HookType
+	hookType argocdSyncPhase
 	hookWave waveNum
 }
 
@@ -116,15 +108,48 @@ func phasesAndWaves(obj *unstructured.Unstructured) ([]hookInfo, error) {
 		hookInfos []hookInfo
 	)
 
-	if syncWaveStr, ok := obj.GetAnnotations()[common.AnnotationSyncWave]; ok {
+	syncWaveStr := obj.GetAnnotations()["argocd.argoproj.io/sync-wave"]
+	if syncWaveStr == "" {
+		syncWaveStr = obj.GetAnnotations()["helm.sh/hook-weight"]
+	}
+	if syncWaveStr != "" {
 		if syncWave, err = strconv.ParseInt(syncWaveStr, 10, waveNumBits); err != nil {
 			return nil, errors.Wrapf(err, "failed to parse sync wave %s", syncWaveStr)
 		}
 	}
 
-	for _, hookType := range hook.Types(obj) {
+	for hookType := range hookTypes(obj) {
 		hookInfos = append(hookInfos, hookInfo{hookType: hookType, hookWave: waveNum(syncWave)})
 	}
 
 	return hookInfos, nil
+}
+
+// helm hook types: https://helm.sh/docs/topics/charts_hooks/
+// helm to argocd map: https://argo-cd.readthedocs.io/en/stable/user-guide/helm/#helm-hooks
+var helmHookToArgocdPhaseMap = map[string]argocdSyncPhase{
+	"crd-install":  PreSyncPhase,
+	"pre-install":  PreSyncPhase,
+	"pre-upgrade":  PreSyncPhase,
+	"post-upgrade": PostSyncPhase,
+	"post-install": PostSyncPhase,
+	"post-delete":  PostDeletePhase,
+}
+
+func hookTypes(obj *unstructured.Unstructured) map[argocdSyncPhase]struct{} {
+	types := make(map[argocdSyncPhase]struct{})
+	for _, text := range resource.GetAnnotationCSVs(obj, "argocd.argoproj.io/hook") {
+		types[argocdSyncPhase(text)] = struct{}{}
+	}
+
+	// we ignore Helm hooks if we have Argo hook
+	if len(types) == 0 {
+		for _, text := range resource.GetAnnotationCSVs(obj, "helm.sh/hook") {
+			if actualPhase := helmHookToArgocdPhaseMap[text]; actualPhase != "" {
+				types[actualPhase] = struct{}{}
+			}
+		}
+	}
+
+	return types
 }
