@@ -40,7 +40,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address.|`argocd-server`|
 |`KUBECHECKS_ARGOCD_API_TOKEN`|ArgoCD API token.||
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
-|`KUBECHECKS_ENABLE_HOOK_RENDERER`|Render hooks.|`true`|
+|`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
 |`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|
 |`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
