@@ -18,8 +18,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
-const triple = "```"
-
 func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 	grouped := make(groupedSyncWaves)
 
@@ -46,37 +44,32 @@ func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 			phaseNames = append(phaseNames, pw.phase)
 		}
 
-		var renderedResources []string
-		for _, r := range pw.resources {
-			data, err := yaml.Marshal(r.Object)
-			if err != nil {
-				return msg.Result{}, errors.Wrap(err, "failed to unmarshal yaml")
+		var waveDetails []string
+		for _, w := range pw.waves {
+			var resources []string
+			for _, r := range w.resources {
+				data, err := yaml.Marshal(r.Object)
+				renderedResource := strings.TrimSpace(string(data))
+				if err != nil {
+					return msg.Result{}, errors.Wrap(err, "failed to unmarshal yaml")
+				}
+
+				renderedResource = collapsible(
+					fmt.Sprintf("%s/%s %s/%s", r.GetAPIVersion(), r.GetKind(), r.GetNamespace(), r.GetName()),
+					code("yaml", renderedResource),
+				)
+				resources = append(resources, renderedResource)
 			}
 
-			renderedResources = append(renderedResources, "\n"+string(data))
+			sectionName := fmt.Sprintf("wave %d (%s)", w.wave, plural(resources, "resource", "resources"))
+			waveDetail := collapsible(sectionName, strings.Join(resources, "\n\n"))
+			waveDetails = append(waveDetails, waveDetail)
 		}
 
-		var countFmt string
-		resourceCount := len(renderedResources)
-		switch resourceCount {
-		case 0:
-			continue
-		case 1:
-			countFmt = "%d resource"
-		default:
-			countFmt = "%d resources"
-		}
-
-		sectionName := fmt.Sprintf("%s phase, wave %d (%s)", pw.phase, pw.wave, countFmt)
-		sectionName = fmt.Sprintf(sectionName, len(renderedResources))
-
-		phaseDetail := fmt.Sprintf(`<details>
-<summary>%s</summary>
-
-`+triple+`yaml%s`+triple+`
-
-</details>`, sectionName, strings.Join(renderedResources, "\n---\n"))
-
+		phaseDetail := collapsible(
+			fmt.Sprintf("%s phase (%s)", pw.phase, plural(waveDetails, "wave", "waves")),
+			strings.Join(waveDetails, "\n\n"),
+		)
 		phaseDetails = append(phaseDetails, phaseDetail)
 	}
 
@@ -86,6 +79,17 @@ func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 		Details:           strings.Join(phaseDetails, "\n\n"),
 		NoChangesDetected: false,
 	}, nil
+}
+
+func plural[T any](items []T, singular, plural string) string {
+	var description string
+	if len(items) == 1 {
+		description = singular
+	} else {
+		description = plural
+	}
+
+	return fmt.Sprintf("%d %s", len(items), description)
 }
 
 func toStringSlice(hookTypes []argocdSyncPhase) []string {
@@ -99,6 +103,14 @@ func toStringSlice(hookTypes []argocdSyncPhase) []string {
 type hookInfo struct {
 	hookType argocdSyncPhase
 	hookWave waveNum
+}
+
+func code(format, content string) string {
+	return fmt.Sprintf("```%s\n%s\n```", format, content)
+}
+
+func collapsible(summary, details string) string {
+	return fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, details)
 }
 
 func phasesAndWaves(obj *unstructured.Unstructured) ([]hookInfo, error) {

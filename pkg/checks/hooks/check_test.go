@@ -123,43 +123,100 @@ func TestCheck(t *testing.T) {
 	assert.Equal(t, "<b>Sync Phases: PreSync, PostSync</b>", res.Summary)
 
 	expected := `<details>
-<summary>PreSync phase, wave 0 (1 resource)</summary>
+<summary>PreSync phase (2 waves)</summary>
+
+<details>
+<summary>wave 0 (1 resource)</summary>
+
+<details>
+<summary>v1/ConfigMap some-namespace/preSyncHookAndDefaultSyncWave</summary>
 
 ` + triple + `yaml
-` + toYaml(preSyncHookAndDefaultSyncWave) + `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+  name: preSyncHookAndDefaultSyncWave
+  namespace: some-namespace
 ` + triple + `
-
+</details>
 </details>
 
 <details>
-<summary>PreSync phase, wave 5 (1 resource)</summary>
+<summary>wave 5 (1 resource)</summary>
+
+<details>
+<summary>v1/ConfigMap some-namespace/preSyncHookAndNonDefaultSyncWave</summary>
 
 ` + triple + `yaml
-` + toYaml(preSyncHookAndNonDefaultSyncWave) + `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "5"
+  name: preSyncHookAndNonDefaultSyncWave
+  namespace: some-namespace
 ` + triple + `
-
+</details>
+</details>
 </details>
 
 <details>
-<summary>PostSync phase, wave 0 (1 resource)</summary>
+<summary>PostSync phase (2 waves)</summary>
+
+<details>
+<summary>wave 0 (1 resource)</summary>
+
+<details>
+<summary>v1/ConfigMap other-namespace/helmPostInstallHook</summary>
 
 ` + triple + `yaml
-` + toYaml(helmPostInstallHook) + `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    helm.sh/hook: post-install
+  name: helmPostInstallHook
+  namespace: other-namespace
 ` + triple + `
-
+</details>
 </details>
 
 <details>
-<summary>PostSync phase, wave 5 (2 resources)</summary>
+<summary>wave 5 (2 resources)</summary>
+
+<details>
+<summary>v1/ConfigMap some-namespace/postSyncHookAndNonDefaultSyncWave</summary>
 
 ` + triple + `yaml
-` + toYaml(postSyncHookAndNonDefaultSyncWave) + `
-
----
-
-` + toYaml(helmPostInstallHookWithWeight) + `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/sync-wave: "5"
+  name: postSyncHookAndNonDefaultSyncWave
+  namespace: some-namespace
 ` + triple + `
+</details>
 
+<details>
+<summary>v1/ConfigMap other-namespace/helmPostInstallHookWithWeight</summary>
+
+` + triple + `yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    helm.sh/hook: post-install
+    helm.sh/hook-weight: "5"
+  name: helmPostInstallHookWithWeight
+  namespace: other-namespace
+` + triple + `
+</details>
+</details>
 </details>`
 	assert.Equal(t, expected, res.Details)
 }

@@ -46,7 +46,11 @@ const (
 )
 
 type phaseWaveResources struct {
-	phase     argocdSyncPhase
+	phase argocdSyncPhase
+	waves []waveResources
+}
+
+type waveResources struct {
 	wave      waveNum
 	resources []*unstructured.Unstructured
 }
@@ -68,15 +72,20 @@ func (g groupedSyncWaves) getSortedPhasesAndWaves() []phaseWaveResources {
 		}
 		sort.Sort(byNum(wavesNums))
 
+		pwr := phaseWaveResources{
+			phase: phase,
+		}
+
 		for _, wave := range wavesNums {
-			pwr := phaseWaveResources{
-				phase:     phase,
+			wr := waveResources{
 				wave:      wave,
 				resources: waves[wave],
 			}
 
-			result = append(result, pwr)
+			pwr.waves = append(pwr.waves, wr)
 		}
+
+		result = append(result, pwr)
 	}
 
 	return result
