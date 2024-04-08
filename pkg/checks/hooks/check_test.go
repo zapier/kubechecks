@@ -126,7 +126,7 @@ func TestCheck(t *testing.T) {
 <summary>PreSync phase (2 waves)</summary>
 
 <details>
-<summary>wave 0 (1 resource)</summary>
+<summary>Wave 0 (1 resource)</summary>
 
 <details>
 <summary>v1/ConfigMap some-namespace/preSyncHookAndDefaultSyncWave</summary>
@@ -144,7 +144,7 @@ metadata:
 </details>
 
 <details>
-<summary>wave 5 (1 resource)</summary>
+<summary>Wave 5 (1 resource)</summary>
 
 <details>
 <summary>v1/ConfigMap some-namespace/preSyncHookAndNonDefaultSyncWave</summary>
@@ -167,7 +167,7 @@ metadata:
 <summary>PostSync phase (2 waves)</summary>
 
 <details>
-<summary>wave 0 (1 resource)</summary>
+<summary>Wave 0 (1 resource)</summary>
 
 <details>
 <summary>v1/ConfigMap other-namespace/helmPostInstallHook</summary>
@@ -185,7 +185,7 @@ metadata:
 </details>
 
 <details>
-<summary>wave 5 (2 resources)</summary>
+<summary>Wave 5 (2 resources)</summary>
 
 <details>
 <summary>v1/ConfigMap some-namespace/postSyncHookAndNonDefaultSyncWave</summary>
