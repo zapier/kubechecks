@@ -61,7 +61,7 @@ func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 				resources = append(resources, renderedResource)
 			}
 
-			sectionName := fmt.Sprintf("wave %d (%s)", w.wave, plural(resources, "resource", "resources"))
+			sectionName := fmt.Sprintf("Wave %d (%s)", w.wave, plural(resources, "resource", "resources"))
 			waveDetail := collapsible(sectionName, strings.Join(resources, "\n\n"))
 			waveDetails = append(waveDetails, waveDetail)
 		}
