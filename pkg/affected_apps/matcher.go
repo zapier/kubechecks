@@ -12,6 +12,37 @@ type AffectedItems struct {
 	ApplicationSets []ApplicationSet
 }
 
+func (ai AffectedItems) Union(other AffectedItems) AffectedItems {
+	// merge apps
+	appNameSet := make(map[string]struct{})
+	for _, app := range ai.Applications {
+		appNameSet[app.Name] = struct{}{}
+	}
+	for _, app := range other.Applications {
+		if _, ok := appNameSet[app.Name]; ok {
+			continue
+		}
+
+		ai.Applications = append(ai.Applications, app)
+	}
+
+	// merge appsets
+	appSetNameSet := make(map[string]struct{})
+	for _, appSet := range ai.ApplicationSets {
+		appSetNameSet[appSet.Name] = struct{}{}
+	}
+	for _, appSet := range other.ApplicationSets {
+		if _, ok := appSetNameSet[appSet.Name]; ok {
+			continue
+		}
+
+		ai.ApplicationSets = append(ai.ApplicationSets, appSet)
+	}
+
+	// return the merge
+	return ai
+}
+
 type ApplicationSet struct {
 	Name string
 }

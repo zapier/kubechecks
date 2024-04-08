@@ -92,17 +92,22 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 	var err error
 
 	var matcher affected_apps.Matcher
-	cfg, _ := repo_config.LoadRepoConfig(repo.Directory)
-	if cfg != nil {
-		log.Debug().Msg("using the config matcher")
-		matcher = affected_apps.NewConfigMatcher(cfg, ce.ctr)
-	} else {
-		log.Debug().Msg("using an argocd matcher")
-		matcher, err = affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
-		if err != nil {
-			return errors.Wrap(err, "failed to create argocd matcher")
-		}
+
+	log.Debug().Msg("using an argocd matcher")
+	matcher, err = affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
+	if err != nil {
+		return errors.Wrap(err, "failed to create argocd matcher")
 	}
+
+	cfg, err := repo_config.LoadRepoConfig(repo.Directory)
+	if err != nil {
+		return errors.Wrap(err, "failed to load repo config")
+	} else if cfg != nil {
+		log.Debug().Msg("using the config matcher")
+		configMatcher := affected_apps.NewConfigMatcher(cfg, ce.ctr)
+		matcher = affected_apps.NewMultiMatcher(matcher, configMatcher)
+	}
+
 	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList, targetBranch)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Affected Apps")
