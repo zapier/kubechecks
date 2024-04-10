@@ -3,13 +3,10 @@ package hooks
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
-
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 )
@@ -23,20 +20,6 @@ func toJson(obj data) string {
 	}
 
 	return string(data)
-}
-
-func toYaml(obj data) string {
-	var buf strings.Builder
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-
-	err := enc.Encode(obj)
-	if err != nil {
-		panic(err)
-	}
-
-	text := buf.String()
-	return strings.TrimSpace(text)
 }
 
 func TestCheck(t *testing.T) {
