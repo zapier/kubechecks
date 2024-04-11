@@ -86,7 +86,7 @@ func createGRPCConn(ctx context.Context, enabled bool, otelHost string, otelPort
 		return nil, nil
 	}
 
-	conn, err := grpc.DialContext(ctx,
+	conn, err := grpc.NewClient(
 		fmt.Sprintf("%s:%s", otelHost, otelPort),
 		grpc.WithTransportCredentials(
 			insecure.NewCredentials(),

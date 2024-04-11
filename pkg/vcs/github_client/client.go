@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v53/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
-	giturls "github.com/whilp/git-urls"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/oauth2"
 
