@@ -5,6 +5,7 @@ import (
 
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/checks/diff"
+	"github.com/zapier/kubechecks/pkg/checks/hooks"
 	"github.com/zapier/kubechecks/pkg/checks/kubeconform"
 	"github.com/zapier/kubechecks/pkg/checks/preupgrade"
 	"github.com/zapier/kubechecks/pkg/checks/rego"
@@ -18,6 +19,14 @@ func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
 		Name:      "generating diff for app",
 		Processor: diff.Check,
 	})
+
+	if ctr.Config.EnableHooksRenderer {
+		procs = append(procs, checks.ProcessorEntry{
+			Name:       "render hooks",
+			Processor:  hooks.Check,
+			WorstState: ctr.Config.WorstHooksState,
+		})
+	}
 
 	if ctr.Config.EnableKubeConform {
 		procs = append(procs, checks.ProcessorEntry{

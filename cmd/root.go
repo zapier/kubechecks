@@ -97,6 +97,10 @@ func init() {
 	int64Flag(flags, "max-concurrenct-checks", "Number of concurrent checks to run.",
 		newInt64Opts().
 			withDefault(32))
+	boolFlag(flags, "enable-hooks-renderer", "Render hooks.", newBoolOpts().withDefault(true))
+	stringFlag(flags, "worst-hooks-state", "The worst state that can be returned from the hooks renderer.",
+		newStringOpts().
+			withDefault("panic"))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()

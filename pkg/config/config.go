@@ -13,6 +13,8 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 )
 
+// set default values in /cmd/root.go's init function
+
 type ServerConfig struct {
 	// argocd
 	ArgoCDServerAddr string `mapstructure:"argocd-api-server-addr"`
@@ -42,6 +44,9 @@ type ServerConfig struct {
 	EnableConfTest     bool            `mapstructure:"enable-conftest"`
 	PoliciesLocation   []string        `mapstructure:"policies-location"`
 	WorstConfTestState pkg.CommitState `mapstructure:"worst-conftest-state"`
+	// -- hooks
+	EnableHooksRenderer bool            `mapstructure:"enable-hooks-renderer"`
+	WorstHooksState     pkg.CommitState `mapstructure:"worst-hooks-state"`
 	// -- kubeconform
 	EnableKubeConform     bool            `mapstructure:"enable-kubeconform"`
 	WorstKubeConformState pkg.CommitState `mapstructure:"worst-kubeconform-state"`

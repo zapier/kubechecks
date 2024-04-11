@@ -40,6 +40,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address.|`argocd-server`|
 |`KUBECHECKS_ARGOCD_API_TOKEN`|ArgoCD API token.||
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
+|`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
 |`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|
 |`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
@@ -67,5 +68,6 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_WEBHOOK_URL_BASE`|The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.||
 |`KUBECHECKS_WEBHOOK_URL_PREFIX`|If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.||
 |`KUBECHECKS_WORST_CONFTEST_STATE`|The worst state that can be returned from conftest.|`panic`|
+|`KUBECHECKS_WORST_HOOKS_STATE`|The worst state that can be returned from the hooks renderer.|`panic`|
 |`KUBECHECKS_WORST_KUBECONFORM_STATE`|The worst state that can be returned from kubeconform.|`panic`|
 |`KUBECHECKS_WORST_PREUPGRADE_STATE`|The worst state that can be returned from preupgrade checks.|`panic`|
