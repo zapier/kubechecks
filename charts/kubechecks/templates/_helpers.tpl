@@ -36,12 +36,10 @@ Common labels
 {{- define "kubechecks.labels" -}}
 helm.sh/chart: {{ include "kubechecks.chart" . }}
 {{ include "kubechecks.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ coalesce .Values.deployment.image.tag .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ .Values.deployment.image.tag }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-{{- if .Values.commonLabels }}
-{{ toYaml .Values.commonLabels }}
+{{- with .Values.commonLabels }}
+{{ . | toYaml }}
 {{- end }}
 {{- end }}
 

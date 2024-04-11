@@ -40,7 +40,7 @@ deployment:
   image:
     pullPolicy: Always
     name: "ghcr.io/zapier/kubechecks"
-    tag: ""  # Defaults to the .Chart.AppVersion
+    tag: "latest"
 
   imagePullSecrets: []
 

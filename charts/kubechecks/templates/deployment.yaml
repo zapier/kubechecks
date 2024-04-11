@@ -5,8 +5,7 @@ metadata:
   {{- with .Values.deployment.annotations }}
   annotations: {{ toYaml . | nindent 4 }}
   {{- end}}
-  labels:
-    {{- include "kubechecks.labels" . | nindent 4 }}
+  labels: {{- include "kubechecks.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.deployment.replicaCount }}
   selector:
@@ -36,7 +35,7 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.deployment.image }}
-          image: "{{ .name }}:{{ coalesce .tag (printf "v%s" $.Chart.AppVersion) }}"
+          image: "{{ .name }}:{{ required "must set .deployment.image.tag" .tag }}"
           imagePullPolicy: {{ .pullPolicy }}
           {{- end }}
           {{- with .Values.deployment.args }}

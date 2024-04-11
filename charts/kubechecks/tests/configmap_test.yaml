@@ -7,8 +7,11 @@ values: [basics.min-values.yaml]
 tests:
   - it: should render
     chart:
-      appVersion: 1.0.0
       version: 0.1.0
+    set:
+      deployment:
+        image:
+          tag: 1.0.0
     release:
       name: kubechecks
     asserts:
@@ -16,7 +19,7 @@ tests:
           of: ConfigMap
       - equal:
           path: data
-          value: 
+          value:
             KUBECHECKS_ARGOCD_API_INSECURE: "false"
             KUBECHECKS_TEST_VALUE: Hello
       - equal:

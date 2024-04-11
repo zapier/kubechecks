@@ -17,7 +17,7 @@ ci-helm:
     BUILD +test-helm
     BUILD +release-helm
 
-build:
+docker-multiarch:
     BUILD --platform=linux/amd64 --platform=linux/arm64 +docker
 
 release:
@@ -129,7 +129,8 @@ docker:
 
     CMD ["./kubechecks", "controller"]
     ARG --required IMAGE_NAME
-    SAVE IMAGE --push $IMAGE_NAME
+    ARG LATEST_IMAGE_NAME=""
+    SAVE IMAGE --push $IMAGE_NAME $LATEST_IMAGE_NAME
 
 dlv:
     ARG --required GOLANG_VERSION
