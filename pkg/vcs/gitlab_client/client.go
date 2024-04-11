@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	giturls "github.com/whilp/git-urls"
 	"github.com/xanzy/go-gitlab"
 
 	"github.com/zapier/kubechecks/pkg"
