@@ -2,6 +2,7 @@ package argo_client
 
 import (
 	"io"
+	"sync"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
@@ -16,6 +17,8 @@ import (
 
 type ArgoClient struct {
 	client apiclient.Client
+
+	manifestsLock sync.Mutex
 }
 
 func NewArgoClient(cfg config.ServerConfig) (*ArgoClient, error) {

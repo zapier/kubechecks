@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -30,7 +31,7 @@ func TestBuildComment(t *testing.T) {
 	}
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.BuildComment(context.TODO())
+	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false)
 	assert.Equal(t, `# Kubechecks Report
 <details>
 <summary>
@@ -42,7 +43,10 @@ func TestBuildComment(t *testing.T) {
 <summary>this failed bigly Error :test:</summary>
 
 should add some important details here
-</details></details>`, comment)
+</details></details>
+
+<small> _Done. CommitSHA: commit-sha_ <small>
+`, comment)
 }
 
 func TestBuildComment_SkipUnchanged(t *testing.T) {
@@ -75,7 +79,7 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.BuildComment(context.TODO())
+	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false)
 	assert.Equal(t, `# Kubechecks Report
 <details>
 <summary>
@@ -87,7 +91,10 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 <summary>this failed bigly Error :test:</summary>
 
 should add some important details here
-</details></details>`, comment)
+</details></details>
+
+<small> _Done. CommitSHA: commit-sha_ <small>
+`, comment)
 }
 
 func TestMessageIsSuccess(t *testing.T) {
@@ -176,7 +183,7 @@ func TestMultipleItemsWithNewlines(t *testing.T) {
 		Summary: "summary-2",
 		Details: "detail-2",
 	})
-	result := message.BuildComment(ctx)
+	result := message.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false)
 
 	// header rows need double newlines before and after
 	index := 0

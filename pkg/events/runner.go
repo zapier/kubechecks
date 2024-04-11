@@ -27,11 +27,6 @@ func newRunner(
 	appName, k8sVersion string, jsonManifests, yamlManifests []string,
 	logger zerolog.Logger, note *msg.Message, queueApp, removeApp func(application v1alpha1.Application),
 ) *Runner {
-	logger = logger.
-		With().
-		Str("app", appName).
-		Logger()
-
 	return &Runner{
 		Request: checks.Request{
 			App:               app,
@@ -55,7 +50,7 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstSt
 	r.wg.Add(1)
 
 	go func() {
-		logger := r.Log
+		logger := r.Log.With().Str("check", desc).Logger()
 
 		ctx, span := tracer.Start(ctx, desc)
 
@@ -79,10 +74,6 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstSt
 				addToAppMessage(result)
 			}
 		}()
-
-		logger = logger.With().
-			Str("check", desc).
-			Logger()
 
 		logger.Info().Msgf("running check")
 		result, err := fn(ctx, r.Request)
