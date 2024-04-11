@@ -8,6 +8,7 @@ require (
 	github.com/argoproj/argo-cd/v2 v2.10.5
 	github.com/argoproj/gitops-engine v0.7.1-0.20240122213038-792124280fcc
 	github.com/cenkalti/backoff/v4 v4.2.1
+	github.com/chainguard-dev/git-urls v1.0.2
 	github.com/creasty/defaults v1.7.0
 	github.com/docker/docker v26.0.0+incompatible
 	github.com/ghodss/yaml v1.0.0
@@ -33,7 +34,6 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
-	github.com/whilp/git-urls v1.0.0
 	github.com/xanzy/go-gitlab v0.101.0
 	github.com/yannh/kubeconform v0.6.4
 	github.com/ziflex/lecho/v3 v3.5.0

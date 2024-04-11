@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	giturls "github.com/whilp/git-urls"
+	"github.com/chainguard-dev/git-urls"
 )
 
 type RepoURL struct {
