@@ -169,6 +169,10 @@ func (m *Message) BuildComment(ctx context.Context, start time.Time, commitSHA, 
 				continue
 			}
 
+			if check.State == pkg.StateSkip {
+				continue
+			}
+
 			var summary string
 			if check.State == pkg.StateNone {
 				summary = check.Summary

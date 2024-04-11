@@ -11,6 +11,7 @@ type CommitState uint8
 // must be in order of best to worst, in order for WorstState to work
 const (
 	StateNone CommitState = iota
+	StateSkip
 	StateSuccess
 	StateRunning
 	StateWarning

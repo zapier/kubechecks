@@ -73,6 +73,10 @@ func Check(_ context.Context, request checks.Request) (msg.Result, error) {
 		phaseDetails = append(phaseDetails, phaseDetail)
 	}
 
+	if len(phaseNames) == 0 {
+		return msg.Result{State: pkg.StateSkip}, nil
+	}
+
 	return msg.Result{
 		State:             pkg.StateNone,
 		Summary:           fmt.Sprintf("<b>Sync Phases: %s</b>", strings.Join(toStringSlice(phaseNames), ", ")),
