@@ -13,7 +13,7 @@ import (
 var tracer = otel.Tracer("pkg/aisummary")
 
 // SummarizeDiff uses ChatGPT to summarize changes to a Kubernetes application.
-func (c *OpenAiClient) SummarizeDiff(ctx context.Context, appName string, manifests []string, diff string) (string, error) {
+func (c *OpenAiClient) SummarizeDiff(ctx context.Context, appName, diff string) (string, error) {
 	ctx, span := tracer.Start(ctx, "SummarizeDiff")
 	defer span.End()
 
