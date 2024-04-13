@@ -1,6 +1,8 @@
 package diff
 
 import (
+	"strings"
+
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/net/context"
@@ -14,7 +16,7 @@ import (
 
 var tracer = otel.Tracer("pkg/checks/diff")
 
-func aiDiffSummary(ctx context.Context, mrNote *msg.Message, cfg config.ServerConfig, name string, manifests []string, diff string) {
+func aiDiffSummary(ctx context.Context, mrNote *msg.Message, cfg config.ServerConfig, name, diff string) {
 	ctx, span := tracer.Start(ctx, "aiDiffSummary")
 	defer span.End()
 
@@ -23,7 +25,8 @@ func aiDiffSummary(ctx context.Context, mrNote *msg.Message, cfg config.ServerCo
 		return
 	}
 
-	aiSummary, err := aisummary.GetOpenAiClient(cfg.OpenAIAPIToken).SummarizeDiff(ctx, name, manifests, diff)
+	aiClient := aisummary.GetOpenAiClient(cfg.OpenAIAPIToken)
+	aiSummary, err := aiClient.SummarizeDiff(ctx, name, diff)
 	if err != nil {
 		telemetry.SetError(span, err, "OpenAI SummarizeDiff")
 		log.Error().Err(err).Msg("failed to summarize diff")
@@ -32,8 +35,22 @@ func aiDiffSummary(ctx context.Context, mrNote *msg.Message, cfg config.ServerCo
 		return
 	}
 
-	if aiSummary != "" {
-		cr := msg.Result{State: pkg.StateNone, Summary: "<b>Show AI Summary Diff</b>", Details: aiSummary}
-		mrNote.AddToAppMessage(ctx, name, cr)
+	aiSummary = cleanUpAiSummary(aiSummary)
+	if aiSummary == "" {
+		return
 	}
+
+	cr := msg.Result{State: pkg.StateNone, Summary: "<b>Show AI Summary Diff</b>", Details: aiSummary}
+	mrNote.AddToAppMessage(ctx, name, cr)
+}
+
+func cleanUpAiSummary(aiSummary string) string {
+	aiSummary = strings.TrimSpace(aiSummary)
+
+	// occasionally the model thinks it should wrap it in a code block.
+	// comments do not need this, as they are already rendered as markdown.
+	aiSummary = strings.TrimPrefix(aiSummary, "```markdown")
+	aiSummary = strings.TrimSuffix(aiSummary, "```")
+
+	return strings.TrimSpace(aiSummary)
 }
