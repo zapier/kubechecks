@@ -217,7 +217,7 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 		return errors.Wrap(err, "unable to set git credentials")
 	}
 
-	cmd = execCommand(cfg, "git", "config", "--global", "credential.helper", "store")
+	cmd = execCommand(cfg, "git", "config", "--global", "credential.helper", "store", "--add")
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "unable to set git credential usage")

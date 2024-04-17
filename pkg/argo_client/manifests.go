@@ -1,8 +1,14 @@
 package argo_client
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
@@ -10,6 +16,8 @@ import (
 	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	repoapiclient "github.com/argoproj/argo-cd/v2/reposerver/apiclient"
 	"github.com/argoproj/argo-cd/v2/reposerver/repository"
+
+	// "github.com/argoproj/argo-cd/v2/util/config"
 	"github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
@@ -17,7 +25,97 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/zapier/kubechecks/telemetry"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	// "helm.sh/helm/v3/pkg/action"
 )
+
+// func helmLoginNew(tempRepoDir string, changedAppFilePath string) error {
+
+// 	var currToken = ""
+// 	if token, err := getToken(); err != nil {
+// 		fmt.Println(err)
+// 	} else {
+// 		currToken = token
+// 		fmt.Println(currToken)
+// 	}
+
+// var EcrUserName = "AWS"
+// var aws_ecr_host = os.Getenv("AWS_ECR_HOST")
+// var registryHost = aws_ecr_host
+// var appDir = tempRepoDir + "/" + changedAppFilePath
+
+// Initialize the Helm client configuration
+// settings := cli.New()
+// settings.Debug = true // Enable debug mode for verbose output
+
+// settings.RegistryConfig = fmt.Sprintf("%s=%s:%s", registryHost, EcrUserName, currToken)
+
+// Initialize the Helm action configuration
+// actionConfig := new(action.Configuration)
+
+// Connect to the registry
+// if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), "", func(format string, v ...interface{}) {}); err != nil {
+// if err := actionConfig.Init("", func(format string, v ...interface{}) {}); err != nil {
+// 	fmt.Printf("Failed to connect to the registry: %s\n", err)
+// 	return err
+// }
+
+// Print a success message
+// 	fmt.Println("Connected to the registry successfully!")
+// 	return nil
+// }
+
+// Retrieve token for authentication against ECR registries.
+func getToken() (string, error) {
+	os.Setenv("AWS_SDK_LOAD_CONFIG", "1")
+	cfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		return "", err
+	}
+
+	svc := ecr.NewFromConfig(cfg)
+	token, err := svc.GetAuthorizationToken(context.TODO(), &ecr.GetAuthorizationTokenInput{})
+	if err != nil {
+		return "", err
+	}
+
+	authData := token.AuthorizationData[0].AuthorizationToken
+	data, err := base64.StdEncoding.DecodeString(*authData)
+	if err != nil {
+		return "", err
+	}
+
+	parts := strings.SplitN(string(data), ":", 2)
+
+	return parts[1], nil
+}
+
+func helmLogin(tempRepoDir string, changedAppFilePath string) error {
+
+	var currToken = ""
+	if token, err := getToken(); err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println(token)
+		currToken = token
+	}
+
+	var aws_ecr_host = os.Getenv("AWS_ECR_HOST")
+	cmd := exec.Command("bash", "-c", "echo "+currToken+" | helm registry login --username AWS --password-stdin "+aws_ecr_host+"; helm dependency build")
+	cmd.Dir = tempRepoDir + "/" + changedAppFilePath
+	var outb, errb bytes.Buffer
+	cmd.Stdout = &outb
+	cmd.Stderr = &errb
+	err := cmd.Run()
+	if err != nil {
+		log.Fatal()
+	}
+
+	fmt.Println("out:", outb.String(), "err:", errb.String())
+	return nil
+}
 
 func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
 	var err error
@@ -58,6 +156,16 @@ func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRe
 	}
 
 	source := app.Spec.GetSource()
+
+	s := os.Getenv("ECR_LOGIN_ENABLED")
+	ecr_login_enabled, err := strconv.ParseBool(s)
+	if err != nil {
+		log.Fatal()
+	}
+
+	if ecr_login_enabled {
+		helmLogin(tempRepoDir, changedAppFilePath)
+	}
 
 	log.Debug().Str("name", name).Msg("generating diff for application...")
 	res, err := repository.GenerateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, source.TargetRevision, &repoapiclient.ManifestRequest{

@@ -28,7 +28,7 @@ deployment:
     reloader.stakater.com/auto: "true" 
   
   image:
-    pullPolicy: Never
+    pullPolicy: Always
     name: "kubechecks"
     tag: ""
 

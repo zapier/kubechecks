@@ -31,6 +31,10 @@ type ServerConfig struct {
 	VcsToken   string `mapstructure:"vcs-token"`
 	VcsType    string `mapstructure:"vcs-type"`
 
+	// Ecr
+	EcrLoginEnabled bool   `mapstructure:"ecr-login-enabled"`
+	AwsEcrHost      string `mapstructure:"aws-ecr-host"`
+
 	// webhooks
 	EnsureWebhooks bool   `mapstructure:"ensure-webhooks"`
 	WebhookSecret  string `mapstructure:"webhook-secret"`
@@ -96,6 +100,10 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	log.Info().Msgf("Webhook URL Base: %s", cfg.WebhookUrlBase)
 	log.Info().Msgf("Webhook URL Prefix: %s", cfg.UrlPrefix)
 	log.Info().Msgf("VCS Type: %s", cfg.VcsType)
+	if cfg.EcrLoginEnabled {
+		log.Info().Msgf("Aws Ecr Login Enabled")
+		log.Info().Msgf("Aws Ecr Host: %s", cfg.AwsEcrHost)
+	}
 
 	return cfg, nil
 }

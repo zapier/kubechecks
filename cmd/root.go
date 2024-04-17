@@ -56,6 +56,7 @@ func init() {
 			withDefault("gitlab"))
 	stringFlag(flags, "vcs-token", "VCS API token.")
 	stringFlag(flags, "argocd-api-token", "ArgoCD API token.")
+	stringFlag(flags, "argocd-api-path-prefix", "ArgoCD API Path Prefix.")
 	stringFlag(flags, "argocd-api-server-addr", "ArgoCD API Server Address.", newStringOpts().withDefault("argocd-server"))
 	boolFlag(flags, "argocd-api-insecure", "Enable to use insecure connections to the ArgoCD API server.")
 	stringFlag(flags, "kubernetes-config", "Path to your kubernetes config file, used to monitor applications.")
@@ -73,6 +74,8 @@ func init() {
 			withDefault([]string{"./schemas"}))
 
 	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests.")
+	boolFlag(flags, "ecr-login-enabled", "Enable Aws Ecr login and helm dependency build for chart dependencies that are hosted on Aws private Ecr repositories.")
+	stringFlag(flags, "aws-ecr-host", "The Aws ecr host. i.e: <account-id>.dkr.ecr.<region>.amazonaws.com.")
 	stringSliceFlag(flags, "policies-location", "Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.",
 		newStringSliceOpts().
 			withDefault([]string{"./policies"}))
