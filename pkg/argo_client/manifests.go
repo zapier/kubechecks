@@ -17,7 +17,6 @@ import (
 	repoapiclient "github.com/argoproj/argo-cd/v2/reposerver/apiclient"
 	"github.com/argoproj/argo-cd/v2/reposerver/repository"
 
-	// "github.com/argoproj/argo-cd/v2/util/config"
 	"github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
@@ -119,16 +118,6 @@ func GetManifestsLocal(ctx context.Context, argoClient *ArgoClient, name, tempRe
 	}
 
 	source := app.Spec.GetSource()
-
-	s := os.Getenv("ECR_LOGIN_ENABLED")
-	ecr_login_enabled, err := strconv.ParseBool(s)
-	if err != nil {
-		log.Fatal()
-	}
-
-	if ecr_login_enabled {
-		helmLogin(tempRepoDir, changedAppFilePath)
-	}
 
 	s := os.Getenv("ECR_LOGIN_ENABLED")
 	ecr_login_enabled, err := strconv.ParseBool(s)
