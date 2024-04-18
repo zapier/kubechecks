@@ -37,8 +37,11 @@ The full list of supported environment variables is described below:
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
 |`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections to the ArgoCD API server.|`false`|
+|`KUBECHECKS_ARGOCD_API_PATH_PREFIX`|ArgoCD API Path Prefix.||
 |`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address.|`argocd-server`|
 |`KUBECHECKS_ARGOCD_API_TOKEN`|ArgoCD API token.||
+|`KUBECHECKS_AWS_ECR_HOST`|The Aws ecr host. i.e: <account-id>.dkr.ecr.<region>.amazonaws.com.||
+|`KUBECHECKS_ECR_LOGIN_ENABLED`|Enable Aws Ecr login and helm dependency build for chart dependencies that are hosted on Aws private Ecr repositories.|`false`|
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
 |`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|

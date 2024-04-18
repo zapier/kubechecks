@@ -16,8 +16,6 @@ import (
 	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	repoapiclient "github.com/argoproj/argo-cd/v2/reposerver/apiclient"
 	"github.com/argoproj/argo-cd/v2/reposerver/repository"
-
-	// "github.com/argoproj/argo-cd/v2/util/config"
 	"github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
@@ -28,49 +26,13 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
-	// "helm.sh/helm/v3/pkg/action"
 )
 
-// func helmLoginNew(tempRepoDir string, changedAppFilePath string) error {
-
-// 	var currToken = ""
-// 	if token, err := getToken(); err != nil {
-// 		fmt.Println(err)
-// 	} else {
-// 		currToken = token
-// 		fmt.Println(currToken)
-// 	}
-
-// var EcrUserName = "AWS"
-// var aws_ecr_host = os.Getenv("AWS_ECR_HOST")
-// var registryHost = aws_ecr_host
-// var appDir = tempRepoDir + "/" + changedAppFilePath
-
-// Initialize the Helm client configuration
-// settings := cli.New()
-// settings.Debug = true // Enable debug mode for verbose output
-
-// settings.RegistryConfig = fmt.Sprintf("%s=%s:%s", registryHost, EcrUserName, currToken)
-
-// Initialize the Helm action configuration
-// actionConfig := new(action.Configuration)
-
-// Connect to the registry
-// if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), "", func(format string, v ...interface{}) {}); err != nil {
-// if err := actionConfig.Init("", func(format string, v ...interface{}) {}); err != nil {
-// 	fmt.Printf("Failed to connect to the registry: %s\n", err)
-// 	return err
-// }
-
-// Print a success message
-// 	fmt.Println("Connected to the registry successfully!")
-// 	return nil
-// }
-
 // Retrieve token for authentication against ECR registries.
-func getToken() (string, error) {
+func getToken(aws_ecr_host string) (string, error) {
 	os.Setenv("AWS_SDK_LOAD_CONFIG", "1")
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	var region = strings.SplitN(string(aws_ecr_host), ".", 6)
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region[3]))
 	if err != nil {
 		return "", err
 	}
@@ -94,15 +56,14 @@ func getToken() (string, error) {
 
 func helmLogin(tempRepoDir string, changedAppFilePath string) error {
 
+	var aws_ecr_host = os.Getenv("AWS_ECR_HOST")
 	var currToken = ""
-	if token, err := getToken(); err != nil {
+	if token, err := getToken(aws_ecr_host); err != nil {
 		fmt.Println(err)
 	} else {
-		fmt.Println(token)
 		currToken = token
 	}
 
-	var aws_ecr_host = os.Getenv("AWS_ECR_HOST")
 	cmd := exec.Command("bash", "-c", "echo "+currToken+" | helm registry login --username AWS --password-stdin "+aws_ecr_host+"; helm dependency build")
 	cmd.Dir = tempRepoDir + "/" + changedAppFilePath
 	var outb, errb bytes.Buffer
