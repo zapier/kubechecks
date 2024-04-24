@@ -19,6 +19,8 @@ import (
 
 var tracer = otel.Tracer("pkg/argo_client")
 
+var ErrNoVersionFound = errors.New("no kubernetes version found")
+
 // GetApplicationByName takes a context and a name, then queries the Argo Application client to retrieve the Application with the specified name.
 // It returns the found Application and any error encountered during the process.
 // If successful, the Application client connection is closed before returning.
@@ -71,6 +73,11 @@ func (argo *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, a
 
 	// cleanup trailing "+"
 	version = strings.TrimSuffix(version, "+")
+
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return "", ErrNoVersionFound
+	}
 
 	return version, nil
 }
