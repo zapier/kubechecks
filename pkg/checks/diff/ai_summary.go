@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -44,13 +45,28 @@ func aiDiffSummary(ctx context.Context, mrNote *msg.Message, cfg config.ServerCo
 	mrNote.AddToAppMessage(ctx, name, cr)
 }
 
+var codeBlockBegin = regexp.MustCompile("^```(\\w+)")
+
 func cleanUpAiSummary(aiSummary string) string {
 	aiSummary = strings.TrimSpace(aiSummary)
 
 	// occasionally the model thinks it should wrap it in a code block.
 	// comments do not need this, as they are already rendered as markdown.
-	aiSummary = strings.TrimPrefix(aiSummary, "```markdown")
-	aiSummary = strings.TrimSuffix(aiSummary, "```")
+	for {
+		newSummary := aiSummary
+
+		newSummary = codeBlockBegin.ReplaceAllString(newSummary, "")
+		newSummary = strings.TrimPrefix(newSummary, "#***")
+		newSummary = strings.TrimSuffix(newSummary, "```")
+		newSummary = strings.TrimSuffix(newSummary, "#***")
+		newSummary = strings.TrimSpace(newSummary)
+
+		if newSummary == aiSummary {
+			break
+		}
+
+		aiSummary = newSummary
+	}
 
 	return strings.TrimSpace(aiSummary)
 }
