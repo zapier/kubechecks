@@ -30,7 +30,7 @@ func (rm *RepoManager) Clone(ctx context.Context, cloneUrl, branchName string) (
 	}
 
 	rm.lock.Lock()
-	defer rm.lock.Unlock() // just for safety's sake
+	//defer rm.lock.Unlock() // just for safety's sake
 	rm.repos = append(rm.repos, repo)
 
 	return repo, nil
@@ -38,7 +38,7 @@ func (rm *RepoManager) Clone(ctx context.Context, cloneUrl, branchName string) (
 
 func (rm *RepoManager) Cleanup() {
 	rm.lock.Lock()
-	defer rm.lock.Unlock()
+	//defer rm.lock.Unlock()
 
 	for _, repo := range rm.repos {
 		repo.Wipe()

@@ -20,7 +20,6 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
-	"github.com/zapier/kubechecks/telemetry"
 )
 
 type Repo struct {
@@ -119,10 +118,10 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, sha string) error {
 	defer span.End()
 
 	cmd := r.execCommand("git", "merge", sha)
-	out, err := cmd.CombinedOutput()
+	_, err := cmd.CombinedOutput()
 	if err != nil {
-		telemetry.SetError(span, err, "merge commit into branch")
-		log.Error().Err(err).Msgf("unable to merge %s, %s", sha, out)
+		//telemetry.SetError(span, err, "merge commit into branch")
+		//log.Error().Err(err).Msgf("unable to merge %s, %s", sha, out)
 		return err
 	}
 
