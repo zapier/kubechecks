@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.21.6
 
 require (
-	github.com/argoproj/argo-cd/v2 v2.10.6
+	github.com/argoproj/argo-cd/v2 v2.11.0
 	github.com/argoproj/gitops-engine v0.7.1-0.20240411122334-1ade3a199867
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/chainguard-dev/git-urls v1.0.2
@@ -103,7 +103,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.10.2 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
+	github.com/evanphx/json-patch v5.9.0+incompatible // indirect
 	github.com/exponent-io/jsonpath v0.0.0-20151013193312-d6023ce2651d // indirect
 	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -210,7 +210,7 @@ require (
 	github.com/sergi/go-diff v1.3.1 // indirect
 	github.com/shteou/go-ignore v0.3.1 // indirect
 	github.com/shurcooL/graphql v0.0.0-20230722043721-ed46e5a46466 // indirect
-	github.com/skeema/knownhosts v1.2.1 // indirect
+	github.com/skeema/knownhosts v1.2.2 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spdx/tools-golang v0.5.3 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
