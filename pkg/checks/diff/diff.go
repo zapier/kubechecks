@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	cmdutil "github.com/argoproj/argo-cd/v2/cmd/util"
 	"github.com/argoproj/argo-cd/v2/controller"
@@ -197,7 +198,9 @@ func generateDiff(ctx context.Context, request checks.Request, argoSettings *set
 	}
 
 	ignoreAggregatedRoles := false
-	ignoreNormalizerOpts := normalizers.IgnoreNormalizerOpts{}
+	ignoreNormalizerOpts := normalizers.IgnoreNormalizerOpts{
+		JQExecutionTimeout: 1 * time.Second,
+	}
 	diffConfig, err := argodiff.NewDiffConfigBuilder().
 		WithLogger(zerologr.New(&log.Logger)).
 		WithDiffSettings(request.App.Spec.IgnoreDifferences, overrides, ignoreAggregatedRoles, ignoreNormalizerOpts).
