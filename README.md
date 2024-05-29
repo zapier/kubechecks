@@ -43,6 +43,10 @@ To learn more about `kubechecks` [go to the complete documentation](https://kube
 - [davidwin93](https://github.com/davidwin93)
 - [sontek](https://github.com/sontek)
 - [MeNsaaH](https://github.com/MeNsaaH)
+- [djeebus](https://github.com/djeebus)
+- [bauerjs1](https://github.com/bauerjs1)
+- [ahinh43](https://github.com/ahinh43)
+- [Greyeye](https://github.com/Greyeye)
 ---
 
 Made by SRE Team @ ![zapier](https://zapier-media.s3.amazonaws.com/zapier/images/logo60orange.png)
