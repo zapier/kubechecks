@@ -36,17 +36,9 @@ The [contributing](https://kubechecks.readthedocs.io/en/stable/contributing/) ha
 To learn more about `kubechecks` [go to the complete documentation](https://kubechecks.readthedocs.io/).
 
 ## Contributors
-- [mplatcher](https://github.com/mplachter)
-- [sl1pm4t](https://github.com/sl1pm4t)
-- [polyrain](https://github.com/polyrain)
-- [jhouser](https://github.com/jhouser)
-- [davidwin93](https://github.com/davidwin93)
-- [sontek](https://github.com/sontek)
-- [MeNsaaH](https://github.com/MeNsaaH)
-- [djeebus](https://github.com/djeebus)
-- [bauerjs1](https://github.com/bauerjs1)
-- [ahinh43](https://github.com/ahinh43)
-- [Greyeye](https://github.com/Greyeye)
+
+![contributors](https://contrib.rocks/image?repo=zapier/kubechecks)
+
 ---
 
 Made by SRE Team @ ![zapier](https://zapier-media.s3.amazonaws.com/zapier/images/logo60orange.png)
