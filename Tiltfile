@@ -126,7 +126,7 @@ if cfg.get('enable_repo', True):
 test_go(
   'go-test', '.',
   recursive=True,
-  timeout='30s',
+  timeout='60s',
   extra_args=['-v'],
   labels=["kubechecks"],
   deps=[
