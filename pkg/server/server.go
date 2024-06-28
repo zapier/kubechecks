@@ -99,6 +99,7 @@ func (s *Server) ensureWebhooks(ctx context.Context) error {
 	log.Info().Str("webhookUrl", fullUrl).Msg("webhook URL for this kubechecks instance")
 
 	for _, repo := range s.ctr.VcsToArgoMap.GetVcsRepos() {
+		log.Info().Msgf("ensuring webhook for %s", repo)
 		wh, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
 		if err != nil && !errors.Is(err, vcs.ErrHookNotFound) {
 			log.Error().Err(err).Msgf("failed to get hook for %s:", repo)

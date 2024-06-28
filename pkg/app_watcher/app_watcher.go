@@ -44,7 +44,7 @@ func NewApplicationWatcher(vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerCo
 		vcsToArgoMap:         vcsToArgoMap,
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 30)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, cfg)
 
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
@@ -117,13 +117,18 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 	ctrl.vcsToArgoMap.DeleteApp(app)
 }
 
-/*
-This Go function, named newApplicationInformerAndLister, is part of the ApplicationWatcher struct. It sets up a Kubernetes SharedIndexInformer and a Lister for Argo CD Applications.
-A SharedIndexInformer is used to watch changes to a specific type of Kubernetes resource in an efficient manner. It significantly reduces the load on the Kubernetes API server by sharing and caching watches between all controllers that need to observe the object.
-Listers use the data from the informer's cache to provide a read-optimized view of the cache which reduces the load on the API Server and hides some complexity.
-*/
-func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration) (cache.SharedIndexInformer, applisters.ApplicationLister) {
-	informer := informers.NewApplicationInformer(ctrl.applicationClientset, "", refreshTimeout,
+// newApplicationInformerAndLister, is part of the ApplicationWatcher struct. It sets up a Kubernetes SharedIndexInformer
+// and a Lister for Argo CD Applications.
+//
+// A SharedIndexInformer is used to watch changes to a specific type of Kubernetes resource in an efficient manner.
+// It significantly reduces the load on the Kubernetes API server by sharing and caching watches between all controllers
+// that need to observe the object.
+//
+// Listers use the data from the informer's cache to provide a read-optimized view of the cache which reduces
+// the load on the API Server and hides some complexity.
+func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (cache.SharedIndexInformer, applisters.ApplicationLister) {
+	log.Debug().Msgf("Creating Application informer with namespace: %s", cfg.ArgoCDNameSpace)
+	informer := informers.NewApplicationInformer(ctrl.applicationClientset, cfg.ArgoCDNameSpace, refreshTimeout,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
 

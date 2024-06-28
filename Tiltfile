@@ -138,12 +138,54 @@ test_go(
   ],
 )
 
+# read .tool-versions file and return a dictionary of tools and their versions
+def parse_tool_versions(fn):
+    if not os.path.exists(fn):
+        warn("tool versions file not found: '%s'" % fn)
+        return dict()
+
+    f = read_file(fn)
+
+    lines = str(f).splitlines()
+
+    tools = dict()
+
+    for linenumber in range(len(lines)):
+        line = lines[linenumber]
+        parts = line.split("#", 1)
+        if len(parts) == 2:
+            line = parts[0]
+        line = line.strip()
+        if line == "":
+            continue
+        parts = line.split(' ', 1)
+        tools[parts[0].strip()] = parts[1].strip()
+    tools['githead'] = str(local('git rev-parse --short HEAD'))
+    return tools
+
+tool_versions = parse_tool_versions(".tool-versions")
+
+# get the git commit ref
+def get_git_head():
+    result = local('git rev-parse --short HEAD')
+    return result
+
 earthly_build(
     context='.',
     target="+docker-debug",
     ref='kubechecks',
     image_arg='IMAGE_NAME',
     ignore='./dist',
+    extra_args=[
+        '--CHART_RELEASER_VERSION='+tool_versions.get('helm-cr'),
+        '--GOLANG_VERSION='+tool_versions.get('golang'),
+        '--GOLANGCI_LINT_VERSION='+tool_versions.get('golangci-lint'),
+        '--HELM_VERSION='+tool_versions.get('helm'),
+        '--KUBECONFORM_VERSION='+tool_versions.get('kubeconform'),
+        '--KUSTOMIZE_VERSION='+tool_versions.get('kustomize'),
+        '--STATICCHECK_VERSION='+tool_versions.get('staticcheck'),
+        '--GIT_COMMIT='+tool_versions.get('githead'),
+        ],
 )
 
 cmd_button('loc:go mod tidy',

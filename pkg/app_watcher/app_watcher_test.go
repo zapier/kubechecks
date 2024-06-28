@@ -8,12 +8,15 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	appclientsetfake "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
+	"github.com/zapier/kubechecks/pkg/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/zapier/kubechecks/pkg/appdir"
 )
 
 func initTestObjects() *ApplicationWatcher {
+	cfg, _ := config.New()
+
 	// set up the fake Application client set and informer.
 	testApp1 := &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},
@@ -34,7 +37,7 @@ func initTestObjects() *ApplicationWatcher {
 		vcsToArgoMap:         appdir.NewVcsToArgoMap("vcs-username"),
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second * 1)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*1, cfg)
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
 
