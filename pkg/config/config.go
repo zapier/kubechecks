@@ -21,7 +21,7 @@ type ServerConfig struct {
 	ArgoCDToken      string `mapstructure:"argocd-api-token"`
 	ArgoCDPathPrefix string `mapstructure:"argocd-api-path-prefix"`
 	ArgoCDInsecure   bool   `mapstructure:"argocd-api-insecure"`
-	ArgoCDNameSpace  string `mapstructure:"argocd-api-namespace"`
+	ArgoCDNamespace  string `mapstructure:"argocd-api-namespace"`
 	KubernetesConfig string `mapstructure:"kubernetes-config"`
 
 	// otel
@@ -102,7 +102,7 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	log.Info().Msgf("Webhook URL Base: %s", cfg.WebhookUrlBase)
 	log.Info().Msgf("Webhook URL Prefix: %s", cfg.UrlPrefix)
 	log.Info().Msgf("VCS Type: %s", cfg.VcsType)
-	log.Info().Msgf("ArgoCD namespace: %s", cfg.ArgoCDNameSpace)
+	log.Info().Msgf("ArgoCD Namespace: %s", cfg.ArgoCDNamespace)
 
 	return cfg, nil
 }
