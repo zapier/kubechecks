@@ -14,9 +14,12 @@ import (
 	"github.com/zapier/kubechecks/pkg/appdir"
 )
 
-func initTestObjects() *ApplicationWatcher {
-	cfg, _ := config.New()
-
+func initTestObjects(t *testing.T) *ApplicationWatcher {
+	cfg, err := config.New()
+	if err != nil {
+		// Handle the error appropriately, e.g., log it or fail the test
+		t.Fatalf("Failed to initialize config: %v", err)
+	}
 	// set up the fake Application client set and informer.
 	testApp1 := &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},
@@ -45,7 +48,7 @@ func initTestObjects() *ApplicationWatcher {
 }
 
 func TestApplicationAdded(t *testing.T) {
-	appWatcher := initTestObjects()
+	appWatcher := initTestObjects(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -71,7 +74,7 @@ func TestApplicationAdded(t *testing.T) {
 }
 
 func TestApplicationUpdated(t *testing.T) {
-	ctrl := initTestObjects()
+	ctrl := initTestObjects(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -104,7 +107,7 @@ func TestApplicationUpdated(t *testing.T) {
 }
 
 func TestApplicationDeleted(t *testing.T) {
-	ctrl := initTestObjects()
+	ctrl := initTestObjects(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

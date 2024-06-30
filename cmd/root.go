@@ -56,9 +56,13 @@ func init() {
 			withDefault("gitlab"))
 	stringFlag(flags, "vcs-token", "VCS API token.")
 	stringFlag(flags, "argocd-api-token", "ArgoCD API token.")
-	stringFlag(flags, "argocd-api-server-addr", "ArgoCD API Server Address.", newStringOpts().withDefault("argocd-server"))
+	stringFlag(flags, "argocd-api-server-addr", "ArgoCD API Server Address.",
+		newStringOpts().
+			withDefault("argocd-server"))
 	boolFlag(flags, "argocd-api-insecure", "Enable to use insecure connections to the ArgoCD API server.")
-	stringFlag(flags, "argocd-api-namespace", "ArgoCD namespace where the application watcher will read CRD.")
+	stringFlag(flags, "argocd-api-namespace", "ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD).",
+		newStringOpts().
+			withDefault("argocd"))
 	stringFlag(flags, "kubernetes-config", "Path to your kubernetes config file, used to monitor applications.")
 
 	stringFlag(flags, "otel-collector-port", "The OpenTelemetry collector port.")
