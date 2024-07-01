@@ -138,6 +138,12 @@ test_go(
   ],
 )
 
+
+# get the git commit ref
+def get_git_head():
+    result = local('git rev-parse --short HEAD')
+    return result
+
 # read .tool-versions file and return a dictionary of tools and their versions
 def parse_tool_versions(fn):
     if not os.path.exists(fn):
@@ -160,15 +166,10 @@ def parse_tool_versions(fn):
             continue
         parts = line.split(' ', 1)
         tools[parts[0].strip()] = parts[1].strip()
-    tools['githead'] = str(local('git rev-parse --short HEAD'))
+    tools['githead'] = str(get_git_head())
     return tools
 
 tool_versions = parse_tool_versions(".tool-versions")
-
-# get the git commit ref
-def get_git_head():
-    result = local('git rev-parse --short HEAD')
-    return result
 
 earthly_build(
     context='.',
@@ -185,6 +186,10 @@ earthly_build(
         '--KUSTOMIZE_VERSION='+tool_versions.get('kustomize'),
         '--STATICCHECK_VERSION='+tool_versions.get('staticcheck'),
         '--GIT_COMMIT='+tool_versions.get('githead'),
+        '--GITLAB_TOKEN='+os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN'),
+        '--KUBECHECKS_LOG_LEVEL='+os.getenv('KUBECHECKS_LOG_LEVEL'),
+        '--OPENAI_API_TOKEN='+os.getenv('OPENAI_API_TOKEN'),
+        '--KUBECHECKS_WEBHOOK_SECRET='+os.getenv('KUBECHECKS_WEBHOOK_SECRET'),
         ],
 )
 

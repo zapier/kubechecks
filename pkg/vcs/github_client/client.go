@@ -251,7 +251,7 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 		Name: pkg.Pointer("web"),
 	})
 	if err != nil || resp.StatusCode != 200 {
-		return errors.Wrap(err, "failed to create hook")
+		return errors.Wrap(err, fmt.Sprintf("failed to create hook, statuscode: %d", resp.StatusCode))
 	}
 
 	return nil
