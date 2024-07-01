@@ -219,7 +219,12 @@ func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl 
 	}
 
 	for _, item := range items {
-		if item.URL != nil && *item.URL == webhookUrl {
+		// check if the hook's config has a URL
+		hookPayloadURL := ""
+		if item.Config["url"] != nil {
+			hookPayloadURL = item.Config["url"].(string)
+		}
+		if hookPayloadURL == webhookUrl {
 			return &vcs.WebHookConfig{
 				Url:    item.GetURL(),
 				Events: item.Events, // TODO: translate GH specific event names to VCS agnostic
@@ -232,7 +237,7 @@ func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl 
 
 func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, webhookSecret string) error {
 	owner, repoName := parseRepo(ownerAndRepoName)
-	_, _, err := c.googleClient.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
+	_, resp, err := c.googleClient.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
 		Active: pkg.Pointer(true),
 		Config: map[string]interface{}{
 			"content_type": "json",
@@ -245,7 +250,7 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 		},
 		Name: pkg.Pointer("web"),
 	})
-	if err != nil {
+	if err != nil || resp.StatusCode != 200 {
 		return errors.Wrap(err, "failed to create hook")
 	}
 
