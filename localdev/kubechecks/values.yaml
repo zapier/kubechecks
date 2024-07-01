@@ -20,7 +20,7 @@ configMap:
     # KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
     # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
     KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
-    KUBECHECKS_ENABLE_CONFTEST: "true"
+    KUBECHECKS_ENABLE_CONFTEST: "false"
 
 
 deployment:
