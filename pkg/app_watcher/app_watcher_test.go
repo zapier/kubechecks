@@ -8,6 +8,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	appclientsetfake "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zapier/kubechecks/pkg/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -17,7 +18,7 @@ import (
 func initTestObjects(t *testing.T) *ApplicationWatcher {
 	cfg, err := config.New()
 	// Handle the error appropriately, e.g., log it or fail the test
-	assert.NoError(t, err, "failed to create config")
+	require.NoError(t, err, "failed to create config")
 
 	// set up the fake Application client set and informer.
 	testApp1 := &v1alpha1.Application{

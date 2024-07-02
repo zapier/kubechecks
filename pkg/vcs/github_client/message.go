@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-github/v53/github"
+	"github.com/google/go-github/v62/github"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
 

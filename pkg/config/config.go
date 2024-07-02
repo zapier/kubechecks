@@ -30,9 +30,10 @@ type ServerConfig struct {
 	OtelCollectorPort string `mapstructure:"otel-collector-port"`
 
 	// vcs
-	VcsBaseUrl string `mapstructure:"vcs-base-url"`
-	VcsToken   string `mapstructure:"vcs-token"`
-	VcsType    string `mapstructure:"vcs-type"`
+	VcsBaseUrl   string `mapstructure:"vcs-base-url"`
+	VcsUploadUrl string `mapstructure:"vcs-upload-url"` // github enterprise upload URL
+	VcsToken     string `mapstructure:"vcs-token"`
+	VcsType      string `mapstructure:"vcs-type"`
 
 	// webhooks
 	EnsureWebhooks bool   `mapstructure:"ensure-webhooks"`
