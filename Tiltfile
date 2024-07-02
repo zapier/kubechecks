@@ -7,7 +7,7 @@ load('ext://uibutton', 'cmd_button')
 load('ext://helm_resource', 'helm_resource')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
-dotenv()
+dotenv(fn='.secret')
 
 config.define_bool("enable_repo", True, 'create a new project for testing this app')
 config.define_string("vcs-type")
@@ -166,10 +166,10 @@ def parse_tool_versions(fn):
             continue
         parts = line.split(' ', 1)
         tools[parts[0].strip()] = parts[1].strip()
-    tools['githead'] = str(get_git_head())
     return tools
 
 tool_versions = parse_tool_versions(".tool-versions")
+git_commit = str(get_git_head()).strip()
 
 earthly_build(
     context='.',
@@ -185,11 +185,7 @@ earthly_build(
         '--KUBECONFORM_VERSION='+tool_versions.get('kubeconform'),
         '--KUSTOMIZE_VERSION='+tool_versions.get('kustomize'),
         '--STATICCHECK_VERSION='+tool_versions.get('staticcheck'),
-        '--GIT_COMMIT='+tool_versions.get('githead'),
-        '--GITLAB_TOKEN='+os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN'),
-        '--KUBECHECKS_LOG_LEVEL='+os.getenv('KUBECHECKS_LOG_LEVEL'),
-        '--OPENAI_API_TOKEN='+os.getenv('OPENAI_API_TOKEN'),
-        '--KUBECHECKS_WEBHOOK_SECRET='+os.getenv('KUBECHECKS_WEBHOOK_SECRET'),
+        '--GIT_COMMIT='+git_commit,
         ],
 )
 

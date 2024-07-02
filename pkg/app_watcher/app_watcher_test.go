@@ -16,10 +16,9 @@ import (
 
 func initTestObjects(t *testing.T) *ApplicationWatcher {
 	cfg, err := config.New()
-	if err != nil {
-		// Handle the error appropriately, e.g., log it or fail the test
-		t.Fatalf("Failed to initialize config: %v", err)
-	}
+	// Handle the error appropriately, e.g., log it or fail the test
+	assert.NoError(t, err, "failed to create config")
+
 	// set up the fake Application client set and informer.
 	testApp1 := &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},

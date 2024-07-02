@@ -60,7 +60,7 @@ func init() {
 		newStringOpts().
 			withDefault("argocd-server"))
 	boolFlag(flags, "argocd-api-insecure", "Enable to use insecure connections to the ArgoCD API server.")
-	stringFlag(flags, "argocd-api-namespace", "ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD).",
+	stringFlag(flags, "argocd-api-namespace", "ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.",
 		newStringOpts().
 			withDefault("argocd"))
 	stringFlag(flags, "kubernetes-config", "Path to your kubernetes config file, used to monitor applications.")

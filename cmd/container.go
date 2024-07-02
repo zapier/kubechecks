@@ -61,7 +61,7 @@ func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) 
 			go ctr.ApplicationWatcher.Run(ctx, 1)
 		}
 	} else {
-		log.Debug().Msgf("not monitoring applications, MonitorAllApplications: %+v", cfg.MonitorAllApplications)
+		log.Info().Msgf("not monitoring applications, MonitorAllApplications: %+v", cfg.MonitorAllApplications)
 	}
 
 	return ctr, nil
