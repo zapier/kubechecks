@@ -7,6 +7,11 @@ load('ext://uibutton', 'cmd_button')
 load('ext://helm_resource', 'helm_resource')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
+
+# Check if the .secret file exists
+if not os.path.exists('.secret'):
+    fail('The .secret file is missing. Please copy .secret file from .secret.example and setup before running Tilt.')
+
 dotenv(fn='.secret')
 
 config.define_bool("enable_repo", True, 'create a new project for testing this app')

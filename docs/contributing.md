@@ -72,6 +72,14 @@ To get started do the following:
     ```console
     cp .secret.example .secret
     ```
+  You will need to fill in either `GITLAB_TOKEN` or `GITLAB_TOKEN`  
+  If you are testing with GITHUB, please set the tile_config.json file to specify the vcs-type as the default is `gitlab`.  
+  The token you specify must have ability to get repositories, add/delete comment and webhooks.  
+    ```json
+    {
+      "vcs-type": "github"
+    }
+    ```
 
 * From the root directory of this repo:
 
