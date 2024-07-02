@@ -41,7 +41,7 @@ runs:
     - name: Build and push the Docker image
       shell: bash
       run: >-       
-        ./earthly 
+        ./earthly.sh 
         --push 
         +docker-multiarch
         ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }} 

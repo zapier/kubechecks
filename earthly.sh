@@ -8,7 +8,7 @@ to_echo() {
 
 read_tool_versions_write_to_env() {
     local -r tool_versions_file="$1"
-
+    cat $tool_versions_file
     # loop over each line of the .tool-versions file
     while read -r line; do
         # split the line into a bash array using the default space delimeter
@@ -39,4 +39,5 @@ earthly $* \
   --KUBECONFORM_VERSION=${kubeconform_tool_version} \
   --KUSTOMIZE_VERSION=${kustomize_tool_version} \
   --STATICCHECK_VERSION=${staticcheck_tool_version} \
-  --GIT_COMMIT=$(git rev-parse --short HEAD)
+  --GIT_COMMIT=$(git rev-parse --short HEAD) \
+  --KUBECHECKS_LOG_LEVEL=debug

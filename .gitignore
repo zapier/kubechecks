@@ -26,3 +26,5 @@ localdev/terraform/gitlab/project.url
 *.DS_Store
 /kubechecks
 localdev/terraform/github/project.url
+.secret
+.arg

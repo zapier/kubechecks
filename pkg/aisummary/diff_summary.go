@@ -17,7 +17,7 @@ func (c *OpenAiClient) SummarizeDiff(ctx context.Context, appName, diff string) 
 	ctx, span := tracer.Start(ctx, "SummarizeDiff")
 	defer span.End()
 
-	model := openai.GPT4Turbo0125
+	model := openai.GPT4o
 	if len(diff) < 3500 {
 		model = openai.GPT3Dot5Turbo
 	}

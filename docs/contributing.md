@@ -67,10 +67,18 @@ It creates:
 
 To get started do the following:
 
-* Copy the `.env.example` and set required values.
+* Copy the `.secret.example` and set required values.
 
     ```console
-    cp .env.example .env
+    cp .secret.example .secret
+    ```
+  You will need to fill in either `GITLAB_TOKEN` or `GITLAB_TOKEN`  
+  If you are testing with GITHUB, please set the tile_config.json file to specify the vcs-type as the default is `gitlab`.  
+  The token you specify must have ability to get repositories, add/delete comment and webhooks.  
+    ```json
+    {
+      "vcs-type": "github"
+    }
     ```
 
 * From the root directory of this repo:
@@ -110,7 +118,7 @@ If you're using minikube with Tilt we recommend following this [guide](https://g
 
 ### Code Changes
 
-We use Earthly to simplify our CI/CD process with `kubechecks`. There's a thin wrapper around earthly that passes some common arguments in the root of the repo called `./earthly` that should be used instead of calling earthly directly. This also simplifies testing changes locally before pushing them up to ensure your PR will pass all required checks. The best command to run is `./earthly +test` this will pull all the required dependencies (including any new ones that you have added). It will then run [go vet](https://pkg.go.dev/cmd/vet), and if those pass it will run `go test` with race detection enabled. You can also always run these commands directly `go test -race ./...` will run all tests in the repo with race detection enabled. Please ensure that `./earthly +test` is passing before opening a PR.
+We use Earthly to simplify our CI/CD process with `kubechecks`. There's a thin wrapper around earthly that passes some common arguments in the root of the repo called `./earthly.sh` that should be used instead of calling earthly directly. This also simplifies testing changes locally before pushing them up to ensure your PR will pass all required checks. The best command to run is `./earthly.sh +test` this will pull all the required dependencies (including any new ones that you have added). It will then run [go vet](https://pkg.go.dev/cmd/vet), and if those pass it will run `go test` with race detection enabled. You can also always run these commands directly `go test -race ./...` will run all tests in the repo with race detection enabled. Please ensure that `./earthly.sh +test` is passing before opening a PR.
 
 ### Documentation Changes
 

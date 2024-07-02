@@ -7,7 +7,12 @@ load('ext://uibutton', 'cmd_button')
 load('ext://helm_resource', 'helm_resource')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
-dotenv()
+
+# Check if the .secret file exists
+if not os.path.exists('.secret'):
+    fail('The .secret file is missing. Please copy .secret file from .secret.example and setup before running Tilt.')
+
+dotenv(fn='.secret')
 
 config.define_bool("enable_repo", True, 'create a new project for testing this app')
 config.define_string("vcs-type")
@@ -126,7 +131,7 @@ if cfg.get('enable_repo', True):
 test_go(
   'go-test', '.',
   recursive=True,
-  timeout='30s',
+  timeout='60s',
   extra_args=['-v'],
   labels=["kubechecks"],
   deps=[
@@ -138,12 +143,55 @@ test_go(
   ],
 )
 
+
+# get the git commit ref
+def get_git_head():
+    result = local('git rev-parse --short HEAD')
+    return result
+
+# read .tool-versions file and return a dictionary of tools and their versions
+def parse_tool_versions(fn):
+    if not os.path.exists(fn):
+        warn("tool versions file not found: '%s'" % fn)
+        return dict()
+
+    f = read_file(fn)
+
+    lines = str(f).splitlines()
+
+    tools = dict()
+
+    for linenumber in range(len(lines)):
+        line = lines[linenumber]
+        parts = line.split("#", 1)
+        if len(parts) == 2:
+            line = parts[0]
+        line = line.strip()
+        if line == "":
+            continue
+        parts = line.split(' ', 1)
+        tools[parts[0].strip()] = parts[1].strip()
+    return tools
+
+tool_versions = parse_tool_versions(".tool-versions")
+git_commit = str(get_git_head()).strip()
+
 earthly_build(
     context='.',
     target="+docker-debug",
     ref='kubechecks',
     image_arg='IMAGE_NAME',
     ignore='./dist',
+    extra_args=[
+        '--CHART_RELEASER_VERSION='+tool_versions.get('helm-cr'),
+        '--GOLANG_VERSION='+tool_versions.get('golang'),
+        '--GOLANGCI_LINT_VERSION='+tool_versions.get('golangci-lint'),
+        '--HELM_VERSION='+tool_versions.get('helm'),
+        '--KUBECONFORM_VERSION='+tool_versions.get('kubeconform'),
+        '--KUSTOMIZE_VERSION='+tool_versions.get('kustomize'),
+        '--STATICCHECK_VERSION='+tool_versions.get('staticcheck'),
+        '--GIT_COMMIT='+git_commit,
+        ],
 )
 
 cmd_button('loc:go mod tidy',

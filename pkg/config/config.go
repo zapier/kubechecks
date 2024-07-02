@@ -21,6 +21,7 @@ type ServerConfig struct {
 	ArgoCDToken      string `mapstructure:"argocd-api-token"`
 	ArgoCDPathPrefix string `mapstructure:"argocd-api-path-prefix"`
 	ArgoCDInsecure   bool   `mapstructure:"argocd-api-insecure"`
+	ArgoCDNamespace  string `mapstructure:"argocd-api-namespace"`
 	KubernetesConfig string `mapstructure:"kubernetes-config"`
 
 	// otel
@@ -29,9 +30,10 @@ type ServerConfig struct {
 	OtelCollectorPort string `mapstructure:"otel-collector-port"`
 
 	// vcs
-	VcsBaseUrl string `mapstructure:"vcs-base-url"`
-	VcsToken   string `mapstructure:"vcs-token"`
-	VcsType    string `mapstructure:"vcs-type"`
+	VcsBaseUrl   string `mapstructure:"vcs-base-url"`
+	VcsUploadUrl string `mapstructure:"vcs-upload-url"` // github enterprise upload URL
+	VcsToken     string `mapstructure:"vcs-token"`
+	VcsType      string `mapstructure:"vcs-type"`
 
 	// webhooks
 	EnsureWebhooks bool   `mapstructure:"ensure-webhooks"`
@@ -101,6 +103,7 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	log.Info().Msgf("Webhook URL Base: %s", cfg.WebhookUrlBase)
 	log.Info().Msgf("Webhook URL Prefix: %s", cfg.UrlPrefix)
 	log.Info().Msgf("VCS Type: %s", cfg.VcsType)
+	log.Info().Msgf("ArgoCD Namespace: %s", cfg.ArgoCDNamespace)
 
 	return cfg, nil
 }

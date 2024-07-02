@@ -65,7 +65,7 @@ unit_test_race:
 	go test -race ./...
 
 rebuild_docs:
-    ./earthly +rebuild-docs
+    ./earthly.sh +rebuild-docs
 
 ci-golang:
-    ./earthly +ci-golang
+    ./earthly.sh +ci-golang

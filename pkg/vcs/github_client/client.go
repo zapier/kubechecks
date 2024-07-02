@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/chainguard-dev/git-urls"
-	"github.com/google/go-github/v53/github"
+	"github.com/google/go-github/v62/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
@@ -26,10 +26,17 @@ var tracer = otel.Tracer("pkg/vcs/github_client")
 
 type Client struct {
 	shurcoolClient *githubv4.Client
-	googleClient   *github.Client
+	googleClient   *GClient
 	cfg            config.ServerConfig
 
 	username, email string
+}
+
+// GClient is a struct that holds the services for the GitHub client
+type GClient struct {
+	PullRequests PullRequestsServices
+	Repositories RepositoriesServices
+	Issues       IssuesServices
 }
 
 // CreateGithubClient creates a new GitHub client using the auth token provided. We
@@ -54,13 +61,15 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 	tc := oauth2.NewClient(ctx, ts)
 
 	githubUrl := cfg.VcsBaseUrl
-	if githubUrl == "" {
+	githubUploadUrl := cfg.VcsUploadUrl
+	// we need both urls to be set for github enterprise
+	if githubUrl == "" || githubUploadUrl == "" {
 		googleClient = github.NewClient(tc) // If this has failed, we'll catch it on first call
 
 		// Use the client from shurcooL's githubv4 library for queries.
 		shurcoolClient = githubv4.NewClient(tc)
 	} else {
-		googleClient, err = github.NewEnterpriseClient(githubUrl, githubUrl, tc)
+		googleClient, err = github.NewClient(tc).WithEnterpriseURLs(githubUrl, githubUploadUrl)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create github enterprise client")
 		}
@@ -73,8 +82,12 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 	}
 
 	client := &Client{
-		cfg:            cfg,
-		googleClient:   googleClient,
+		cfg: cfg,
+		googleClient: &GClient{
+			PullRequests: PullRequestsService{googleClient.PullRequests},
+			Repositories: RepositoriesService{googleClient.Repositories},
+			Issues:       IssuesService{googleClient.Issues},
+		},
 		shurcoolClient: shurcoolClient,
 	}
 	if user != nil {
@@ -219,9 +232,15 @@ func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl 
 	}
 
 	for _, item := range items {
-		if item.URL != nil && *item.URL == webhookUrl {
+		itemConfig := item.GetConfig()
+		// check if the hook's config has a URL
+		hookPayloadURL := ""
+		if itemConfig != nil {
+			hookPayloadURL = itemConfig.GetURL()
+		}
+		if hookPayloadURL == webhookUrl {
 			return &vcs.WebHookConfig{
-				Url:    item.GetURL(),
+				Url:    hookPayloadURL,
 				Events: item.Events, // TODO: translate GH specific event names to VCS agnostic
 			}, nil
 		}
@@ -232,23 +251,26 @@ func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl 
 
 func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, webhookSecret string) error {
 	owner, repoName := parseRepo(ownerAndRepoName)
-	_, _, err := c.googleClient.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
+	_, resp, err := c.googleClient.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
 		Active: pkg.Pointer(true),
-		Config: map[string]interface{}{
-			"content_type": "json",
-			"insecure_ssl": "0",
-			"secret":       webhookSecret,
-			"url":          webhookUrl,
+		Config: &github.HookConfig{
+			ContentType: pkg.Pointer("json"),
+			InsecureSSL: pkg.Pointer("0"),
+			URL:         pkg.Pointer(webhookUrl),
+			Secret:      pkg.Pointer(webhookSecret),
 		},
 		Events: []string{
 			"pull_request",
 		},
 		Name: pkg.Pointer("web"),
 	})
-	if err != nil {
-		return errors.Wrap(err, "failed to create hook")
+	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		statusCode := 0
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+		return errors.Wrap(err, fmt.Sprintf("failed to create hook, statuscode: %d", statusCode))
 	}
-
 	return nil
 }
 
