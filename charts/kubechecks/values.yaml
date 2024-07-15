@@ -138,4 +138,5 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 clusterRoleBinding:
-  argocdApiNamespace: "argocd" # argocd's namespace, if not specified, uses kubecheck's full name
+  # Namespace for ArgoCD API. If not specified, uses kubecheck's full name.
+  argocdApiNamespace: "argocd"

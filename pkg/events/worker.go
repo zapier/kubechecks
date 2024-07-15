@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog"
 	"github.com/zapier/kubechecks/pkg"
@@ -14,8 +17,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type worker struct {

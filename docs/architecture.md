@@ -42,3 +42,5 @@ The final piece of the puzzle is the `CheckEvent`; an internal structure that ta
 
 ![Event Flow Diagram](./img/eventflowdiagram.png){: style="height:350px;display:block;margin:0 auto;"}
 
+This diagram illustrates the flow of events from the initial webhook trigger to the final report generation and comment update process.
+

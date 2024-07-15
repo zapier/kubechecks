@@ -63,17 +63,12 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 // returns the list of applications that are affected by the changes.
 //
 //	e.g. changeList = ["path/to/file1", "path/to/file2"]
-func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string, repo *git.Repo) []v1alpha1.Application {
+func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string, _ *git.Repo) []v1alpha1.Application {
 	log.Debug().Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})
 	for _, changePath := range changeList {
 		log.Debug().Msgf("change: %s", changePath)
-		//absPath := filepath.Join(repo.Directory, changePath)
-		//if containsKindApplicationSet(absPath) {
-		//	log.Debug().Msgf("skipping %s because it is an ApplicationSet", changePath)
-		//	continue
-		//}
 		for dir, appNames := range d.appDirs {
 			if strings.HasPrefix(changePath, dir) {
 				log.Debug().Msg("dir match!")

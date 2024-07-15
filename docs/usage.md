@@ -49,7 +49,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_KUBERNETES_CLUSTER_REGION`|Kubernetes Cluster Region, if the cluster is on a cloud provider, and running on a different region, this must be specified.||
 |`KUBECHECKS_KUBERNETES_CLUSTERID`|Kubernetes Cluster ID, must be specified if kubernetes-type is eks.||
 |`KUBECHECKS_KUBERNETES_CONFIG`|Path to your kubernetes config file, used to monitor applications.||
-|`KUBECHECKS_KUBERNETES_TYPE`|Kubernetes Type One of eks, gks, aks, localhost or managed.|`localhost`|
+|`KUBECHECKS_KUBERNETES_TYPE`|Kubernetes Type One of eks, or localhost.|`localhost`|
 |`KUBECHECKS_LABEL_FILTER`|(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook.||
 |`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of error, warn, info, debug, trace.|`info`|
 |`KUBECHECKS_MAX_CONCURRENCT_CHECKS`|Number of concurrent checks to run.|`32`|

@@ -2,6 +2,7 @@ package app_watcher
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -30,7 +31,9 @@ type ApplicationWatcher struct {
 
 // NewApplicationWatcher creates new instance of ApplicationWatcher.
 func NewApplicationWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerConfig) (*ApplicationWatcher, error) {
-
+	if kubeCfg == nil {
+		return nil, fmt.Errorf("kubeCfg cannot be nil")
+	}
 	ctrl := ApplicationWatcher{
 		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
 		vcsToArgoMap:         vcsToArgoMap,
