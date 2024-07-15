@@ -6,7 +6,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/git"
 )
 
 type AppDirectory struct {
@@ -63,7 +62,7 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 // returns the list of applications that are affected by the changes.
 //
 //	e.g. changeList = ["path/to/file1", "path/to/file2"]
-func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string, _ *git.Repo) []v1alpha1.Application {
+func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []v1alpha1.Application {
 	log.Debug().Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})

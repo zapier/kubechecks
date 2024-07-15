@@ -35,7 +35,9 @@ type VcsToArgoMap interface {
 	AddApp(*v1alpha1.Application)
 	AddAppSet(*v1alpha1.ApplicationSet)
 	UpdateApp(old, new *v1alpha1.Application)
+	UpdateAppSet(old *v1alpha1.ApplicationSet, new *v1alpha1.ApplicationSet)
 	DeleteApp(*v1alpha1.Application)
+	DeleteAppSet(app *v1alpha1.ApplicationSet)
 	GetVcsRepos() []string
 	GetAppsInRepo(string) *appdir.AppDirectory
 	GetAppSetsInRepo(string) *appdir.AppSetDirectory

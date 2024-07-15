@@ -282,7 +282,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	close(ce.appChannel)
 
-	ce.logger.Debug().Stack().Msg("finished an app/appsets")
+	ce.logger.Debug().Msg("finished an app/appsets")
 
 	ce.logger.Debug().
 		Int("all apps", len(ce.addedAppsSet)).

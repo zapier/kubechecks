@@ -16,7 +16,7 @@ def copy_test_appsets(cfg):
         dest_file = "./localdev/terraform/modules/vcs_files/base_files/appsets/{}/{}.yaml".format(appset,appset)
 
         # Copy the file to the specific terraform directory
-        local("cp {} {}".format(source_file, dest_file))
+        local("mkdir -p ./localdev/terraform/modules/vcs_files/base_files/appsets/{} && cp {} {}".format(appset, source_file, dest_file))
 
         # Modify the copied file to replace ${REPO_URL} with projectUrl
         local("sed -i '' 's#REPO_URL#{}#g' {}".format(projectUrl, dest_file))
