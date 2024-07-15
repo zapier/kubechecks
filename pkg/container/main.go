@@ -5,6 +5,7 @@ import (
 	"io/fs"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	client "github.com/zapier/kubechecks/pkg/kubernetes"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/app_watcher"
@@ -16,8 +17,9 @@ import (
 )
 
 type Container struct {
-	ApplicationWatcher *app_watcher.ApplicationWatcher
-	ArgoClient         *argo_client.ArgoClient
+	ApplicationWatcher    *app_watcher.ApplicationWatcher
+	ApplicationSetWatcher *app_watcher.ApplicationSetWatcher
+	ArgoClient            *argo_client.ArgoClient
 
 	Config config.ServerConfig
 
@@ -25,14 +27,18 @@ type Container struct {
 
 	VcsClient    vcs.Client
 	VcsToArgoMap VcsToArgoMap
+
+	KubeClientSet client.Interface
 }
 
 type VcsToArgoMap interface {
 	AddApp(*v1alpha1.Application)
+	AddAppSet(*v1alpha1.ApplicationSet)
 	UpdateApp(old, new *v1alpha1.Application)
 	DeleteApp(*v1alpha1.Application)
 	GetVcsRepos() []string
 	GetAppsInRepo(string) *appdir.AppDirectory
+	GetAppSetsInRepo(string) *appdir.AppSetDirectory
 	GetMap() map[pkg.RepoURL]*appdir.AppDirectory
 	WalkKustomizeApps(cloneURL string, fs fs.FS) *appdir.AppDirectory
 }

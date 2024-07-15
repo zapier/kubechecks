@@ -5,19 +5,20 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
-
 	"github.com/zapier/kubechecks/pkg"
 )
 
 type VcsToArgoMap struct {
-	username     string
-	appDirByRepo map[pkg.RepoURL]*AppDirectory
+	username        string
+	appDirByRepo    map[pkg.RepoURL]*AppDirectory
+	appSetDirByRepo map[pkg.RepoURL]*AppSetDirectory
 }
 
 func NewVcsToArgoMap(vcsUsername string) VcsToArgoMap {
 	return VcsToArgoMap{
-		username:     vcsUsername,
-		appDirByRepo: make(map[pkg.RepoURL]*AppDirectory),
+		username:        vcsUsername,
+		appDirByRepo:    make(map[pkg.RepoURL]*AppDirectory),
+		appSetDirByRepo: make(map[pkg.RepoURL]*AppSetDirectory),
 	}
 }
 
@@ -38,6 +39,21 @@ func (v2a VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *AppDirectory {
 	}
 
 	return appdir
+}
+
+// GetAppSetsInRepo returns AppSetDirectory for the specified repository URL.
+func (v2a VcsToArgoMap) GetAppSetsInRepo(repoCloneUrl string) *AppSetDirectory {
+	repoUrl, _, err := pkg.NormalizeRepoUrl(repoCloneUrl)
+	if err != nil {
+		log.Warn().Err(err).Msgf("failed to parse %s", repoCloneUrl)
+	}
+	appSetDir := v2a.appSetDirByRepo[repoUrl]
+	if appSetDir == nil {
+		appSetDir = NewAppSetDirectory()
+		v2a.appSetDirByRepo[repoUrl] = appSetDir
+	}
+
+	return appSetDir
 }
 
 func (v2a VcsToArgoMap) WalkKustomizeApps(cloneURL string, fs fs.FS) *AppDirectory {
@@ -98,6 +114,41 @@ func (v2a VcsToArgoMap) GetVcsRepos() []string {
 	for key := range v2a.appDirByRepo {
 		repos = append(repos, key.CloneURL(v2a.username))
 	}
-
+	for key := range v2a.appSetDirByRepo {
+		repos = append(repos, key.CloneURL(v2a.username))
+	}
 	return repos
+}
+
+func (v2a VcsToArgoMap) AddAppSet(app *v1alpha1.ApplicationSet) {
+	if app.Spec.Template.Spec.GetSource().RepoURL == "" {
+		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
+		return
+	}
+
+	appDirectory := v2a.GetAppSetsInRepo(app.Spec.Template.Spec.GetSource().RepoURL)
+	appDirectory.ProcessApp(*app)
+}
+
+func (v2a VcsToArgoMap) UpdateAppSet(old *v1alpha1.ApplicationSet, new *v1alpha1.ApplicationSet) {
+	if new.Spec.Template.Spec.GetSource().RepoURL == "" {
+		log.Warn().Msgf("%s/%s: no source, skipping", new.Namespace, new.Name)
+		return
+	}
+
+	oldAppDirectory := v2a.GetAppSetsInRepo(old.Spec.Template.Spec.GetSource().RepoURL)
+	oldAppDirectory.RemoveApp(*old)
+
+	newAppDirectory := v2a.GetAppSetsInRepo(new.Spec.Template.Spec.GetSource().RepoURL)
+	newAppDirectory.ProcessApp(*new)
+}
+
+func (v2a VcsToArgoMap) DeleteAppSet(app *v1alpha1.ApplicationSet) {
+	if app.Spec.Template.Spec.GetSource().RepoURL == "" {
+		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
+		return
+	}
+
+	oldAppDirectory := v2a.GetAppSetsInRepo(app.Spec.Template.Spec.GetSource().RepoURL)
+	oldAppDirectory.RemoveApp(*app)
 }

@@ -34,7 +34,7 @@ func TestFindAffectedAppsWithNilAppsDirectory(t *testing.T) {
 	)
 
 	matcher := ArgocdMatcher{}
-	items, err := matcher.AffectedApps(ctx, changeList, "main")
+	items, err := matcher.AffectedApps(ctx, changeList, "main", nil)
 
 	// verify results
 	require.NoError(t, err)

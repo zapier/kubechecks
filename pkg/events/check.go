@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/zapier/kubechecks/pkg/generator"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -110,11 +111,23 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 		matcher = affected_apps.NewMultiMatcher(matcher, configMatcher)
 	}
 
-	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList, targetBranch)
+	// use the changed file path to get the list of affected apps
+	// fileList is a list of changed files in the PR/MR, e.g. ["path/to/file1", "path/to/file2"]
+	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList, targetBranch, repo)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Affected Apps")
 		ce.logger.Error().Err(err).Msg("could not get list of affected apps and appsets")
 	}
+
+	for _, appSet := range ce.affectedItems.ApplicationSets {
+		apps, err := generator.GenerateApplicationSetApps(ctx, appSet, &ce.ctr)
+		if err != nil {
+			ce.logger.Error().Err(err).Msg("could not generate apps from appSet")
+			continue
+		}
+		ce.affectedItems.Applications = append(ce.affectedItems.Applications, apps...)
+	}
+
 	span.SetAttributes(
 		attribute.Int("numAffectedApps", len(ce.affectedItems.Applications)),
 		attribute.Int("numAffectedAppSets", len(ce.affectedItems.ApplicationSets)),
@@ -149,7 +162,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, vcsClient hasUsername, cloneU
 		err  error
 		repo *git.Repo
 	)
-
+	ce.logger.Info().Stack().Str("branchName", branchName).Msg("cloning repo")
 	ce.repoLock.Lock()
 	defer ce.repoLock.Unlock()
 
@@ -259,7 +272,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		}
 		go w.run(ctx)
 	}
-
+	ce.logger.Info().Msgf("adding %d apps to the queue", len(ce.affectedItems.Applications))
 	// Produce apps onto channel
 	for _, app := range ce.affectedItems.Applications {
 		ce.queueApp(app)
@@ -269,7 +282,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	close(ce.appChannel)
 
-	ce.logger.Debug().Msg("finished an app")
+	ce.logger.Debug().Stack().Msg("finished an app/appsets")
 
 	ce.logger.Debug().
 		Int("all apps", len(ce.addedAppsSet)).

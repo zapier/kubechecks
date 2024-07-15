@@ -6,6 +6,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 type AppDirectory struct {
@@ -58,13 +59,21 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 	}
 }
 
-func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []v1alpha1.Application {
+// FindAppsBasedOnChangeList receives the modified file path and
+// returns the list of applications that are affected by the changes.
+//
+//	e.g. changeList = ["path/to/file1", "path/to/file2"]
+func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string, repo *git.Repo) []v1alpha1.Application {
 	log.Debug().Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})
 	for _, changePath := range changeList {
 		log.Debug().Msgf("change: %s", changePath)
-
+		//absPath := filepath.Join(repo.Directory, changePath)
+		//if containsKindApplicationSet(absPath) {
+		//	log.Debug().Msgf("skipping %s because it is an ApplicationSet", changePath)
+		//	continue
+		//}
 		for dir, appNames := range d.appDirs {
 			if strings.HasPrefix(changePath, dir) {
 				log.Debug().Msg("dir match!")
@@ -146,10 +155,15 @@ func (d *AppDirectory) GetApps(filter func(stub v1alpha1.Application) bool) []v1
 }
 
 func (d *AppDirectory) AddApp(app v1alpha1.Application) {
+	if _, exists := d.appsMap[app.Name]; exists {
+		log.Info().Msgf("app %s already exists", app.Name)
+		return
+	}
 	log.Debug().
 		Str("appName", app.Name).
 		Str("cluster-name", app.Spec.Destination.Name).
 		Str("cluster-server", app.Spec.Destination.Server).
+		Str("source", getSourcePath(app)).
 		Msg("add app")
 	d.appsMap[app.Name] = app
 	d.AddDir(app.Name, getSourcePath(app))

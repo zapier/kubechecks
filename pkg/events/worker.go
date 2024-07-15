@@ -7,9 +7,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/checks"
@@ -17,6 +14,8 @@ import (
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type worker struct {

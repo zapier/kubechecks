@@ -6,6 +6,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/require"
+	"github.com/zapier/kubechecks/pkg/git"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -13,7 +14,7 @@ type fakeMatcher struct {
 	items AffectedItems
 }
 
-func (f fakeMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
+func (f fakeMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string, repo *git.Repo) (AffectedItems, error) {
 	return f.items, nil
 }
 
@@ -29,7 +30,7 @@ func TestMultiMatcher(t *testing.T) {
 
 		ctx := context.Background()
 		matcher := NewMultiMatcher(matcher1, matcher2)
-		total, err := matcher.AffectedApps(ctx, nil, "")
+		total, err := matcher.AffectedApps(ctx, nil, "", nil)
 
 		require.NoError(t, err)
 		require.Len(t, total.Applications, 1)
@@ -47,7 +48,7 @@ func TestMultiMatcher(t *testing.T) {
 
 		ctx := context.Background()
 		matcher := NewMultiMatcher(matcher1, matcher2)
-		total, err := matcher.AffectedApps(ctx, nil, "")
+		total, err := matcher.AffectedApps(ctx, nil, "", nil)
 
 		require.NoError(t, err)
 		require.Len(t, total.Applications, 1)
@@ -69,7 +70,7 @@ func TestMultiMatcher(t *testing.T) {
 
 		ctx := context.Background()
 		matcher := NewMultiMatcher(matcher1, matcher2)
-		total, err := matcher.AffectedApps(ctx, nil, "")
+		total, err := matcher.AffectedApps(ctx, nil, "", nil)
 
 		require.NoError(t, err)
 		require.Len(t, total.Applications, 1)
@@ -92,7 +93,7 @@ func TestMultiMatcher(t *testing.T) {
 
 		ctx := context.Background()
 		matcher := NewMultiMatcher(matcher1, matcher2)
-		total, err := matcher.AffectedApps(ctx, nil, "")
+		total, err := matcher.AffectedApps(ctx, nil, "", nil)
 
 		require.NoError(t, err)
 		require.Len(t, total.Applications, 2)

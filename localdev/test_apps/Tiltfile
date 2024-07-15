@@ -13,11 +13,12 @@ def install_test_apps(cfg):
         projectUrl=str(read_file(vcsPath, "")).strip('\n')
         print("Remote Project URL: " + projectUrl)
 
-        for app in ["echo-server", "httpbin"]:
+        for app in ["echo-server", "httpbin", "app-root"]:
             print("Creating Test App: " + app)
 
             # read the application YAML and patch the repoURL
             objects = read_yaml_stream("localdev/test_apps/{}.yaml".format(app))
+
             for o in objects:
               o['metadata']['namespace'] = "kubechecks"
               o['spec']['source']['repoURL'] = projectUrl

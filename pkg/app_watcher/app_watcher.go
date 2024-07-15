@@ -6,14 +6,13 @@ import (
 	"strings"
 	"time"
 
-	appclientset "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
-	"github.com/rs/zerolog/log"
-	"k8s.io/client-go/tools/clientcmd"
-
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	appclientset "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
 	informers "github.com/argoproj/argo-cd/v2/pkg/client/informers/externalversions/application/v1alpha1"
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
+	"github.com/rs/zerolog/log"
 	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/zapier/kubechecks/pkg/appdir"
@@ -30,17 +29,10 @@ type ApplicationWatcher struct {
 }
 
 // NewApplicationWatcher creates new instance of ApplicationWatcher.
-func NewApplicationWatcher(vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerConfig) (*ApplicationWatcher, error) {
-	// this assumes kubechecks is running inside the cluster
-	kubeCfg, err := clientcmd.BuildConfigFromFlags("", cfg.KubernetesConfig)
-	if err != nil {
-		log.Fatal().Msgf("Error building kubeconfig: %s", err.Error())
-	}
-
-	appClient := appclientset.NewForConfigOrDie(kubeCfg)
+func NewApplicationWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerConfig) (*ApplicationWatcher, error) {
 
 	ctrl := ApplicationWatcher{
-		applicationClientset: appClient,
+		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
 		vcsToArgoMap:         vcsToArgoMap,
 	}
 

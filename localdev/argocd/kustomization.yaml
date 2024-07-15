@@ -6,7 +6,7 @@ namespace: kubechecks
 images:
   - name: quay.io/argoproj/argocd
     newName: quay.io/argoproj/argocd
-    newTag: v2.6.12
+    newTag: v2.11.3
 
 resources:
   - argocd-initial-admin-secret.yaml

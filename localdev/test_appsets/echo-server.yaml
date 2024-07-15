@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: app-set-echoserver
+  namespace: kubechecks
+spec:
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            environment: development
+        values:
+            cluster: 'in-cluster'
+  template:
+    metadata:
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+      name: "in-cluster-echo-server-{{ metadata.labels.environment }}"
+      namespace: kubechecks
+      labels:
+        argocd.argoproj.io/application-set-name: "echo-server"
+    spec:
+      destination:
+        namespace: "echo-server-{{ metadata.labels.environment }}"
+        server: '{{ url }}'
+      project: default
+      source:
+        repoURL: REPO_URL
+        targetRevision: HEAD
+        path: 'apps/app-set-echo-server/{{ values.cluster }}'
+        helm:
+          valueFiles:
+            - values.yaml
+            - values-{{ metadata.labels.environment }}.yaml
+          ignoreMissingValueFiles: true
+          values: |-
+            echo-server:
+              replicaCount: 2
+      syncPolicy:
+        automated:
+          prune: true
+        syncOptions:
+          - CreateNamespace=true
+      sources: []

@@ -5,11 +5,12 @@ import (
 	"path"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 type AffectedItems struct {
 	Applications    []v1alpha1.Application
-	ApplicationSets []ApplicationSet
+	ApplicationSets []v1alpha1.ApplicationSet
 }
 
 func (ai AffectedItems) Union(other AffectedItems) AffectedItems {
@@ -48,7 +49,7 @@ type ApplicationSet struct {
 }
 
 type Matcher interface {
-	AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error)
+	AffectedApps(ctx context.Context, changeList []string, targetBranch string, repo *git.Repo) (AffectedItems, error)
 }
 
 // modifiedDirs filters a list of changed files down to a list
