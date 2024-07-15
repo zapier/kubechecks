@@ -1,0 +1,11 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.roleName | default "kubechecks-remote-role" }}
+rules:
+  - apiGroups: ['argoproj.io']
+    resources: ['applications', 'appprojects', 'applicationsets', 'services']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: [''] # The core API group, which is indicated by an empty string
+    resources: ['secrets']
+    verbs: ['get', 'list', 'watch']

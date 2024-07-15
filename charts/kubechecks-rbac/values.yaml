@@ -1,0 +1,13 @@
+roleName: "kubechecks-remote-role"
+roleBindingName: "kubechecks-remote-role-binding"
+namespace: "argocd"
+
+# for AWS EKS clusters
+eks:
+  # The ARN of the IAM role to bind to the Role
+  iamRoleArn: ""
+
+# for self-managed clusters
+selfManaged:
+  # The name of the ServiceAccount to bind to the Role
+  serviceAccountName: ""
