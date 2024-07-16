@@ -63,10 +63,10 @@ func init() {
 	stringFlag(flags, "argocd-api-namespace", "ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.",
 		newStringOpts().
 			withDefault("argocd"))
-	stringFlag(flags, "kubernetes-type", "Kubernetes Type One of eks, or localhost. Defaults to localhost.",
+	stringFlag(flags, "kubernetes-type", "Kubernetes Type One of eks, or local. Defaults to local.",
 		newStringOpts().
-			withChoices("eks", "localhost").
-			withDefault("localhost"))
+			withChoices("eks", "local").
+			withDefault("local"))
 	stringFlag(flags, "kubernetes-clusterid", "Kubernetes Cluster ID, must be specified if kubernetes-type is eks.")
 	stringFlag(flags, "kubernetes-cluster-region", "Kubernetes Cluster Region, if the cluster is on a cloud provider, and running on a different region, this must be specified.")
 	stringFlag(flags, "kubernetes-config", "Path to your kubernetes config file, used to monitor applications.")

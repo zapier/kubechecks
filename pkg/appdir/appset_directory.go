@@ -156,16 +156,16 @@ func (d *AppSetDirectory) GetAppSets(filter func(stub v1alpha1.ApplicationSet) b
 }
 
 func (d *AppSetDirectory) AddApp(appSet *v1alpha1.ApplicationSet) {
-	if _, exists := d.appSetsMap[appSet.Name]; exists {
+	if _, exists := d.appSetsMap[appSet.GetName()]; exists {
 		log.Info().Msgf("appset %s already exists", appSet.Name)
 		return
 	}
 	log.Debug().
-		Str("appName", appSet.Name).
+		Str("appName", appSet.GetName()).
 		Str("source", appSetGetSourcePath(appSet)).
 		Msg("add appset")
-	d.appSetsMap[appSet.Name] = *appSet
-	d.AddDir(appSet.Name, appSetGetSourcePath(appSet))
+	d.appSetsMap[appSet.GetName()] = *appSet
+	d.AddDir(appSet.GetName(), appSetGetSourcePath(appSet))
 }
 
 func (d *AppSetDirectory) AddDir(appName, path string) {

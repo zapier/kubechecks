@@ -13,7 +13,7 @@ import (
 // ClusterTypes must match with the cmd/root.go kubernetes-type flag
 const (
 	ClusterTypeEKS   = "eks"
-	ClusterTypeLOCAL = "localhost"
+	ClusterTypeLOCAL = "local"
 )
 
 type NewClientOption func(*NewClientInput)
