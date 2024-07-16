@@ -26,6 +26,10 @@ func (v2a VcsToArgoMap) GetMap() map[pkg.RepoURL]*AppDirectory {
 	return v2a.appDirByRepo
 }
 
+func (v2a VcsToArgoMap) GetAppSetMap() map[pkg.RepoURL]*AppSetDirectory {
+	return v2a.appSetDirByRepo
+}
+
 func (v2a VcsToArgoMap) GetAppsInRepo(repoCloneUrl string) *AppDirectory {
 	repoUrl, _, err := pkg.NormalizeRepoUrl(repoCloneUrl)
 	if err != nil {

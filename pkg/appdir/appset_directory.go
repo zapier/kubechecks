@@ -204,13 +204,18 @@ func (d *AppSetDirectory) RemoveApp(app v1alpha1.ApplicationSet) {
 	}
 }
 
+// containsKindApplicationSet checks if the file contains kind: ApplicationSet
 func containsKindApplicationSet(path string) bool {
 	file, err := os.Open(path)
 	if err != nil {
-		log.Printf("failed to open file %s: %v", path, err)
+		log.Error().Err(err).Stack().Msgf("failed to open file %s: %v", path, err)
 		return false
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Warn().Err(err).Stack().Msgf("failed to close file %s: %v", path, err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -222,7 +227,7 @@ func containsKindApplicationSet(path string) bool {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Printf("error reading file %s: %v", path, err)
+		log.Error().Err(err).Stack().Msgf("error reading file %s: %v", path, err)
 	}
 
 	return false
