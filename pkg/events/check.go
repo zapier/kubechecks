@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/generator"
+	"github.com/zapier/kubechecks/pkg/repo_config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -23,7 +24,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
-	"github.com/zapier/kubechecks/pkg/repo_config"
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -50,13 +50,34 @@ type CheckEvent struct {
 	appsSent   int32
 	appChannel chan *v1alpha1.Application
 	wg         sync.WaitGroup
+	generator  generator.AppsGenerator
+	matcher    affected_apps.Matcher
 }
 
 type repoManager interface {
 	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 }
 
+func GenerateMatcher(ce *CheckEvent, repo *git.Repo) error {
+	log.Debug().Msg("using the argocd matcher")
+	m, err := affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
+	if err != nil {
+		return errors.Wrap(err, "failed to create argocd matcher")
+	}
+	ce.matcher = m
+	cfg, err := repo_config.LoadRepoConfig(repo.Directory)
+	if err != nil {
+		return errors.Wrap(err, "failed to load repo config")
+	} else if cfg != nil {
+		log.Debug().Msg("using the config matcher")
+		configMatcher := affected_apps.NewConfigMatcher(cfg, ce.ctr)
+		ce.matcher = affected_apps.NewMultiMatcher(ce.matcher, configMatcher)
+	}
+	return nil
+}
+
 func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry) *CheckEvent {
+
 	ce := &CheckEvent{
 		addedAppsSet: make(map[string]v1alpha1.Application),
 		appChannel:   make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
@@ -65,6 +86,7 @@ func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoMan
 		processors:   processors,
 		pullRequest:  pullRequest,
 		repoManager:  repoManager,
+		generator:    generator.New(),
 		logger: log.Logger.With().
 			Str("repo", pullRequest.Name).
 			Int("event_id", pullRequest.CheckID).
@@ -88,39 +110,28 @@ func (ce *CheckEvent) UpdateListOfChangedFiles(ctx context.Context, repo *git.Re
 	return nil
 }
 
+type MatcherFn func(ce *CheckEvent, repo *git.Repo) error
+
 // GenerateListOfAffectedApps walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
-func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.Repo, targetBranch string) error {
+func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.Repo, targetBranch string, initMatcherFn MatcherFn) error {
 	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 	var err error
 
-	var matcher affected_apps.Matcher
-
-	log.Debug().Msg("using an argocd matcher")
-	matcher, err = affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
+	err = initMatcherFn(ce, repo)
 	if err != nil {
 		return errors.Wrap(err, "failed to create argocd matcher")
 	}
 
-	cfg, err := repo_config.LoadRepoConfig(repo.Directory)
-	if err != nil {
-		return errors.Wrap(err, "failed to load repo config")
-	} else if cfg != nil {
-		log.Debug().Msg("using the config matcher")
-		configMatcher := affected_apps.NewConfigMatcher(cfg, ce.ctr)
-		matcher = affected_apps.NewMultiMatcher(matcher, configMatcher)
-	}
-
 	// use the changed file path to get the list of affected apps
 	// fileList is a list of changed files in the PR/MR, e.g. ["path/to/file1", "path/to/file2"]
-	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList, targetBranch, repo)
+	ce.affectedItems, err = ce.matcher.AffectedApps(ctx, ce.fileList, targetBranch, repo)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Affected Apps")
 		ce.logger.Error().Err(err).Msg("could not get list of affected apps and appsets")
 	}
-
 	for _, appSet := range ce.affectedItems.ApplicationSets {
-		apps, err := generator.GenerateApplicationSetApps(ctx, appSet, &ce.ctr)
+		apps, err := ce.generator.GenerateApplicationSetApps(ctx, appSet, &ce.ctr)
 		if err != nil {
 			ce.logger.Error().Err(err).Msg("could not generate apps from appSet")
 			continue
@@ -222,7 +233,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 
-	// Clone the repo's BaseRef (main etc) locally into the temp dir we just made
+	// Clone the repo's BaseRef (main, etc.) locally into the temp dir we just made
 	repo, err := ce.getRepo(ctx, ce.ctr.VcsClient, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
 	if err != nil {
 		return errors.Wrap(err, "failed to clone repo")
@@ -239,7 +250,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
-	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef); err != nil {
+	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef, GenerateMatcher); err != nil {
 		return errors.Wrap(err, "failed to generate a list of affected apps")
 	}
 
