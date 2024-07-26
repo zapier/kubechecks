@@ -51,7 +51,7 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 	)
 
 	if (cfg.GithubAppID == 0 || cfg.GithubInstallationID == 0 || cfg.GithubPrivateKey == "") && cfg.VcsToken == "" {
-		log.Fatal().Msg("github token or app credentials need to be set")
+		log.Fatal().Msg("Either GitHub token or GitHub App credentials (App ID, Installation ID, Private Key) must be set")
 	}
 
 	// Initialize the GitHub client with app key if provided
