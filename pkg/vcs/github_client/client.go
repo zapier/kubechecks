@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/chainguard-dev/git-urls"
+	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v62/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -127,7 +128,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 
 var nilPr vcs.PullRequest
 
-func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, error) {
+func (c *Client) ParseHook(r *http.Request, request []byte, context context.Context) (vcs.PullRequest, error) {
 	payload, err := github.ParseWebHook(github.WebHookType(r), request)
 	if err != nil {
 		return nilPr, err
@@ -141,6 +142,15 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, er
 			return c.buildRepoFromEvent(p), nil
 		default:
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
+			return nilPr, vcs.ErrInvalidType
+		}
+	case *github.PullRequestComment:
+		body := p.GetBody()
+		if body == "kubechecks again" {
+			log.Info().Msg("Got kubecheck again comment, Running again")
+			return c.buildRepoFromComment(context, p), nil
+		} else {
+			log.Info().Msg("comment was not kubecheck again, ignoring")
 			return nilPr, vcs.ErrInvalidType
 		}
 	default:
@@ -171,6 +181,46 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 
 		Config: c.cfg,
 	}
+}
+
+func (c *Client) buildRepoFromComment(context context.Context, comment *github.PullRequestComment) vcs.PullRequest {
+	prURL, err := url.Parse(comment.GetPullRequestURL())
+	if err != nil {
+		return nilPr
+	}
+	pathSegments := strings.Split(prURL.Path, "/")
+	owner := pathSegments[2]
+	repo := pathSegments[3]
+	number := pathSegments[5]
+	prNumber, err := strconv.Atoi(number)
+	if err != nil {
+		return nilPr
+	}
+	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
+	if err != nil {
+		return nilPr
+	}
+	var labels []string
+	for _, label := range pr.Labels {
+		labels = append(labels, label.GetName())
+	}
+	return vcs.PullRequest{
+		BaseRef:       *pr.Base.Ref,
+		HeadRef:       *pr.Head.Ref,
+		DefaultBranch: *pr.Base.Repo.DefaultBranch,
+		CloneURL:      *pr.Base.Repo.CloneURL,
+		FullName:      pr.Base.Repo.GetFullName(),
+		Owner:         *pr.Base.Repo.Owner.Login,
+		Name:          pr.Base.Repo.GetName(),
+		CheckID:       *pr.Number,
+		SHA:           *pr.Head.SHA,
+		Username:      c.username,
+		Email:         c.email,
+		Labels:        labels,
+
+		Config: c.cfg,
+	}
+
 }
 
 func toGithubCommitStatus(state pkg.CommitState) *string {

@@ -23,7 +23,7 @@ type Client interface {
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
 	VerifyHook(*http.Request, string) ([]byte, error)
 	// ParseHook parses webook payload for valid events
-	ParseHook(*http.Request, []byte) (PullRequest, error)
+	ParseHook(*http.Request, []byte, context.Context) (PullRequest, error)
 	// CommitStatus sets a status for a specific commit on the remote VCS
 	CommitStatus(context.Context, PullRequest, pkg.CommitState) error
 	// GetHookByUrl gets a webhook by url

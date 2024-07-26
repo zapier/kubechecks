@@ -47,7 +47,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 
-	pr, err := h.ctr.VcsClient.ParseHook(c.Request(), payload)
+	pr, err := h.ctr.VcsClient.ParseHook(c.Request(), payload, ctx)
 	if err != nil {
 		switch err {
 		case vcs.ErrInvalidType:

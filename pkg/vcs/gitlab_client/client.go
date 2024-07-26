@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chainguard-dev/git-urls"
+	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
@@ -89,7 +89,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 var nilPr vcs.PullRequest
 
 // ParseHook parses and validates a webhook event; return an err if this isn't valid
-func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, error) {
+func (c *Client) ParseHook(r *http.Request, request []byte, context context.Context) (vcs.PullRequest, error) {
 	eventRequest, err := gitlab.ParseHook(gitlab.HookEventType(r), request)
 	if err != nil {
 		return nilPr, err
