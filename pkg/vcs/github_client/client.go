@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chainguard-dev/git-urls"
+	"github.com/bradleyfalzon/ghinstallation/v2"
+	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v62/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -46,34 +47,53 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 		err            error
 		googleClient   *github.Client
 		shurcoolClient *githubv4.Client
+		githubClient   *http.Client
 	)
 
-	// Initialize the GitLab client with access token
-	t := cfg.VcsToken
-	if t == "" {
-		log.Fatal().Msg("github token needs to be set")
+	if (cfg.GithubAppID == 0 || cfg.GithubInstallationID == 0 || cfg.GithubPrivateKey == "") && cfg.VcsToken == "" {
+		log.Fatal().Msg("github token or app credentials need to be set")
 	}
-	log.Debug().Msgf("Token Length - %d", len(t))
+
+	// Initialize the GitHub client with app key
+	if cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != "" {
+		appTransport, err := ghinstallation.New(http.DefaultTransport, cfg.GithubAppID, cfg.GithubInstallationID, []byte(cfg.GithubPrivateKey))
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create github app transport")
+		}
+		githubClient = &http.Client{Transport: appTransport}
+	}
+
 	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: t},
-	)
-	tc := oauth2.NewClient(ctx, ts)
+
+	// Initialize the GitHub client with access token, dont init if app details are passed above
+	if githubClient == nil {
+		vscToken := cfg.VcsToken
+		if vscToken != "" {
+			log.Debug().Msgf("Token Length - %d", len(vscToken))
+			ts := oauth2.StaticTokenSource(
+				&oauth2.Token{AccessToken: vscToken},
+			)
+			githubClient = oauth2.NewClient(ctx, ts)
+		}
+	}
+
+	if githubClient == nil {
+		log.Fatal().Msg("github client is not initialized")
+	}
 
 	githubUrl := cfg.VcsBaseUrl
 	githubUploadUrl := cfg.VcsUploadUrl
 	// we need both urls to be set for github enterprise
 	if githubUrl == "" || githubUploadUrl == "" {
-		googleClient = github.NewClient(tc) // If this has failed, we'll catch it on first call
+		googleClient = github.NewClient(githubClient) // If this has failed, we'll catch it on first call
 
-		// Use the client from shurcooL's githubv4 library for queries.
-		shurcoolClient = githubv4.NewClient(tc)
+		shurcoolClient = githubv4.NewClient(githubClient)
 	} else {
-		googleClient, err = github.NewClient(tc).WithEnterpriseURLs(githubUrl, githubUploadUrl)
+		googleClient, err = github.NewClient(githubClient).WithEnterpriseURLs(githubUrl, githubUploadUrl)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create github enterprise client")
 		}
-		shurcoolClient = githubv4.NewEnterpriseClient(githubUrl, tc)
+		shurcoolClient = githubv4.NewEnterpriseClient(githubUrl, githubClient)
 	}
 
 	user, _, err := googleClient.Users.Get(ctx, "")
