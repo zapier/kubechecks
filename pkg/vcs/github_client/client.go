@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -144,15 +143,24 @@ func (c *Client) ParseHook(r *http.Request, request []byte, context context.Cont
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
 			return nilPr, vcs.ErrInvalidType
 		}
-	case *github.PullRequestComment:
-		body := p.GetBody()
+	case *github.PullRequestReviewCommentEvent:
+		switch p.GetAction() {
+		case "created":
+			log.Info().Msg("Got kubecheck again comment, Running again")
+			return c.buildRepoFromComment(context, p), nil
+		default:
+			log.Info().Msg("did not get kubecheck again comment, Ignoring")
+			return nilPr, nil
+		}
+
+		/*body := p.GetBody()
 		if body == "kubechecks again" {
 			log.Info().Msg("Got kubecheck again comment, Running again")
 			return c.buildRepoFromComment(context, p), nil
 		} else {
 			log.Info().Msg("comment was not kubecheck again, ignoring")
 			return nilPr, vcs.ErrInvalidType
-		}
+		}*/
 	default:
 		log.Error().Msg("invalid event provided to Github client")
 		return nilPr, vcs.ErrInvalidType
@@ -183,8 +191,8 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 	}
 }
 
-func (c *Client) buildRepoFromComment(context context.Context, comment *github.PullRequestComment) vcs.PullRequest {
-	prURL, err := url.Parse(comment.GetPullRequestURL())
+func (c *Client) buildRepoFromComment(context context.Context, comment *github.PullRequestReviewCommentEvent) vcs.PullRequest {
+	/*prURL, err := url.Parse(comment.GetPullRequestURL())
 	if err != nil {
 		return nilPr
 	}
@@ -199,21 +207,21 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.P
 	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
 	if err != nil {
 		return nilPr
-	}
+	}*/
 	var labels []string
-	for _, label := range pr.Labels {
+	for _, label := range comment.PullRequest.Labels {
 		labels = append(labels, label.GetName())
 	}
 	return vcs.PullRequest{
-		BaseRef:       *pr.Base.Ref,
-		HeadRef:       *pr.Head.Ref,
-		DefaultBranch: *pr.Base.Repo.DefaultBranch,
-		CloneURL:      *pr.Base.Repo.CloneURL,
-		FullName:      pr.Base.Repo.GetFullName(),
-		Owner:         *pr.Base.Repo.Owner.Login,
-		Name:          pr.Base.Repo.GetName(),
-		CheckID:       *pr.Number,
-		SHA:           *pr.Head.SHA,
+		BaseRef:       *comment.PullRequest.Base.Ref,
+		HeadRef:       *comment.PullRequest.Head.Ref,
+		DefaultBranch: *comment.Repo.DefaultBranch,
+		CloneURL:      *comment.Repo.CloneURL,
+		FullName:      comment.Repo.GetFullName(),
+		Owner:         *comment.Repo.Owner.Login,
+		Name:          comment.Repo.GetName(),
+		CheckID:       *comment.PullRequest.Number,
+		SHA:           *comment.PullRequest.Head.SHA,
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
