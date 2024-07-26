@@ -75,9 +75,7 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 			)
 			githubClient = oauth2.NewClient(ctx, ts)
 		}
-	}
-
-	if githubClient == nil {
+	} else {
 		log.Fatal().Msg("github client is not initialized")
 	}
 
