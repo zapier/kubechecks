@@ -47,6 +47,9 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
 |`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks.|`1.23.0`|
 |`KUBECHECKS_KUBERNETES_CLUSTERID`|Kubernetes Cluster ID, must be specified if kubernetes-type is eks.||
+|`KUBECHECKS_GITHUB_APP_ID`|Github App ID.|`0`|
+|`KUBECHECKS_GITHUB_INSTALLATION_ID`|Github Installation ID.|`0`|
+|`KUBECHECKS_GITHUB_PRIVATE_KEY`|Github App Private Key.||
 |`KUBECHECKS_KUBERNETES_CONFIG`|Path to your kubernetes config file, used to monitor applications.||
 |`KUBECHECKS_KUBERNETES_TYPE`|Kubernetes Type One of eks, or local.|`local`|
 |`KUBECHECKS_LABEL_FILTER`|(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook.||
