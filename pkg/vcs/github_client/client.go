@@ -128,7 +128,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 
 var nilPr vcs.PullRequest
 
-func (c *Client) ParseHook(r *http.Request, request []byte, context context.Context) (vcs.PullRequest, error) {
+func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte) (vcs.PullRequest, error) {
 	payload, err := github.ParseWebHook(github.WebHookType(r), request)
 	if err != nil {
 		return nilPr, err
@@ -149,7 +149,7 @@ func (c *Client) ParseHook(r *http.Request, request []byte, context context.Cont
 		case "created":
 			if *p.Comment.Body == "kubecheck again" {
 				log.Info().Msg("Got kubecheck again comment, Running again")
-				return c.buildRepoFromComment(context, p), nil
+				return c.buildRepoFromComment(ctx, p), nil
 			} else {
 				log.Info().Msg("did not get kubecheck again comment, Ignoring")
 				return nilPr, vcs.ErrInvalidType
@@ -159,7 +159,7 @@ func (c *Client) ParseHook(r *http.Request, request []byte, context context.Cont
 			return nilPr, vcs.ErrInvalidType
 		}
 	default:
-		log.Error().Str("type", payload.(string)).Msg("invalid event provided to Github client")
+		log.Error().Msg("invalid event provided to Github client")
 		return nilPr, vcs.ErrInvalidType
 	}
 }
