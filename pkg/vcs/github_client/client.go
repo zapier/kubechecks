@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -143,26 +144,22 @@ func (c *Client) ParseHook(r *http.Request, request []byte, context context.Cont
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
 			return nilPr, vcs.ErrInvalidType
 		}
-	case *github.PullRequestReviewCommentEvent:
+	case *github.IssueCommentEvent:
 		switch p.GetAction() {
 		case "created":
-			log.Info().Msg("Got kubecheck again comment, Running again")
-			return c.buildRepoFromComment(context, p), nil
+			if *p.Comment.Body == "kubecheck again" {
+				log.Info().Msg("Got kubecheck again comment, Running again")
+				return c.buildRepoFromComment(context, p), nil
+			} else {
+				log.Info().Msg("did not get kubecheck again comment, Ignoring")
+				return nilPr, vcs.ErrInvalidType
+			}
 		default:
-			log.Info().Msg("did not get kubecheck again comment, Ignoring")
-			return nilPr, nil
-		}
-
-		/*body := p.GetBody()
-		if body == "kubechecks again" {
-			log.Info().Msg("Got kubecheck again comment, Running again")
-			return c.buildRepoFromComment(context, p), nil
-		} else {
-			log.Info().Msg("comment was not kubecheck again, ignoring")
+			log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
 			return nilPr, vcs.ErrInvalidType
-		}*/
+		}
 	default:
-		log.Error().Msg("invalid event provided to Github client")
+		log.Error().Str("type", payload.(string)).Msg("invalid event provided to Github client")
 		return nilPr, vcs.ErrInvalidType
 	}
 }
@@ -191,8 +188,8 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 	}
 }
 
-func (c *Client) buildRepoFromComment(context context.Context, comment *github.PullRequestReviewCommentEvent) vcs.PullRequest {
-	/*prURL, err := url.Parse(comment.GetPullRequestURL())
+func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) vcs.PullRequest {
+	prURL, err := url.Parse(*comment.Issue.URL)
 	if err != nil {
 		return nilPr
 	}
@@ -207,28 +204,27 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.P
 	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
 	if err != nil {
 		return nilPr
-	}*/
+	}
 	var labels []string
-	for _, label := range comment.PullRequest.Labels {
+	for _, label := range pr.Labels {
 		labels = append(labels, label.GetName())
 	}
 	return vcs.PullRequest{
-		BaseRef:       *comment.PullRequest.Base.Ref,
-		HeadRef:       *comment.PullRequest.Head.Ref,
+		BaseRef:       *pr.Base.Ref,
+		HeadRef:       *pr.Head.Ref,
 		DefaultBranch: *comment.Repo.DefaultBranch,
-		CloneURL:      *comment.Repo.CloneURL,
+		CloneURL:      *pr.Base.Repo.CloneURL,
 		FullName:      comment.Repo.GetFullName(),
-		Owner:         *comment.Repo.Owner.Login,
+		Owner:         *pr.Base.Repo.Owner.Login,
 		Name:          comment.Repo.GetName(),
-		CheckID:       *comment.PullRequest.Number,
-		SHA:           *comment.PullRequest.Head.SHA,
+		CheckID:       *pr.Number,
+		SHA:           *pr.Head.SHA,
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
 
 		Config: c.cfg,
 	}
-
 }
 
 func toGithubCommitStatus(state pkg.CommitState) *string {
