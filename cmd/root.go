@@ -68,7 +68,6 @@ func init() {
 			withChoices("eks", "local").
 			withDefault("local"))
 	stringFlag(flags, "kubernetes-clusterid", "Kubernetes Cluster ID, must be specified if kubernetes-type is eks.")
-	stringFlag(flags, "kubernetes-cluster-region", "Kubernetes Cluster Region, if the cluster is on a cloud provider, and running on a different region, this must be specified.")
 	stringFlag(flags, "kubernetes-config", "Path to your kubernetes config file, used to monitor applications.")
 
 	stringFlag(flags, "otel-collector-port", "The OpenTelemetry collector port.")

@@ -66,9 +66,7 @@ func appendPresignHeaderValuesFunc(clusterID string) func(stsOptions *sts.Option
 //   - ctx: the context for the AWS SDK client.
 //
 //   - clusterID: the name of the EKS cluster.
-//
-//   - region: the AWS region where the EKS cluster is located. (optional) If not provided, the default region will be used.
-func EKSClientOption(ctx context.Context, clusterID, region string) NewClientOption {
+func EKSClientOption(ctx context.Context, clusterID string) NewClientOption {
 	return func(c *NewClientInput) {
 		if c.ClusterType != ClusterTypeEKS {
 			slog.Error("incorrect cluster type from the ClientInput, type must be ClusterTypeEKS", "ClusterType", c.ClusterType)
@@ -79,18 +77,10 @@ func EKSClientOption(ctx context.Context, clusterID, region string) NewClientOpt
 			err error
 		)
 
-		if region != "" {
-			cfg, err = config.LoadDefaultConfig(ctx, config.WithRegion(region))
-			if err != nil {
-				slog.Error("unable to load AWS SDK config", "err", err)
-				return
-			}
-		} else {
-			cfg, err = config.LoadDefaultConfig(ctx)
-			if err != nil {
-				slog.Error("unable to load AWS SDK config", "err", err)
-				return
-			}
+		cfg, err = config.LoadDefaultConfig(ctx)
+		if err != nil {
+			slog.Error("unable to load AWS SDK config", "err", err)
+			return
 		}
 		eksClient := eks.NewFromConfig(cfg)
 		// perform DescribeCluster to get endpoint address and CA data.

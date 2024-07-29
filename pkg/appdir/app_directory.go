@@ -58,10 +58,12 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 	}
 }
 
-// FindAppsBasedOnChangeList receives the modified file path and
+// FindAppsBasedOnChangeList receives a list of modified file paths and
 // returns the list of applications that are affected by the changes.
 //
-//	e.g. changeList = ["path/to/file1", "path/to/file2"]
+// changeList: a slice of strings representing the paths of modified files.
+// targetBranch: the branch name to compare against the target revision of the applications.
+// e.g. changeList = ["path/to/file1", "path/to/file2"]
 func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []v1alpha1.Application {
 	log.Debug().Msgf("checking %d changes", len(changeList))
 
@@ -150,7 +152,7 @@ func (d *AppDirectory) GetApps(filter func(stub v1alpha1.Application) bool) []v1
 
 func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 	if _, exists := d.appsMap[app.Name]; exists {
-		log.Info().Msgf("app %s already exists", app.Name)
+		log.Debug().Msgf("app %s already exists", app.Name)
 		return
 	}
 	log.Debug().

@@ -54,7 +54,7 @@ func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) 
 			KubernetesConfigPath: cfg.KubernetesConfig,
 			ClusterType:          cfg.KubernetesType,
 		},
-			client.EKSClientOption(ctx, cfg.KubernetesClusterID, cfg.KubernetesClusterRegion),
+			client.EKSClientOption(ctx, cfg.KubernetesClusterID),
 		)
 		if err != nil {
 			return ctr, errors.Wrap(err, "failed to create kube client")

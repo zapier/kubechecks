@@ -3,46 +3,27 @@
   "title": "Kubechecks Values Schema",
   "type": "object",
   "properties": {
-    "roleName": {
+    "ClusterRoleName": {
       "type": "string",
-      "description": "The name of the Role to be created.",
+      "description": "The name of the Cluster Role to be created.",
       "default": "kubechecks-remote-role"
     },
-    "roleBindingName": {
+    "ClusterRoleBindingName": {
       "type": "string",
-      "description": "The name of the RoleBinding to be created.",
+      "description": "The name of the ClusterRoleBinding to be created.",
       "default": "kubechecks-remote-role-binding"
+    },
+    "ClusterRoleBindingGroup": {
+      "type": "string",
+      "description": "The name of the Group to be created.",
+      "default": "kubechecks-remote-group"
     },
     "namespace": {
       "type": "string",
       "description": "The namespace where the Role and RoleBinding will be created.",
       "default": "argocd"
-    },
-    "eks": {
-      "type": "object",
-      "description": "Configuration for AWS EKS clusters.",
-      "properties": {
-        "iamRoleArn": {
-          "type": "string",
-          "description": "The ARN of the IAM role to bind to the Role."
-        }
-      },
-      "required": ["iamRoleArn"],
-      "additionalProperties": false
-    },
-    "selfManaged": {
-      "type": "object",
-      "description": "Configuration for self-managed clusters.",
-      "properties": {
-        "serviceAccountName": {
-          "type": "string",
-          "description": "The name of the ServiceAccount to bind to the Role."
-        }
-      },
-      "required": ["serviceAccountName"],
-      "additionalProperties": false
     }
   },
-  "required": ["roleName", "roleBindingName", "namespace"],
+  "required": ["ClusterRoleName", "ClusterRoleBindingName", "ClusterRoleBindingGroup", "namespace"],
   "additionalProperties": false
 }

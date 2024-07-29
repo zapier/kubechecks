@@ -29,7 +29,11 @@ type ApplicationWatcher struct {
 	vcsToArgoMap appdir.VcsToArgoMap
 }
 
-// NewApplicationWatcher creates new instance of ApplicationWatcher.
+// NewApplicationWatcher creates a new instance of ApplicationWatcher.
+//
+//   - kubeCfg is the Kubernetes configuration.
+//   - vcsToArgoMap is the mapping between VCS and Argo applications.
+//   - cfg is the server configuration.
 func NewApplicationWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerConfig) (*ApplicationWatcher, error) {
 	if kubeCfg == nil {
 		return nil, fmt.Errorf("kubeCfg cannot be nil")

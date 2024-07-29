@@ -1,13 +1,6 @@
-roleName: "kubechecks-remote-role"
-roleBindingName: "kubechecks-remote-role-binding"
+ClusterRoleName: "kubechecks-remote-role"
+ClusterRoleBindingName: "kubechecks-remote-role-binding"
+ClusterRoleBindingGroup: "kubechecks-remote-group"
+
+# namespace to create the ClusterRole and RoleBinding, this has to match the argocd is operating.
 namespace: "argocd"
-
-# for AWS EKS clusters
-eks:
-  # The ARN of the IAM role to bind to the Role
-  iamRoleArn: ""
-
-# for self-managed clusters
-selfManaged:
-  # The name of the ServiceAccount to bind to the Role
-  serviceAccountName: ""
