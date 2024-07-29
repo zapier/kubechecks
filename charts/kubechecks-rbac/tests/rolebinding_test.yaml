@@ -6,24 +6,11 @@ templates:
 tests:
   - it: should create a RoleBinding with the correct name with EKS IAM role
     set:
-      roleBindingName: "kubechecks-test-rolebinding-rbac"
-      eks:
-        iamRoleArn: "arn:aws:iam::123456789012:role/example-role"
+      ClusterRoleBindingName: "kubechecks-test-rolebinding-rbac"
+      ClusterRoleBindingGroup: "kubechecks-remote-group"
     asserts:
       - isKind:
-          of: RoleBinding
+          of: ClusterRoleBinding
       - equal:
           path: metadata.name
           value: kubechecks-test-rolebinding-rbac
-
-  - it: should create a RoleBinding with the correct name with self-managed service account
-    set:
-      roleBindingName: "kubechecks-test-rolebinding-rbac2"
-      selfManaged:
-        serviceAccountName: "kubecheck-sa"
-    asserts:
-      - isKind:
-          of: RoleBinding
-      - equal:
-          path: metadata.name
-          value: kubechecks-test-rolebinding-rbac2

@@ -6,10 +6,10 @@ templates:
 tests:
   - it: should create a Role with the correct name
     set:
-      roleName: "kubechecks-test-role"
+      ClusterRoleName: "kubechecks-test-role"
     asserts:
       - isKind:
-          of: Role
+          of: ClusterRole
       - equal:
           path: metadata.name
           value: kubechecks-test-role
