@@ -1,6 +1,6 @@
-ClusterRoleName: "kubechecks-remote-role"
-ClusterRoleBindingName: "kubechecks-remote-role-binding"
-ClusterRoleBindingGroup: "kubechecks-remote-group"
+clusterRoleName: "kubechecks-remote-role"
+clusterRoleBindingName: "kubechecks-remote-role-binding"
+clusterRoleBindingGroup: "kubechecks-remote-group"
 
 # namespace to create the ClusterRole and RoleBinding, this has to match the argocd is operating.
 namespace: "argocd"

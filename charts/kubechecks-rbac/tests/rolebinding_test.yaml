@@ -6,8 +6,8 @@ templates:
 tests:
   - it: should create a RoleBinding with the correct name with EKS IAM role
     set:
-      ClusterRoleBindingName: "kubechecks-test-rolebinding-rbac"
-      ClusterRoleBindingGroup: "kubechecks-remote-group"
+      clusterRoleBindingName: "kubechecks-test-rolebinding-rbac"
+      clusterRoleBindingGroup: "kubechecks-remote-group"
     asserts:
       - isKind:
           of: ClusterRoleBinding

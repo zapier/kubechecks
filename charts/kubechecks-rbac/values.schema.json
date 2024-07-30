@@ -3,17 +3,17 @@
   "title": "Kubechecks Values Schema",
   "type": "object",
   "properties": {
-    "ClusterRoleName": {
+    "clusterRoleName": {
       "type": "string",
       "description": "The name of the Cluster Role to be created.",
       "default": "kubechecks-remote-role"
     },
-    "ClusterRoleBindingName": {
+    "clusterRoleBindingName": {
       "type": "string",
       "description": "The name of the ClusterRoleBinding to be created.",
       "default": "kubechecks-remote-role-binding"
     },
-    "ClusterRoleBindingGroup": {
+    "clusterRoleBindingGroup": {
       "type": "string",
       "description": "The name of the Group to be created.",
       "default": "kubechecks-remote-group"
@@ -24,6 +24,6 @@
       "default": "argocd"
     }
   },
-  "required": ["ClusterRoleName", "ClusterRoleBindingName", "ClusterRoleBindingGroup", "namespace"],
+  "required": ["clusterRoleName", "clusterRoleBindingName", "clusterRoleBindingGroup", "namespace"],
   "additionalProperties": false
 }

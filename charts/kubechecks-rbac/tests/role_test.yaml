@@ -6,7 +6,7 @@ templates:
 tests:
   - it: should create a Role with the correct name
     set:
-      ClusterRoleName: "kubechecks-test-role"
+      clusterRoleName: "kubechecks-test-role"
     asserts:
       - isKind:
           of: ClusterRole
