@@ -80,13 +80,21 @@ func (v2a VcsToArgoMap) WalkKustomizeApps(cloneURL string, fs fs.FS) *AppDirecto
 }
 
 func (v2a VcsToArgoMap) AddApp(app *v1alpha1.Application) {
-	if app.Spec.Source == nil {
+	if app.Spec.Source == nil && app.Spec.Sources == nil {
 		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
 		return
 	}
 
-	appDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
-	appDirectory.ProcessApp(*app)
+	if app.Spec.Source != nil {
+		appDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
+		appDirectory.ProcessApp(*app)
+	} else {
+		for _, src := range app.Spec.Sources {
+			appDirectory := v2a.GetAppsInRepo(src.RepoURL)
+			appDirectory.ProcessApp(*app)
+		}
+	}
+
 }
 
 func (v2a VcsToArgoMap) UpdateApp(old *v1alpha1.Application, new *v1alpha1.Application) {
