@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/chainguard-dev/git-urls"
+	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v62/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -127,7 +128,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 
 var nilPr vcs.PullRequest
 
-func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, error) {
+func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte) (vcs.PullRequest, error) {
 	payload, err := github.ParseWebHook(github.WebHookType(r), request)
 	if err != nil {
 		return nilPr, err
@@ -141,6 +142,20 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, er
 			return c.buildRepoFromEvent(p), nil
 		default:
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
+			return nilPr, vcs.ErrInvalidType
+		}
+	case *github.IssueCommentEvent:
+		switch p.GetAction() {
+		case "created":
+			if *p.Comment.Body == "kubecheck again" {
+				log.Info().Msg("Got kubecheck again comment, Running again")
+				return c.buildRepoFromComment(ctx, p), nil
+			} else {
+				log.Info().Msg("did not get kubecheck again comment, Ignoring")
+				return nilPr, vcs.ErrInvalidType
+			}
+		default:
+			log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
 			return nilPr, vcs.ErrInvalidType
 		}
 	default:
@@ -165,6 +180,45 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 		Name:          event.Repo.GetName(),
 		CheckID:       *event.PullRequest.Number,
 		SHA:           *event.PullRequest.Head.SHA,
+		Username:      c.username,
+		Email:         c.email,
+		Labels:        labels,
+
+		Config: c.cfg,
+	}
+}
+
+func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) vcs.PullRequest {
+	prURL, err := url.Parse(*comment.Issue.URL)
+	if err != nil {
+		return nilPr
+	}
+	pathSegments := strings.Split(prURL.Path, "/")
+	owner := pathSegments[2]
+	repo := pathSegments[3]
+	number := pathSegments[5]
+	prNumber, err := strconv.Atoi(number)
+	if err != nil {
+		return nilPr
+	}
+	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
+	if err != nil {
+		return nilPr
+	}
+	var labels []string
+	for _, label := range pr.Labels {
+		labels = append(labels, label.GetName())
+	}
+	return vcs.PullRequest{
+		BaseRef:       *pr.Base.Ref,
+		HeadRef:       *pr.Head.Ref,
+		DefaultBranch: *comment.Repo.DefaultBranch,
+		CloneURL:      *pr.Base.Repo.CloneURL,
+		FullName:      comment.Repo.GetFullName(),
+		Owner:         *pr.Base.Repo.Owner.Login,
+		Name:          comment.Repo.GetName(),
+		CheckID:       *pr.Number,
+		SHA:           *pr.Head.SHA,
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
