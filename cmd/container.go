@@ -12,6 +12,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
+	client "github.com/zapier/kubechecks/pkg/kubernetes"
 	"github.com/zapier/kubechecks/pkg/vcs/github_client"
 	"github.com/zapier/kubechecks/pkg/vcs/gitlab_client"
 )
@@ -36,7 +37,30 @@ func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) 
 	if err != nil {
 		return ctr, errors.Wrap(err, "failed to create vcs client")
 	}
+	var kubeClient client.Interface
 
+	switch cfg.KubernetesType {
+	// TODO: expand with other cluster types
+	case client.ClusterTypeLOCAL:
+		kubeClient, err = client.New(&client.NewClientInput{
+			KubernetesConfigPath: cfg.KubernetesConfig,
+			ClusterType:          cfg.KubernetesType,
+		})
+		if err != nil {
+			return ctr, errors.Wrap(err, "failed to create kube client")
+		}
+	case client.ClusterTypeEKS:
+		kubeClient, err = client.New(&client.NewClientInput{
+			KubernetesConfigPath: cfg.KubernetesConfig,
+			ClusterType:          cfg.KubernetesType,
+		},
+			client.EKSClientOption(ctx, cfg.KubernetesClusterID),
+		)
+		if err != nil {
+			return ctr, errors.Wrap(err, "failed to create kube client")
+		}
+	}
+	ctr.KubeClientSet = kubeClient
 	// create argo client
 	if ctr.ArgoClient, err = argo_client.NewArgoClient(cfg); err != nil {
 		return ctr, errors.Wrap(err, "failed to create argo client")
@@ -52,13 +76,22 @@ func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) 
 			return ctr, errors.Wrap(err, "failed to build apps map")
 		}
 
+		if err = buildAppSetsMap(ctx, ctr.ArgoClient, ctr.VcsToArgoMap); err != nil {
+			return ctr, errors.Wrap(err, "failed to build appsets map")
+		}
+
 		if watchApps {
-			ctr.ApplicationWatcher, err = app_watcher.NewApplicationWatcher(vcsToArgoMap, cfg)
+			ctr.ApplicationWatcher, err = app_watcher.NewApplicationWatcher(kubeClient.Config(), vcsToArgoMap, cfg)
 			if err != nil {
 				return ctr, errors.Wrap(err, "failed to create watch applications")
 			}
+			ctr.ApplicationSetWatcher, err = app_watcher.NewApplicationSetWatcher(kubeClient.Config(), vcsToArgoMap, cfg)
+			if err != nil {
+				return ctr, errors.Wrap(err, "failed to create watch application sets")
+			}
 
 			go ctr.ApplicationWatcher.Run(ctx, 1)
+			go ctr.ApplicationSetWatcher.Run(ctx)
 		}
 	} else {
 		log.Info().Msgf("not monitoring applications, MonitorAllApplications: %+v", cfg.MonitorAllApplications)
@@ -75,6 +108,16 @@ func buildAppsMap(ctx context.Context, argoClient *argo_client.ArgoClient, resul
 	for _, app := range apps.Items {
 		result.AddApp(&app)
 	}
+	return nil
+}
 
+func buildAppSetsMap(ctx context.Context, argoClient *argo_client.ArgoClient, result container.VcsToArgoMap) error {
+	appSets, err := argoClient.GetApplicationSets(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to list application sets")
+	}
+	for _, appSet := range appSets.Items {
+		result.AddAppSet(&appSet)
+	}
 	return nil
 }

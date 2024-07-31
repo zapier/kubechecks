@@ -1,0 +1,16 @@
+suite: role binding tests
+
+templates:
+  - rolebinding.yaml
+
+tests:
+  - it: should create a RoleBinding with the correct name with EKS IAM role
+    set:
+      clusterRoleBindingName: "kubechecks-test-rolebinding-rbac"
+      clusterRoleBindingGroup: "kubechecks-remote-group"
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+      - equal:
+          path: metadata.name
+          value: kubechecks-test-rolebinding-rbac

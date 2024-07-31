@@ -132,8 +132,8 @@ func (argo *ArgoClient) GetApplicationSets(ctx context.Context) (*v1alpha1.Appli
 
 	resp, err := appClient.List(ctx, new(applicationset.ApplicationSetListQuery))
 	if err != nil {
-		telemetry.SetError(span, err, "Argo List All Applications error")
-		return nil, errors.Wrap(err, "failed to applications")
+		telemetry.SetError(span, err, "Argo List All Application Sets error")
+		return nil, errors.Wrap(err, "failed to list application sets")
 	}
 	return resp, nil
 }

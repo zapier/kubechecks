@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: in-cluster-app-root
+  namespace: kubechecks
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  destination:
+    name: ''
+    namespace: approot
+    server: https://kubernetes.default.svc
+  source:
+    directory:
+      recurse: true
+    path: appsets/
+    repoURL: ${REPO_URL}
+    targetRevision: HEAD
+
+  sources: []
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - CreateProjects=true

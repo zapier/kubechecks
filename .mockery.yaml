@@ -5,3 +5,11 @@ packages:
     # place your package-specific config here
     config:
       all: true
+  github.com/zapier/kubechecks/pkg/generator:
+    # place your package-specific config here
+    config:
+      all: true
+  github.com/zapier/kubechecks/pkg/affected_apps:
+    # place your package-specific config here
+    config:
+      all: true

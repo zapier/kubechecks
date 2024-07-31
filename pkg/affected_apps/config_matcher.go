@@ -9,6 +9,8 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/zapier/kubechecks/pkg/git"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/repo_config"
@@ -28,9 +30,9 @@ func NewConfigMatcher(cfg *repo_config.Config, ctr container.Container) *ConfigM
 	return &ConfigMatcher{cfg: cfg, argoClient: ctr.ArgoClient}
 }
 
-func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, targetBranch string) (AffectedItems, error) {
+func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, _ string, _ *git.Repo) (AffectedItems, error) {
 	triggeredAppsMap := make(map[string]string)
-	var appSetList []ApplicationSet
+	var appSetList []v1alpha1.ApplicationSet
 
 	triggeredApps, triggeredAppsets, err := b.triggeredApps(ctx, changeList)
 	if err != nil {
@@ -42,7 +44,11 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, t
 	}
 
 	for _, appset := range triggeredAppsets {
-		appSetList = append(appSetList, ApplicationSet{appset.Name})
+		appSetList = append(appSetList, v1alpha1.ApplicationSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: appset.Name,
+			},
+		})
 	}
 
 	allArgoApps, err := b.argoClient.GetApplications(ctx)

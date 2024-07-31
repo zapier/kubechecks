@@ -5,6 +5,7 @@ load('ext://tests/golang', 'test_go')
 load('ext://namespace', 'namespace_create')
 load('ext://uibutton', 'cmd_button')
 load('ext://helm_resource', 'helm_resource')
+load('ext://local_output', 'local_output')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
 
@@ -144,10 +145,6 @@ test_go(
 )
 
 
-# get the git commit ref
-def get_git_head():
-    result = local('git rev-parse --short HEAD')
-    return result
 
 # read .tool-versions file and return a dictionary of tools and their versions
 def parse_tool_versions(fn):
@@ -174,7 +171,9 @@ def parse_tool_versions(fn):
     return tools
 
 tool_versions = parse_tool_versions(".tool-versions")
-git_commit = str(get_git_head()).strip()
+
+# get the git commit ref
+git_commit = local_output('git rev-parse --short HEAD')
 
 earthly_build(
     context='.',
@@ -260,8 +259,8 @@ k8s_resource(
 load("localdev/test_apps/Tiltfile", "install_test_apps")
 install_test_apps(cfg)
 
-load("localdev/test_appsets/Tiltfile", "install_test_appsets")
-install_test_appsets(cfg)
+load("localdev/test_appsets/Tiltfile", "copy_test_appsets")
+copy_test_appsets(cfg)
 
 
 force_argocd_cleanup_on_tilt_down()

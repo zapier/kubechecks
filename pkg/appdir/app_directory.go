@@ -58,13 +58,18 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 	}
 }
 
+// FindAppsBasedOnChangeList receives a list of modified file paths and
+// returns the list of applications that are affected by the changes.
+//
+// changeList: a slice of strings representing the paths of modified files.
+// targetBranch: the branch name to compare against the target revision of the applications.
+// e.g. changeList = ["path/to/file1", "path/to/file2"]
 func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []v1alpha1.Application {
 	log.Debug().Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})
 	for _, changePath := range changeList {
 		log.Debug().Msgf("change: %s", changePath)
-
 		for dir, appNames := range d.appDirs {
 			if strings.HasPrefix(changePath, dir) {
 				log.Debug().Msg("dir match!")
@@ -146,10 +151,15 @@ func (d *AppDirectory) GetApps(filter func(stub v1alpha1.Application) bool) []v1
 }
 
 func (d *AppDirectory) AddApp(app v1alpha1.Application) {
+	if _, exists := d.appsMap[app.Name]; exists {
+		log.Debug().Msgf("app %s already exists", app.Name)
+		return
+	}
 	log.Debug().
 		Str("appName", app.Name).
 		Str("cluster-name", app.Spec.Destination.Name).
 		Str("cluster-server", app.Spec.Destination.Server).
+		Str("source", getSourcePath(app)).
 		Msg("add app")
 	d.appsMap[app.Name] = app
 	d.AddDir(app.Name, getSourcePath(app))

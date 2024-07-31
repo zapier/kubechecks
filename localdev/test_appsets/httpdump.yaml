@@ -5,6 +5,7 @@ metadata:
   namespace: kubechecks
 spec:
   generators:
+    # this is a simple list generator
     - list:
         elements:
           - name: a
@@ -16,7 +17,7 @@ spec:
       finalizers:
         - resources-finalizer.argocd.argoproj.io
       name: "in-cluster-{{ name }}-httpdump"
-      namespace: argocd
+      namespace: kubechecks
       labels:
         argocd.argoproj.io/application-set-name: "httpdump"
     spec:
@@ -25,7 +26,7 @@ spec:
         server: '{{ url }}'
       project: default
       source:
-        repoURL: ${REPO_URL}
+        repoURL: REPO_URL
         targetRevision: HEAD
         path: 'apps/httpdump/overlays/{{ name }}/'
       syncPolicy:
@@ -33,3 +34,4 @@ spec:
           prune: true
         syncOptions:
           - CreateNamespace=true
+      sources: []

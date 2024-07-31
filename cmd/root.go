@@ -63,6 +63,11 @@ func init() {
 	stringFlag(flags, "argocd-api-namespace", "ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.",
 		newStringOpts().
 			withDefault("argocd"))
+	stringFlag(flags, "kubernetes-type", "Kubernetes Type One of eks, or local. Defaults to local.",
+		newStringOpts().
+			withChoices("eks", "local").
+			withDefault("local"))
+	stringFlag(flags, "kubernetes-clusterid", "Kubernetes Cluster ID, must be specified if kubernetes-type is eks.")
 	stringFlag(flags, "kubernetes-config", "Path to your kubernetes config file, used to monitor applications.")
 
 	stringFlag(flags, "otel-collector-port", "The OpenTelemetry collector port.")
@@ -73,10 +78,7 @@ func init() {
 		newStringOpts().
 			withChoices("hide", "delete").
 			withDefault("hide"))
-	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. Can be common paths inside the repos being checked or git urls in either git or http(s) format.",
-		newStringSliceOpts().
-			withDefault([]string{"./schemas"}))
-
+	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. Can be common paths inside the repos being checked or git urls in either git or http(s) format.")
 	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests.")
 	stringSliceFlag(flags, "policies-location", "Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.",
 		newStringSliceOpts().
