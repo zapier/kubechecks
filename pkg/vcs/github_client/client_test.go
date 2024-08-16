@@ -25,7 +25,7 @@ func MockGitHubMethod(methodName string, returns []interface{}) *GClient {
 	}
 }
 
-// MockGitHubMethod is a generic function to mock GitHub client methods
+// MockGitHubPullRequestMethod is a generic function to mock GitHub client methods
 func MockGitHubPullRequestMethod(methodName string, returns []interface{}) *GClient {
 	mockClient := new(githubMocks.MockPullRequestsServices)
 	mockClient.On(methodName, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(returns...)

@@ -175,6 +175,10 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 			if hook.MergeRequestsEvents {
 				events = append(events, string(gitlab.MergeRequestEventTargetType))
 			}
+			if hook.NoteEvents {
+				events = append(events, string(gitlab.NoteEventTargetType))
+			}
+
 			return &vcs.WebHookConfig{
 				Url:    hook.URL,
 				Events: events,
@@ -191,14 +195,14 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 		return errors.Wrap(err, "failed to parse repo name")
 	}
 
-	_, _, err = c.c.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
+	_, glStatus, err := c.c.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
 		URL:                 pkg.Pointer(webhookUrl),
 		MergeRequestsEvents: pkg.Pointer(true),
 		NoteEvents:          pkg.Pointer(true),
 		Token:               pkg.Pointer(webhookSecret),
 	})
 
-	if err != nil {
+	if err != nil && glStatus.StatusCode < http.StatusOK || glStatus.StatusCode >= http.StatusMultipleChoices {
 		return errors.Wrap(err, "failed to create project webhook")
 	}
 
