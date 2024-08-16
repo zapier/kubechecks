@@ -25,6 +25,16 @@ func MockGitHubMethod(methodName string, returns []interface{}) *GClient {
 	}
 }
 
+// MockGitHubMethod is a generic function to mock GitHub client methods
+func MockGitHubPullRequestMethod(methodName string, returns []interface{}) *GClient {
+	mockClient := new(githubMocks.MockPullRequestsServices)
+	mockClient.On(methodName, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(returns...)
+
+	return &GClient{
+		PullRequests: mockClient,
+	}
+}
+
 func TestParseRepo(t *testing.T) {
 	testcases := []struct {
 		name, input                 string
@@ -321,6 +331,238 @@ func TestClient_GetHookByUrl(t *testing.T) {
 				return
 			}
 			assert.Equalf(t, tt.want, got, "GetHookByUrl(%v, %v, %v)", tt.args.ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl)
+		})
+	}
+}
+
+func TestClient_buildRepoFromComment(t *testing.T) {
+	type fields struct {
+		shurcoolClient *githubv4.Client
+		googleClient   *GClient
+		cfg            config.ServerConfig
+		username       string
+		email          string
+	}
+	type args struct {
+		context context.Context
+		comment *github.IssueCommentEvent
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   vcs.PullRequest
+	}{
+		{
+			name: "normal ok",
+			fields: fields{
+				shurcoolClient: nil,
+				googleClient: MockGitHubPullRequestMethod("Get",
+					[]interface{}{
+						&github.PullRequest{
+							ID:     nil,
+							Number: github.Int(123),
+							Labels: []*github.Label{
+								{
+									Name: github.String("test label1"),
+								},
+								{
+									Name: github.String("test label2"),
+								},
+							},
+							Head: &github.PullRequestBranch{
+								Ref: github.String("main"),
+								SHA: github.String("dummySHA"),
+							},
+							Base: &github.PullRequestBranch{
+								Ref: github.String("main"),
+								SHA: github.String("dummySHA"),
+								Repo: &github.Repository{
+									CloneURL: github.String("https://github.com/zapier/kubechecks/"),
+									Owner:    &github.User{Login: github.String("zapier")},
+								},
+							},
+						},
+						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
+						nil},
+				),
+				cfg:      config.ServerConfig{},
+				username: "unittestuser",
+				email:    "unitestuser@localhost.local",
+			},
+			args: args{
+				context: context.TODO(),
+				comment: &github.IssueCommentEvent{
+					Issue: &github.Issue{
+						URL: github.String("https://github.com/zapier/kubechecks/pull/250"),
+					},
+					Repo: &github.Repository{
+						DefaultBranch: github.String("main"),
+						Name:          github.String("prguy"),
+						FullName:      github.String("pr guy"),
+					},
+				},
+			},
+			want: vcs.PullRequest{
+				BaseRef:       "main",
+				HeadRef:       "main",
+				DefaultBranch: "main",
+				CloneURL:      "https://github.com/zapier/kubechecks/",
+				Name:          "prguy",
+				Owner:         "zapier",
+				CheckID:       123,
+				SHA:           "dummySHA",
+				FullName:      "pr guy",
+				Username:      "unittestuser",
+				Email:         "unitestuser@localhost.local",
+				Labels:        []string{"test label1", "test label2"},
+				Config:        config.ServerConfig{},
+			},
+		},
+		{
+			name: "failed to get pr data",
+			fields: fields{
+				shurcoolClient: nil,
+				googleClient: MockGitHubPullRequestMethod("Get",
+					[]interface{}{
+						nil,
+						&github.Response{Response: &http.Response{StatusCode: http.StatusInternalServerError}},
+						fmt.Errorf("dummy error")},
+				),
+				cfg:      config.ServerConfig{},
+				username: "unittestuser",
+				email:    "unitestuser@localhost.local",
+			},
+			args: args{
+				context: context.TODO(),
+				comment: &github.IssueCommentEvent{
+					Issue: &github.Issue{
+						URL: github.String("https://github.com/zapier/kubechecks/pull/250"),
+					},
+					Repo: &github.Repository{
+						DefaultBranch: github.String("main"),
+						Name:          github.String("prguy"),
+						FullName:      github.String("pr guy"),
+					},
+				},
+			},
+			want: nilPr,
+		},
+		{
+			name: "missing issue pr URL",
+			fields: fields{
+				shurcoolClient: nil,
+				googleClient: MockGitHubPullRequestMethod("Get",
+					[]interface{}{
+						&github.PullRequest{
+							ID:     nil,
+							Number: github.Int(123),
+							Labels: []*github.Label{
+								{
+									Name: github.String("test label1"),
+								},
+								{
+									Name: github.String("test label2"),
+								},
+							},
+							Head: &github.PullRequestBranch{
+								Ref: github.String("main"),
+								SHA: github.String("dummySHA"),
+							},
+							Base: &github.PullRequestBranch{
+								Ref: github.String("main"),
+								SHA: github.String("dummySHA"),
+								Repo: &github.Repository{
+									CloneURL: github.String("https://github.com/zapier/kubechecks/"),
+									Owner:    &github.User{Login: github.String("zapier")},
+								},
+							},
+						},
+						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
+						nil},
+				),
+				cfg:      config.ServerConfig{},
+				username: "unittestuser",
+				email:    "unitestuser@localhost.local",
+			},
+			args: args{
+				context: context.TODO(),
+				comment: &github.IssueCommentEvent{
+					Issue: &github.Issue{
+						URL: nil,
+					},
+					Repo: &github.Repository{
+						DefaultBranch: github.String("main"),
+						Name:          github.String("prguy"),
+						FullName:      github.String("pr guy"),
+					},
+				},
+			},
+			want: nilPr,
+		},
+		{
+			name: "invalid pr url",
+			fields: fields{
+				shurcoolClient: nil,
+				googleClient: MockGitHubPullRequestMethod("Get",
+					[]interface{}{
+						&github.PullRequest{
+							ID:     nil,
+							Number: github.Int(123),
+							Labels: []*github.Label{
+								{
+									Name: github.String("test label1"),
+								},
+								{
+									Name: github.String("test label2"),
+								},
+							},
+							Head: &github.PullRequestBranch{
+								Ref: github.String("main"),
+								SHA: github.String("dummySHA"),
+							},
+							Base: &github.PullRequestBranch{
+								Ref: github.String("main"),
+								SHA: github.String("dummySHA"),
+								Repo: &github.Repository{
+									CloneURL: github.String("https://github.com/zapier/kubechecks/"),
+									Owner:    &github.User{Login: github.String("zapier")},
+								},
+							},
+						},
+						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
+						nil},
+				),
+				cfg:      config.ServerConfig{},
+				username: "unittestuser",
+				email:    "unitestuser@localhost.local",
+			},
+			args: args{
+				context: context.TODO(),
+				comment: &github.IssueCommentEvent{
+					Issue: &github.Issue{
+						URL: github.String("https://github.com/"),
+					},
+					Repo: &github.Repository{
+						DefaultBranch: github.String("main"),
+						Name:          github.String("prguy"),
+						FullName:      github.String("pr guy"),
+					},
+				},
+			},
+			want: nilPr,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Client{
+				shurcoolClient: tt.fields.shurcoolClient,
+				googleClient:   tt.fields.googleClient,
+				cfg:            tt.fields.cfg,
+				username:       tt.fields.username,
+				email:          tt.fields.email,
+			}
+			assert.Equalf(t, tt.want, c.buildRepoFromComment(tt.args.context, tt.args.comment), "buildRepoFromComment(%v, %v)", tt.args.context, tt.args.comment)
 		})
 	}
 }

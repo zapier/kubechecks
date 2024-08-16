@@ -147,11 +147,11 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 	case *github.IssueCommentEvent:
 		switch p.GetAction() {
 		case "created":
-			if *p.Comment.Body == "kubecheck again" {
-				log.Info().Msg("Got kubecheck again comment, Running again")
+			if strings.ToLower(p.Comment.GetBody()) == "kubechecks again" {
+				log.Info().Msg("Got kubechecks again comment, Running again")
 				return c.buildRepoFromComment(ctx, p), nil
 			} else {
-				log.Info().Msg("did not get kubecheck again comment, Ignoring")
+				log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
 				return nilPr, vcs.ErrInvalidType
 			}
 		default:
@@ -171,15 +171,15 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 	}
 
 	return vcs.PullRequest{
-		BaseRef:       *event.PullRequest.Base.Ref,
-		HeadRef:       *event.PullRequest.Head.Ref,
-		DefaultBranch: *event.Repo.DefaultBranch,
-		CloneURL:      *event.Repo.CloneURL,
+		BaseRef:       event.PullRequest.Base.GetRef(),
+		HeadRef:       event.PullRequest.Head.GetRef(),
+		DefaultBranch: event.Repo.GetDefaultBranch(),
+		CloneURL:      event.Repo.GetCloneURL(),
 		FullName:      event.Repo.GetFullName(),
-		Owner:         *event.Repo.Owner.Login,
+		Owner:         event.Repo.Owner.GetLogin(),
 		Name:          event.Repo.GetName(),
-		CheckID:       *event.PullRequest.Number,
-		SHA:           *event.PullRequest.Head.SHA,
+		CheckID:       event.PullRequest.GetNumber(),
+		SHA:           event.PullRequest.Head.GetSHA(),
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
@@ -188,21 +188,29 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 	}
 }
 
+// buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
 func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) vcs.PullRequest {
-	prURL, err := url.Parse(*comment.Issue.URL)
+	prURL, err := url.Parse(comment.Issue.GetURL())
 	if err != nil {
+		log.Error().Msgf("failed to parse pr url: %+v", prURL)
 		return nilPr
 	}
 	pathSegments := strings.Split(prURL.Path, "/")
-	owner := pathSegments[2]
-	repo := pathSegments[3]
-	number := pathSegments[5]
-	prNumber, err := strconv.Atoi(number)
-	if err != nil {
+	if len(pathSegments) < 5 {
+		// invalid path, return nilPr
+		log.Error().Msgf("invalid pr url path: %s", prURL.Path)
 		return nilPr
 	}
-	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
+	owner := pathSegments[2]
+	repo := pathSegments[3]
+	prNumber, err := strconv.Atoi(pathSegments[4])
 	if err != nil {
+		log.Error().Msgf("failed to convert prNumber: %s", err)
+		return nilPr
+	}
+	pr, ghStatus, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
+	if err != nil || ghStatus.StatusCode < 200 || ghStatus.StatusCode >= 300 {
+		log.Error().Msgf("failed to get pull request: %s", err)
 		return nilPr
 	}
 	var labels []string
@@ -210,15 +218,15 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.I
 		labels = append(labels, label.GetName())
 	}
 	return vcs.PullRequest{
-		BaseRef:       *pr.Base.Ref,
-		HeadRef:       *pr.Head.Ref,
-		DefaultBranch: *comment.Repo.DefaultBranch,
-		CloneURL:      *pr.Base.Repo.CloneURL,
+		BaseRef:       pr.Base.GetRef(),
+		HeadRef:       pr.Head.GetRef(),
+		DefaultBranch: comment.Repo.GetDefaultBranch(),
+		CloneURL:      pr.Base.Repo.GetCloneURL(),
 		FullName:      comment.Repo.GetFullName(),
-		Owner:         *pr.Base.Repo.Owner.Login,
+		Owner:         pr.Base.Repo.Owner.GetLogin(),
 		Name:          comment.Repo.GetName(),
-		CheckID:       *pr.Number,
-		SHA:           *pr.Head.SHA,
+		CheckID:       pr.GetNumber(),
+		SHA:           pr.Head.GetSHA(),
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
