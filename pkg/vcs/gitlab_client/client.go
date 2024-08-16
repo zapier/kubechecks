@@ -22,10 +22,19 @@ import (
 const GitlabTokenHeader = "X-Gitlab-Token"
 
 type Client struct {
-	c   *gitlab.Client
+	c   *GLClient
 	cfg config.ServerConfig
 
 	username, email string
+}
+
+type GLClient struct {
+	MergeRequests   MergeRequestsServices
+	RepositoryFiles RepositoryFilesServices
+	Notes           NotesServices
+	Pipelines       PipelinesServices
+	Projects        ProjectsServices
+	Commits         CommitsServices
 }
 
 func CreateGitlabClient(cfg config.ServerConfig) (*Client, error) {
@@ -54,7 +63,14 @@ func CreateGitlabClient(cfg config.ServerConfig) (*Client, error) {
 	}
 
 	client := &Client{
-		c:        c,
+		c: &GLClient{
+			MergeRequests:   &MergeRequestsService{c.MergeRequests},
+			RepositoryFiles: &RepositoryFilesService{c.RepositoryFiles},
+			Notes:           &NotesService{c.Notes},
+			Projects:        &ProjectsService{c.Projects},
+			Commits:         &CommitsService{c.Commits},
+			Pipelines:       &PipelinesService{c.Pipelines},
+		},
 		cfg:      cfg,
 		username: user.Username,
 		email:    user.Email,
@@ -107,6 +123,20 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 			return c.buildRepoFromEvent(event), nil
 		default:
 			log.Trace().Msgf("Unhandled Action %s", event.ObjectAttributes.Action)
+			return nilPr, vcs.ErrInvalidType
+		}
+	case *gitlab.MergeCommentEvent:
+		switch event.ObjectAttributes.Action {
+		case gitlab.CommentEventActionCreate:
+			if strings.ToLower(event.ObjectAttributes.Note) == "kubechecks again" {
+				log.Info().Msg("Got kubechecks again comment, Running again")
+				return c.buildRepoFromComment(event), nil
+			} else {
+				log.Info().Msg("ignoring Gitlab merge comment event due to non matching string")
+				return nilPr, vcs.ErrInvalidType
+			}
+		default:
+			log.Info().Msg("ignoring Gitlab issue comment event due to non matching string")
 			return nilPr, vcs.ErrInvalidType
 		}
 	default:
@@ -164,6 +194,7 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 	_, _, err = c.c.Projects.AddProjectHook(pid, &gitlab.AddProjectHookOptions{
 		URL:                 pkg.Pointer(webhookUrl),
 		MergeRequestsEvents: pkg.Pointer(true),
+		NoteEvents:          pkg.Pointer(true),
 		Token:               pkg.Pointer(webhookSecret),
 	})
 
@@ -233,6 +264,29 @@ func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) vcs.PullRequest {
 		Name:          event.Project.Name,
 		CheckID:       event.ObjectAttributes.IID,
 		SHA:           event.ObjectAttributes.LastCommit.ID,
+		Username:      c.username,
+		Email:         c.email,
+		Labels:        labels,
+
+		Config: c.cfg,
+	}
+}
+
+func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullRequest {
+	// Convert all labels from this MR to a string array of label names
+	var labels []string
+	for _, label := range event.MergeRequest.Labels {
+		labels = append(labels, label.Title)
+	}
+	return vcs.PullRequest{
+		BaseRef:       event.MergeRequest.TargetBranch,
+		HeadRef:       event.MergeRequest.SourceBranch,
+		DefaultBranch: event.Project.DefaultBranch,
+		FullName:      event.Project.PathWithNamespace,
+		CloneURL:      event.Project.GitHTTPURL,
+		Name:          event.Project.Name,
+		CheckID:       event.MergeRequest.IID,
+		SHA:           event.MergeRequest.LastCommit.ID,
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,

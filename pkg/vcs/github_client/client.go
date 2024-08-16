@@ -322,7 +322,7 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 			Secret:      pkg.Pointer(webhookSecret),
 		},
 		Events: []string{
-			"pull_request",
+			"pull_request", "issue_comment",
 		},
 		Name: pkg.Pointer("web"),
 	})
