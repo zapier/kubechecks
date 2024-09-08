@@ -68,7 +68,7 @@ func (d *AppSetDirectory) ProcessApp(app v1alpha1.ApplicationSet) {
 //	e.g. changeList = ["/appset/httpdump/httpdump.yaml", "/app/testapp/values.yaml"]
 //  if the changed file is application set file, return it.
 
-func (d *AppSetDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string, repo *git.Repo) []v1alpha1.ApplicationSet {
+func (d *AppSetDirectory) FindAppsBasedOnChangeList(changeList []string, repo *git.Repo) []v1alpha1.ApplicationSet {
 	log.Debug().Str("type", "applicationsets").Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})
@@ -97,11 +97,6 @@ func (d *AppSetDirectory) FindAppsBasedOnChangeList(changeList []string, targetB
 			continue
 		}
 
-		if !appSetShouldInclude(appSet, targetBranch) {
-			log.Debug().Msgf("target revision of %s is %s and does not match '%s'", appSet, appSetGetTargetRevision(appSet), targetBranch)
-			continue
-		}
-
 		// Store the unique ApplicationSet
 		if _, exists := appsSet[appSet.Name]; !exists {
 			appsSet[appSet.Name] = struct{}{}
@@ -109,39 +104,12 @@ func (d *AppSetDirectory) FindAppsBasedOnChangeList(changeList []string, targetB
 		}
 	}
 
-	log.Debug().Str("source", "appset_directory").Msgf("matched %d files into %d appset", len(changeList), len(appsSet))
+	log.Debug().Str("source", "appset_directory").Msgf("matched %d files into %d appset", len(changeList), len(appSets))
 	return appSets
-}
-
-func appSetGetTargetRevision(app *v1alpha1.ApplicationSet) string {
-	return app.Spec.Template.Spec.GetSource().TargetRevision
 }
 
 func appSetGetSourcePath(app *v1alpha1.ApplicationSet) string {
 	return app.Spec.Template.Spec.GetSource().Path
-}
-
-func appSetShouldInclude(app *v1alpha1.ApplicationSet, targetBranch string) bool {
-	targetRevision := appSetGetTargetRevision(app)
-	if targetRevision == "" {
-		return true
-	}
-
-	if targetRevision == targetBranch {
-		return true
-	}
-
-	if targetRevision == "HEAD" {
-		if targetBranch == "main" {
-			return true
-		}
-
-		if targetBranch == "master" {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (d *AppSetDirectory) GetAppSets(filter func(stub v1alpha1.ApplicationSet) bool) []v1alpha1.ApplicationSet {

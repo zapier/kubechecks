@@ -82,7 +82,6 @@ func TestAppSetDirectory_FindAppsBasedOnChangeList(t *testing.T) {
 			changeList: []string{
 				"appsets/httpdump/valid-appset.yaml",
 			},
-			targetBranch: "main",
 			mockFiles: map[string]string{
 				"appsets/httpdump/valid-appset.yaml": `
 apiVersion: argoproj.io/v1alpha1
@@ -180,7 +179,6 @@ spec:
 			changeList: []string{
 				"invalid-appset.yaml",
 			},
-			targetBranch: "main",
 			mockFiles: map[string]string{
 				"appsets/httpdump/invalid-appset.yaml": "invalid yaml content",
 			},
@@ -214,7 +212,7 @@ spec:
 				t.Fatalf("failed to create tmp folder %s", fatalErr)
 			}
 			d := &AppSetDirectory{}
-			result := d.FindAppsBasedOnChangeList(tt.changeList, tt.targetBranch, &git.Repo{Directory: tempDir})
+			result := d.FindAppsBasedOnChangeList(tt.changeList, &git.Repo{Directory: tempDir})
 			assert.Equal(t, tt.expected, result)
 		})
 	}
