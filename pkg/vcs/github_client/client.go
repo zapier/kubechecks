@@ -147,8 +147,8 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 	case *github.IssueCommentEvent:
 		switch p.GetAction() {
 		case "created":
-			if strings.ToLower(p.Comment.GetBody()) == "kubechecks again" {
-				log.Info().Msg("Got kubechecks again comment, Running again")
+			if strings.ToLower(p.Comment.GetBody()) == c.cfg.ReplanCommentMessage {
+				log.Info().Msgf("Got %s comment, Running again", c.cfg.ReplanCommentMessage)
 				return c.buildRepoFromComment(ctx, p), nil
 			} else {
 				log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")

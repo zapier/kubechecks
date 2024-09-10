@@ -13,6 +13,7 @@ jobs:
   remove-temp-image:
     runs-on: ubuntu-22.04
     if: github.repository == 'zapier/kubechecks'
+    continue-on-error: true
 
     # should match env.FS_TAG, in both pr-open.yaml and pr-close.yaml
     concurrency: pr-${{ github.event.pull_request.number }}

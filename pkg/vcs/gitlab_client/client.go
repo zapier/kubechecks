@@ -128,8 +128,8 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 	case *gitlab.MergeCommentEvent:
 		switch event.ObjectAttributes.Action {
 		case gitlab.CommentEventActionCreate:
-			if strings.ToLower(event.ObjectAttributes.Note) == "kubechecks again" {
-				log.Info().Msg("Got kubechecks again comment, Running again")
+			if strings.ToLower(event.ObjectAttributes.Note) == c.cfg.ReplanCommentMessage {
+				log.Info().Msgf("Got %s comment, Running again", c.cfg.ReplanCommentMessage)
 				return c.buildRepoFromComment(event), nil
 			} else {
 				log.Info().Msg("ignoring Gitlab merge comment event due to non matching string")
