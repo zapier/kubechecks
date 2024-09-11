@@ -36,8 +36,9 @@ The full list of supported environment variables is described below:
 
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
-|`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections to the ArgoCD API server.|`false`|
+|`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections over TLS to the ArgoCD API server.|`false`|
 |`KUBECHECKS_ARGOCD_API_NAMESPACE`|ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.|`argocd`|
+|`KUBECHECKS_ARGOCD_API_PLAINTEXT`|Enable to use plaintext connections without TLS.|`false`|
 |`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address.|`argocd-server`|
 |`KUBECHECKS_ARGOCD_API_TOKEN`|ArgoCD API token.||
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
