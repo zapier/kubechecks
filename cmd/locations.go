@@ -3,10 +3,10 @@ package cmd
 import (
 	"context"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/docker/docker/builder/remotecontext/urlutil"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -35,7 +35,7 @@ var ErrCannotUseQueryWithFilePath = errors.New("relative and absolute file paths
 
 func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDuration time.Duration, location, vcsUsername string) (string, error) {
 	result := strings.SplitN(location, "?", 2)
-	if !urlutil.IsGitURL(result[0]) {
+	if !isGitURL(result[0]) {
 		if len(result) > 1 {
 			return "", ErrCannotUseQueryWithFilePath
 		}
@@ -81,4 +81,27 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDurati
 	}
 
 	return path, nil
+}
+
+func isGitURL(str string) bool {
+	if IsURL(str) && urlPathWithFragmentSuffix.MatchString(str) {
+		return true
+	}
+	for _, prefix := range []string{"git://", "github.com/", "git@"} {
+		if strings.HasPrefix(str, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// urlPathWithFragmentSuffix matches fragments to use as Git reference and build
+// context from the Git repository. See IsGitURL for details.
+var urlPathWithFragmentSuffix = regexp.MustCompile(`\.git(?:#.+)?$`)
+
+// IsURL returns true if the provided str is an HTTP(S) URL by checking if it
+// has a http:// or https:// scheme. No validation is performed to verify if the
+// URL is well-formed.
+func IsURL(str string) bool {
+	return strings.HasPrefix(str, "https://") || strings.HasPrefix(str, "http://")
 }
