@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -83,11 +84,12 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDurati
 	return path, nil
 }
 
-func isGitURL(str string) bool {
-	if IsURL(str) && urlPathWithFragmentSuffix.MatchString(str) {
+func isGitURL(url string) bool {
+	str := strings.ToLower(url)
+	if isValidURL(str) && urlPathWithFragmentSuffix.MatchString(str) {
 		return true
 	}
-	for _, prefix := range []string{"git://", "github.com/", "git@"} {
+	for _, prefix := range []string{"git://", "github.com/", "gitlab.com/", "git@"} {
 		if strings.HasPrefix(str, prefix) {
 			return true
 		}
@@ -99,9 +101,8 @@ func isGitURL(str string) bool {
 // context from the Git repository. See IsGitURL for details.
 var urlPathWithFragmentSuffix = regexp.MustCompile(`\.git(?:#.+)?$`)
 
-// IsURL returns true if the provided str is an HTTP(S) URL by checking if it
-// has a http:// or https:// scheme. No validation is performed to verify if the
-// URL is well-formed.
-func IsURL(str string) bool {
-	return strings.HasPrefix(str, "https://") || strings.HasPrefix(str, "http://")
+// isValidURL returns true if the provided str is a well-formed HTTP(S) URL.
+func isValidURL(str string) bool {
+	u, err := url.Parse(str)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
