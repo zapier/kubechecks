@@ -27,6 +27,7 @@ func NewArgoClient(cfg config.ServerConfig) (*ArgoClient, error) {
 		AuthToken:       cfg.ArgoCDToken,
 		GRPCWebRootPath: cfg.ArgoCDPathPrefix,
 		Insecure:        cfg.ArgoCDInsecure,
+		PlainText:       cfg.ArgoCDPlainText,
 	}
 
 	log.Info().

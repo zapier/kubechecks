@@ -22,6 +22,7 @@ type ServerConfig struct {
 	ArgoCDPathPrefix    string `mapstructure:"argocd-api-path-prefix"`
 	ArgoCDInsecure      bool   `mapstructure:"argocd-api-insecure"`
 	ArgoCDNamespace     string `mapstructure:"argocd-api-namespace"`
+	ArgoCDPlainText     bool   `mapstructure:"argocd-api-plaintext"`
 	KubernetesConfig    string `mapstructure:"kubernetes-config"`
 	KubernetesType      string `mapstructure:"kubernetes-type"`
 	KubernetesClusterID string `mapstructure:"kubernetes-clusterid"`

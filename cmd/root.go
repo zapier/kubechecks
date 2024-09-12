@@ -59,10 +59,11 @@ func init() {
 	stringFlag(flags, "argocd-api-server-addr", "ArgoCD API Server Address.",
 		newStringOpts().
 			withDefault("argocd-server"))
-	boolFlag(flags, "argocd-api-insecure", "Enable to use insecure connections to the ArgoCD API server.")
+	boolFlag(flags, "argocd-api-insecure", "Enable to use insecure connections over TLS to the ArgoCD API server.")
 	stringFlag(flags, "argocd-api-namespace", "ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.",
 		newStringOpts().
 			withDefault("argocd"))
+	boolFlag(flags, "argocd-api-plaintext", "Enable to use plaintext connections without TLS.")
 	stringFlag(flags, "kubernetes-type", "Kubernetes Type One of eks, or local. Defaults to local.",
 		newStringOpts().
 			withChoices("eks", "local").
