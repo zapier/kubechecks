@@ -199,3 +199,76 @@ func TestMaybeCloneGitUrl_CloneError(t *testing.T) {
 		})
 	}
 }
+
+func Test_isGitURL(t *testing.T) {
+	type args struct {
+		str string
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "git url 1",
+			args: args{
+				str: "https://gitlab.com/org/team/project.git",
+			},
+			want: true,
+		},
+		{
+			name: "git url 2",
+			args: args{
+				str: "git://github.com/org/team/project.git",
+			},
+			want: true,
+		},
+		{
+			name: "git url 3",
+			args: args{
+				str: "http://github.com/org/team/project.git",
+			},
+			want: true,
+		},
+		{
+			name: "git url 4",
+			args: args{
+				str: "git://test.local/org/team/project.git",
+			},
+			want: true,
+		},
+		{
+			name: "git url invalid 1",
+			args: args{
+				str: "scp://whatever.com/org/team/project.git",
+			},
+			want: false,
+		},
+		{
+			name: "git url invalid 2",
+			args: args{
+				str: "ftp://github.com/org/team/project.git",
+			},
+			want: false,
+		},
+		{
+			name: "git url invalid 3",
+			args: args{
+				str: "thisisnoturl",
+			},
+			want: false,
+		},
+		{
+			name: "git url invalid 4",
+			args: args{
+				str: "http://zapier.com",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, isGitURL(tt.args.str), "isGitURL(%v)", tt.args.str)
+		})
+	}
+}
