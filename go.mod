@@ -15,7 +15,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/chainguard-dev/git-urls v1.0.2
 	github.com/creasty/defaults v1.7.0
-	github.com/docker/docker v27.2.1+incompatible
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-git/go-git-fixtures/v4 v4.3.2-0.20231010084843-55a94097c399
 	github.com/go-logr/zerologr v1.2.3
@@ -120,6 +119,7 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
+	github.com/docker/docker v27.2.1+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.10.2 // indirect
