@@ -1,10 +1,10 @@
 earthly 0.8.6
 golang 1.22.7
-golangci-lint 1.56.1
+golangci-lint 1.61.0
 helm 3.12.2
 helm-cr 1.6.1
 helm-ct 3.8.0
 kubeconform 0.6.3
 kustomize 5.1.0
-staticcheck 2023.1.6
+staticcheck 2024.1.1
 tilt 0.33.2
