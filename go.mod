@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.21.6
 
 require (
-	github.com/argoproj/argo-cd/v2 v2.11.6
+	github.com/argoproj/argo-cd/v2 v2.11.7
 	github.com/argoproj/gitops-engine v0.7.1-0.20240715141605-18ba62e1f1fb
 	github.com/aws/aws-sdk-go-v2 v1.30.1
 	github.com/aws/aws-sdk-go-v2/config v1.27.24
