@@ -3,9 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/app_watcher"
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/argo_client"
@@ -94,7 +94,7 @@ func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) 
 			go ctr.ApplicationSetWatcher.Run(ctx)
 		}
 	} else {
-		log.Info().Msgf("not monitoring applications, MonitorAllApplications: %+v", cfg.MonitorAllApplications)
+		slog.Info(fmt.Sprintf("not monitoring applications, MonitorAllApplications: %+v", cfg.MonitorAllApplications))
 	}
 
 	return ctr, nil

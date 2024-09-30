@@ -1,13 +1,13 @@
 package config
 
 import (
+	"fmt"
+	"log/slog"
 	"reflect"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 
 	"github.com/zapier/kubechecks/pkg"
@@ -62,7 +62,7 @@ type ServerConfig struct {
 	// misc
 	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`
 	LabelFilter              string        `mapstructure:"label-filter"`
-	LogLevel                 zerolog.Level `mapstructure:"log-level"`
+	LogLevel                 slog.Level    `mapstructure:"log-level"`
 	MonitorAllApplications   bool          `mapstructure:"monitor-all-applications"`
 	OpenAIAPIToken           string        `mapstructure:"openai-api-token"`
 	RepoRefreshInterval      time.Duration `mapstructure:"repo-refresh-interval"`
@@ -81,9 +81,15 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	var cfg ServerConfig
 	if err := v.Unmarshal(&cfg, func(config *mapstructure.DecoderConfig) {
 		config.DecodeHook = func(in reflect.Type, out reflect.Type, value interface{}) (interface{}, error) {
-			if in.String() == "string" && out.String() == "zerolog.Level" {
+			if in.String() == "string" && out.String() == "slog.Level" {
 				input := value.(string)
-				return zerolog.ParseLevel(input)
+				var level slog.Level
+				var err = level.UnmarshalText([]byte(input))
+				if err == nil {
+					return level, nil
+				} else {
+					return nil, err
+				}
 			}
 
 			if in.String() == "string" && out.String() == "pkg.CommitState" {
@@ -102,11 +108,11 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 		return cfg, errors.Wrap(err, "failed to read configuration")
 	}
 
-	log.Info().Msg("Server Configuration: ")
-	log.Info().Msgf("Webhook URL Base: %s", cfg.WebhookUrlBase)
-	log.Info().Msgf("Webhook URL Prefix: %s", cfg.UrlPrefix)
-	log.Info().Msgf("VCS Type: %s", cfg.VcsType)
-	log.Info().Msgf("ArgoCD Namespace: %s", cfg.ArgoCDNamespace)
+	slog.Info("Server Configuration: ")
+	slog.Info(fmt.Sprintf("Webhook URL Base: %s", cfg.WebhookUrlBase))
+	slog.Info(fmt.Sprintf("Webhook URL Prefix: %s", cfg.UrlPrefix))
+	slog.Info(fmt.Sprintf("VCS Type: %s", cfg.VcsType))
+	slog.Info(fmt.Sprintf("ArgoCD Namespace: %s", cfg.ArgoCDNamespace))
 
 	return cfg, nil
 }
