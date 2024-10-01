@@ -20,7 +20,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/config"
 )
 
-// ApplicationWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API
+// ApplicationWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API.
 type ApplicationWatcher struct {
 	applicationClientset appclientset.Interface
 	appInformer          cache.SharedIndexInformer
@@ -68,7 +68,7 @@ func (ctrl *ApplicationWatcher) Run(ctx context.Context, processors int) {
 }
 
 // onAdd is the function executed when the informer notifies the
-// presence of a new Application in the namespace
+// presence of a new Application in the namespace.
 func (ctrl *ApplicationWatcher) onApplicationAdded(obj interface{}) {
 	app, ok := canProcessApp(obj)
 	if !ok {
@@ -99,7 +99,6 @@ func (ctrl *ApplicationWatcher) onApplicationUpdated(old, new interface{}) {
 		log.Info().Str("key", key).Msg("appwatcher: onApplicationUpdated")
 		ctrl.vcsToArgoMap.UpdateApp(old.(*appv1alpha1.Application), new.(*appv1alpha1.Application))
 	}
-
 }
 
 func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {

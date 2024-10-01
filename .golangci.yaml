@@ -1,0 +1,54 @@
+linters:
+  enable-all: true
+
+  disable:
+    - dupl
+    - funlen
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - godox
+    - gomoddirectives
+    - lll
+    - makezero
+    - nestif
+    - prealloc
+    - promlinter
+    - revive
+    - cyclop
+    - depguard
+    - dupword
+    - err113
+    - errname
+    - exhaustive
+    - exhaustruct
+    - forcetypeassert
+    - gochecknoglobals
+    - gomnd
+    - inamedparam
+    - interfacebloat
+    - ireturn
+    - maintidx
+    - mnd
+    - nilnil
+    - nlreturn
+    - paralleltest
+    - perfsprint
+    - predeclared
+    - stylecheck
+    - tagliatelle
+    - testpackage
+    - varnamelen
+    - wrapcheck
+    - wsl
+
+    - exportloopref  # deprecated
+    - execinquery  # deprecated
+    - gomnd  # deprecated
+
+linters-settings:
+  gci:
+    sections:
+      - standard
+      - default
+      - localmodule

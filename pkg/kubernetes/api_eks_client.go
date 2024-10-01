@@ -12,10 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
-	"k8s.io/client-go/rest"
-
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/pkg/errors"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -143,7 +143,7 @@ func (t *TokenRefresher) refreshToken(ctx context.Context) error {
 	if time.Now().After(t.tokenExpiration) {
 		token, err := getEKSToken(ctx, t.awsConfig, t.clusterID)
 		if err != nil {
-			return fmt.Errorf("unable to refresh EKS token, %v", err)
+			return errors.Wrap(err, "unable to refresh EKS token")
 		}
 
 		t.token = *token
@@ -165,7 +165,7 @@ type transportWrapper struct {
 	refresher *TokenRefresher
 }
 
-// RoundTrip will perform the refrsh token before each request
+// RoundTrip will perform the refrsh token before each request.
 func (t *transportWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := t.refresher.refreshToken(req.Context()); err != nil {
 		// log the error and continue with the request

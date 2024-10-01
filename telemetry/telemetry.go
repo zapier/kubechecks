@@ -23,17 +23,16 @@ import (
 const DefaultMetricInterval = 2
 
 type BaseTelemetry struct {
-	c             context.Context
 	traceProvider *sdktrace.TracerProvider
 	metric        *metric.MeterProvider
 }
 
-func (bt *BaseTelemetry) Shutdown() {
+func (bt *BaseTelemetry) Shutdown(ctx context.Context) {
 	if bt.traceProvider != nil {
-		_ = bt.traceProvider.Shutdown(bt.c)
+		_ = bt.traceProvider.Shutdown(ctx)
 	}
 	if bt.metric != nil {
-		_ = bt.metric.Shutdown(bt.c)
+		_ = bt.metric.Shutdown(ctx)
 	}
 }
 
@@ -54,9 +53,8 @@ func (ot *OperatorTelemetry) StartMetricCollectors() error {
 func Init(ctx context.Context, serviceName, gitTag, gitCommit string, otelEnabled bool, otelHost, otelPort string) (*OperatorTelemetry, error) {
 	log.Info().Msg("Initializing telemetry")
 	bt := &OperatorTelemetry{
-		BaseTelemetry: &BaseTelemetry{
-			c: ctx,
-		}}
+		BaseTelemetry: &BaseTelemetry{},
+	}
 
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
@@ -69,7 +67,7 @@ func Init(ctx context.Context, serviceName, gitTag, gitCommit string, otelEnable
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	err = bt.initProviders(res, otelEnabled, otelHost, otelPort)
+	err = bt.initProviders(ctx, res, otelEnabled, otelHost, otelPort)
 	if err != nil {
 		return bt, err
 	}
@@ -80,7 +78,7 @@ func Init(ctx context.Context, serviceName, gitTag, gitCommit string, otelEnable
 	return bt, nil
 }
 
-func createGRPCConn(ctx context.Context, enabled bool, otelHost string, otelPort string) (*grpc.ClientConn, error) {
+func createGRPCConn(enabled bool, otelHost string, otelPort string) (*grpc.ClientConn, error) {
 	if !enabled {
 		log.Info().Msg("otel disabled")
 		return nil, nil
@@ -102,18 +100,18 @@ func createGRPCConn(ctx context.Context, enabled bool, otelHost string, otelPort
 	return conn, err
 }
 
-func (bt *BaseTelemetry) initProviders(res *resource.Resource, enabled bool, otelHost string, otelPort string) error {
-	conn, err := createGRPCConn(bt.c, enabled, otelHost, otelPort)
+func (bt *BaseTelemetry) initProviders(ctx context.Context, res *resource.Resource, enabled bool, otelHost, otelPort string) error {
+	conn, err := createGRPCConn(enabled, otelHost, otelPort)
 	if err != nil {
 		return err
 	}
 
-	err = bt.initTrace(conn, res)
+	err = bt.initTrace(ctx, conn, res)
 	if err != nil {
 		return err
 	}
 
-	err = bt.initMetric(conn, res)
+	err = bt.initMetric(ctx, conn, res)
 	if err != nil {
 		return err
 	}
@@ -121,12 +119,12 @@ func (bt *BaseTelemetry) initProviders(res *resource.Resource, enabled bool, ote
 	return nil
 }
 
-func (bt *BaseTelemetry) initTrace(conn *grpc.ClientConn, res *resource.Resource) error {
+func (bt *BaseTelemetry) initTrace(ctx context.Context, conn *grpc.ClientConn, res *resource.Resource) error {
 	if conn == nil {
 		return nil
 	}
 
-	err := bt.initOTLPTrace(conn, res)
+	err := bt.initOTLPTrace(ctx, conn, res)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to init tracer")
 	}
@@ -134,12 +132,12 @@ func (bt *BaseTelemetry) initTrace(conn *grpc.ClientConn, res *resource.Resource
 	return nil
 }
 
-func (bt *BaseTelemetry) initMetric(conn *grpc.ClientConn, res *resource.Resource) error {
+func (bt *BaseTelemetry) initMetric(ctx context.Context, conn *grpc.ClientConn, res *resource.Resource) error {
 	if conn == nil {
 		return nil
 	}
 
-	err := bt.initOTLPMetric(conn, res)
+	err := bt.initOTLPMetric(ctx, conn, res)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to init metrics")
 		return err
@@ -148,9 +146,9 @@ func (bt *BaseTelemetry) initMetric(conn *grpc.ClientConn, res *resource.Resourc
 	return nil
 }
 
-func (bt *BaseTelemetry) initOTLPTrace(conn *grpc.ClientConn, res *resource.Resource) error {
+func (bt *BaseTelemetry) initOTLPTrace(ctx context.Context, conn *grpc.ClientConn, res *resource.Resource) error {
 	// tracer grpc client
-	traceExporter, err := otlptracegrpc.New(bt.c,
+	traceExporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithGRPCConn(conn),
 	)
@@ -171,9 +169,9 @@ func (bt *BaseTelemetry) initOTLPTrace(conn *grpc.ClientConn, res *resource.Reso
 	return nil
 }
 
-func (bt *BaseTelemetry) initOTLPMetric(conn *grpc.ClientConn, res *resource.Resource) error {
+func (bt *BaseTelemetry) initOTLPMetric(ctx context.Context, conn *grpc.ClientConn, res *resource.Resource) error {
 	mClient, err := otlpmetricgrpc.New(
-		bt.c,
+		ctx,
 		otlpmetricgrpc.WithInsecure(),
 		otlpmetricgrpc.WithGRPCConn(conn),
 	)

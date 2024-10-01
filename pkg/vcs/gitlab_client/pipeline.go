@@ -17,7 +17,6 @@ func (c *Client) GetPipelinesForCommit(projectName string, commitSHA string) ([]
 	}
 
 	return pipelines, nil
-
 }
 
 func (c *Client) GetLastPipelinesForCommit(projectName string, commitSHA string) *gitlab.PipelineInfo {

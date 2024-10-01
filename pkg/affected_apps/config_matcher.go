@@ -9,10 +9,10 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/git"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 )
 
@@ -123,13 +123,12 @@ func (b *ConfigMatcher) applicationsForDir(dir string) []*repo_config.ArgoCdAppl
 				continue
 			}
 		}
-
 	}
 
 	return apps
 }
 
-// appsFromApplicationSetForDir: Get the list of apps managed by an applicationset from dir
+// appsFromApplicationSetForDir: Get the list of apps managed by an applicationset from dir.
 func (b *ConfigMatcher) appsFromApplicationSetForDir(ctx context.Context, dir string) ([]*repo_config.ArgocdApplicationSetConfig, []*repo_config.ArgoCdApplicationConfig, error) {
 	var appsets []*repo_config.ArgocdApplicationSetConfig
 	for _, appset := range b.cfg.ApplicationSets {
@@ -177,7 +176,7 @@ func dirMatchForApp(changeDir, appDir string) bool {
 	return false
 }
 
-// Any files modified under appset subdirectories assumes the appset is modified
+// Any files modified under appset subdirectories assumes the appset is modified.
 func dirMatchForAppSet(changeDir, appSetDir string) bool {
 	// normalize dir for matching
 	appSetDir = path.Clean(appSetDir)
@@ -185,12 +184,14 @@ func dirMatchForAppSet(changeDir, appSetDir string) bool {
 
 	log.Debug().Msgf("appSetDir: %s; changeDir: %s", appSetDir, changeDir)
 
-	if strings.HasSuffix(changeDir, appSetDir) {
+	switch {
+	case strings.HasSuffix(changeDir, appSetDir):
 		return true
-	} else if strings.HasPrefix(changeDir, appSetDir) {
+	case strings.HasPrefix(changeDir, appSetDir):
 		return true
-	} else if changeDir == "." && appSetDir == "/" {
+	case changeDir == "." && appSetDir == "/":
 		return true
 	}
+
 	return false
 }

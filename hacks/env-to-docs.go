@@ -21,8 +21,10 @@ type option struct {
 	Default string
 }
 
-var UsageEnvVar = regexp.MustCompile(` \(KUBECHECKS_[_A-Z0-9]+\)`)
-var UsageDefaultValue = regexp.MustCompile(`Defaults to \.?(.*)+\.`)
+var (
+	UsageEnvVar       = regexp.MustCompile(` \(KUBECHECKS_[_A-Z0-9]+\)`)
+	UsageDefaultValue = regexp.MustCompile(`Defaults to \.?(.*)+\.`)
+)
 
 func main() {
 	outputFilename := filepath.Join("docs", "usage.md")

@@ -48,9 +48,11 @@ func NewChecker(cfg config.ServerConfig) (*Checker, error) {
 	return &c, nil
 }
 
-var ErrResourceMustHaveKind = errors.New("resource does not have kind")
-var ErrResourceMustHaveMetadata = errors.New("resource does not have metadata")
-var ErrResourceMustHaveName = errors.New("resource does not have name")
+var (
+	ErrResourceMustHaveKind     = errors.New("resource does not have kind")
+	ErrResourceMustHaveMetadata = errors.New("resource does not have metadata")
+	ErrResourceMustHaveName     = errors.New("resource does not have name")
+)
 
 func getFilenameFromRawManifest(manifest string) (string, error) {
 	resource := make(map[string]interface{})
@@ -105,7 +107,7 @@ func dumpFiles(manifests []string) (string, error) {
 			Int("size", len(manifestBytes)).
 			Msg("dumping manifest")
 
-		if err = os.WriteFile(fullPath, manifestBytes, 0o666); err != nil {
+		if err = os.WriteFile(fullPath, manifestBytes, 0o600); err != nil {
 			return result, errors.Wrapf(err, "failed to write %s", filename)
 		}
 	}
@@ -177,11 +179,12 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	}
 
 	var cr msg.Result
-	if failures {
+	switch {
+	case failures:
 		cr.State = pkg.StateFailure
-	} else if warnings {
+	case warnings:
 		cr.State = pkg.StateWarning
-	} else {
+	default:
 		cr.State = pkg.StateSuccess
 	}
 

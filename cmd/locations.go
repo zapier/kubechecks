@@ -64,7 +64,7 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDurati
 				case <-tick:
 				}
 
-				if err := repo.Update(ctx); err != nil {
+				if err := repo.Update(); err != nil {
 					log.Warn().
 						Err(err).
 						Str("path", repo.Directory).

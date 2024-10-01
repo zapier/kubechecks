@@ -46,7 +46,6 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 
 	// loop through notes and collapse any that are from the current user
 	for _, note := range notes {
-
 		// Do not try to hide the note if
 		// note user is not the gitlabTokenUser
 		// note is an internal system note such as notes on commit messages
@@ -73,7 +72,6 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 		_, _, err := c.c.Notes.UpdateMergeRequestNote(projectName, mergeRequestID, note.ID, &gitlab.UpdateMergeRequestNoteOptions{
 			Body: &newBody,
 		})
-
 		if err != nil {
 			telemetry.SetError(span, err, "Hide Existing Merge Request Check Note")
 			return fmt.Errorf("could not hide note %d for merge request: %w", note.ID, err)
@@ -94,7 +92,6 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 	n, _, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
 		Body: pkg.Pointer(message),
 	})
-
 	if err != nil {
 		log.Error().Err(err).Msg("could not update message to MR")
 		return err
@@ -105,7 +102,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 	return nil
 }
 
-// Iterate over all comments for the Merge Request, deleting any from the authenticated user
+// Iterate over all comments for the Merge Request, deleting any from the authenticated user.
 func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID int, notes []*gitlab.Note) error {
 	_, span := tracer.Start(ctx, "pruneOldComments")
 	defer span.End()
@@ -143,7 +140,6 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 				Page: nextPage,
 			},
 		})
-
 		if err != nil {
 			telemetry.SetError(span, err, "Tidy Outdated Comments")
 			return fmt.Errorf("could not fetch notes for merge request: %w", err)
@@ -159,5 +155,4 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 		return c.pruneOldComments(ctx, pr.FullName, pr.CheckID, allNotes)
 	}
 	return c.hideOutdatedMessages(ctx, pr.FullName, pr.CheckID, allNotes)
-
 }

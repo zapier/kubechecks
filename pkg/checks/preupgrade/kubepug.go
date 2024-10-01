@@ -40,14 +40,14 @@ func checkApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 	tempDir, err := os.MkdirTemp("/tmp", "kubechecks-kubepug")
 	if err != nil {
 		logger.Error().Err(err).Msg("could not create temp directory to write manifests for kubepug check")
-		//return "", err
+		// return "", err
 		return msg.Result{}, err
 	}
 	defer os.RemoveAll(tempDir)
 
 	for i, manifest := range manifests {
 		tmpFile := fmt.Sprintf("%s/%b.yaml", tempDir, i)
-		if err = os.WriteFile(tmpFile, []byte(manifest), 0666); err != nil {
+		if err = os.WriteFile(tmpFile, []byte(manifest), 0o600); err != nil {
 			logger.Error().Err(err).Str("path", tmpFile).Msg("failed to write file")
 		}
 	}
@@ -71,7 +71,6 @@ func checkApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 	}
 
 	if len(result.DeprecatedAPIs) > 0 || len(result.DeletedAPIs) > 0 {
-
 		if len(result.DeprecatedAPIs) > 0 {
 			outputString = append(outputString, "\n\n**Deprecated APIs**\n")
 			buff := &bytes.Buffer{}
@@ -117,7 +116,6 @@ func checkApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 			table.Render()
 			outputString = append(outputString, buff.String())
 		}
-
 	} else {
 		outputString = append(outputString, "No Deprecated or Deleted APIs found.")
 	}

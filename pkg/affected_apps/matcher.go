@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+
 	"github.com/zapier/kubechecks/pkg/git"
 )
 
@@ -53,7 +54,7 @@ type Matcher interface {
 }
 
 // modifiedDirs filters a list of changed files down to a list
-// the unique dirs containing the changed files
+// the unique dirs containing the changed files.
 func modifiedDirs(changeList []string) []string {
 	dirMap := map[string]bool{}
 	for _, file := range changeList {

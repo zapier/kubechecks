@@ -40,7 +40,6 @@ func TestMaybeCloneGitUrl_NonGitUrl(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeCloner{result: nil, err: nil}
 			actual, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername)
@@ -52,13 +51,13 @@ func TestMaybeCloneGitUrl_NonGitUrl(t *testing.T) {
 	}
 }
 
-const testRoot = "/tmp/path"
-const testUsername = "username"
+const (
+	testRoot     = "/tmp/path"
+	testUsername = "username"
+)
 
 func TestMaybeCloneGitUrl_HappyPath(t *testing.T) {
-	var (
-		ctx = context.TODO()
-	)
+	ctx := context.TODO()
 
 	type expected struct {
 		path, cloneUrl, branch string
@@ -134,7 +133,6 @@ func TestMaybeCloneGitUrl_HappyPath(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: nil}
 			actual, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername)
@@ -147,9 +145,7 @@ func TestMaybeCloneGitUrl_HappyPath(t *testing.T) {
 }
 
 func TestMaybeCloneGitUrl_URLError(t *testing.T) {
-	var (
-		ctx = context.TODO()
-	)
+	ctx := context.TODO()
 
 	testcases := []struct {
 		name, input, expected string
@@ -162,7 +158,6 @@ func TestMaybeCloneGitUrl_URLError(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: nil}
 			result, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername)
@@ -186,7 +181,6 @@ func TestMaybeCloneGitUrl_CloneError(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			ctx, cancel := context.WithCancel(ctx)

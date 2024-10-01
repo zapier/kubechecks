@@ -7,10 +7,9 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
 	"github.com/rs/zerolog/log"
-
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 
 	"github.com/zapier/kubechecks/pkg/config"
 )

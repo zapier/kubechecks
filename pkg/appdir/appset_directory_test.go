@@ -7,13 +7,13 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
-	"github.com/zapier/kubechecks/pkg/git"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 func TestAppSetDirectory_ProcessApp(t *testing.T) {
-
 	type args struct {
 		app v1alpha1.ApplicationSet
 	}
@@ -69,7 +69,6 @@ func TestAppSetDirectory_ProcessApp(t *testing.T) {
 }
 
 func TestAppSetDirectory_FindAppsBasedOnChangeList(t *testing.T) {
-
 	tests := []struct {
 		name         string
 		changeList   []string
@@ -196,12 +195,12 @@ spec:
 			for fileName, content := range tt.mockFiles {
 				absPath := filepath.Join(tempDir, fileName)
 				cleanUpDirs = append(cleanUpDirs, absPath)
-				err := os.MkdirAll(filepath.Dir(absPath), 0755)
+				err := os.MkdirAll(filepath.Dir(absPath), 0o755)
 				if err != nil {
 					fatalErr = err
 					break
 				}
-				err = os.WriteFile(absPath, []byte(content), 0644)
+				err = os.WriteFile(absPath, []byte(content), 0o600)
 				if err != nil {
 					fatalErr = err
 					break
@@ -218,8 +217,10 @@ spec:
 	}
 }
 
-// cleanUpTmpFiles removes the temporary directories created for the test
+// cleanUpTmpFiles removes the temporary directories created for the test.
 func cleanUpTmpFiles(t *testing.T, cleanUpDirs []string) {
+	t.Helper()
+
 	for _, dir := range cleanUpDirs {
 		if err := os.RemoveAll(filepath.Dir(dir)); err != nil {
 			t.Fatalf("failed to remove tmp folder %s", err)

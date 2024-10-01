@@ -6,8 +6,9 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/require"
-	"github.com/zapier/kubechecks/pkg/git"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 type fakeMatcher struct {

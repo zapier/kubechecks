@@ -4,16 +4,12 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/jeremywohl/flatten"
-
 	"github.com/argoproj/argo-cd/v2/applicationset/utils"
-
-	"k8s.io/apimachinery/pkg/labels"
-
 	argoprojiov1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-
 	"github.com/imdario/mergo"
+	"github.com/jeremywohl/flatten"
 	"github.com/rs/zerolog/log"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 const (
@@ -25,7 +21,7 @@ type TransformResult struct {
 	Template argoprojiov1alpha1.ApplicationSetTemplate
 }
 
-// Transform a spec generator to list of paramSets and a template
+// Transform a spec generator to list of paramSets and a template.
 func Transform(requestedGenerator argoprojiov1alpha1.ApplicationSetGenerator, allGenerators map[string]Generator, baseTemplate argoprojiov1alpha1.ApplicationSetTemplate, appSet *argoprojiov1alpha1.ApplicationSet, genParams map[string]interface{}) ([]TransformResult, error) {
 	// This is a custom version of the `LabelSelectorAsSelector` that is in k8s.io/apimachinery. This has been copied
 	// verbatim from that package, with the difference that we do not have any restrictions on label values. This is done
@@ -100,7 +96,7 @@ func GetRelevantGenerators(requestedGenerator *argoprojiov1alpha1.ApplicationSet
 	var res []Generator
 
 	v := reflect.Indirect(reflect.ValueOf(requestedGenerator))
-	for i := 0; i < v.NumField(); i++ {
+	for i := range v.NumField() {
 		field := v.Field(i)
 		if !field.CanInterface() {
 			continue

@@ -1,9 +1,8 @@
 package repo_config
 
 import (
-	"fmt"
-
 	"github.com/creasty/defaults"
+	"github.com/pkg/errors"
 )
 
 type Config struct {
@@ -12,19 +11,19 @@ type Config struct {
 }
 
 type ArgoCdApplicationConfig struct {
-	Name              string   `yaml:"name" validate:"empty=false"`
-	Cluster           string   `yaml:"cluster" validate:"empty=false"`
-	Path              string   `yaml:"path" validate:"empty=false"`
+	Name              string   `validate:"empty=false" yaml:"name"`
+	Cluster           string   `validate:"empty=false" yaml:"cluster"`
+	Path              string   `validate:"empty=false" yaml:"path"`
 	AdditionalPaths   []string `yaml:"additionalPaths"`
-	EnableConfTest    bool     `yaml:"enableConfTest" default:"true"`
-	EnableKubeConform bool     `yaml:"enableKubeConform" default:"true"`
-	EnableKubePug     bool     `yaml:"enableKubePug" default:"true"`
+	EnableConfTest    bool     `default:"true"         yaml:"enableConfTest"`
+	EnableKubeConform bool     `default:"true"         yaml:"enableKubeConform"`
+	EnableKubePug     bool     `default:"true"         yaml:"enableKubePug"`
 }
 
 func (s *ArgoCdApplicationConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	err := defaults.Set(s)
 	if err != nil {
-		return fmt.Errorf("failed to set defaults for project config: %v", err)
+		return errors.Wrap(err, "failed to set defaults for project config")
 	}
 
 	type plain ArgoCdApplicationConfig
@@ -36,17 +35,17 @@ func (s *ArgoCdApplicationConfig) UnmarshalYAML(unmarshal func(interface{}) erro
 }
 
 type ArgocdApplicationSetConfig struct {
-	Name              string   `yaml:"name" validate:"empty=false"`
-	Paths             []string `yaml:"paths" validate:"empty=false"`
-	EnableConfTest    bool     `yaml:"enableConfTest" default:"true"`
-	EnableKubeConform bool     `yaml:"enableKubeConform" default:"true"`
-	EnableKubePug     bool     `yaml:"enableKubePug" default:"true"`
+	Name              string   `validate:"empty=false" yaml:"name"`
+	Paths             []string `validate:"empty=false" yaml:"paths"`
+	EnableConfTest    bool     `default:"true"         yaml:"enableConfTest"`
+	EnableKubeConform bool     `default:"true"         yaml:"enableKubeConform"`
+	EnableKubePug     bool     `default:"true"         yaml:"enableKubePug"`
 }
 
 func (s *ArgocdApplicationSetConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	err := defaults.Set(s)
 	if err != nil {
-		return fmt.Errorf("failed to set defaults for project config: %v", err)
+		return errors.Wrap(err, "failed to set defaults for project config")
 	}
 
 	type plain ArgocdApplicationSetConfig

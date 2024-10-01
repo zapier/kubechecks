@@ -5,7 +5,6 @@ import (
 	"io/fs"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	client "github.com/zapier/kubechecks/pkg/kubernetes"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/app_watcher"
@@ -13,6 +12,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/git"
+	client "github.com/zapier/kubechecks/pkg/kubernetes"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 

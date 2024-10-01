@@ -11,14 +11,15 @@ import (
 	informers "github.com/argoproj/argo-cd/v2/pkg/client/informers/externalversions/application/v1alpha1"
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/appdir"
-	"github.com/zapier/kubechecks/pkg/config"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+
+	"github.com/zapier/kubechecks/pkg/appdir"
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
-// ApplicationSetWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API
+// ApplicationSetWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API.
 type ApplicationSetWatcher struct {
 	applicationClientset appclientset.Interface
 	appInformer          cache.SharedIndexInformer
@@ -81,7 +82,7 @@ func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTim
 }
 
 // onAdd is the function executed when the informer notifies the
-// presence of a new Application in the namespace
+// presence of a new Application in the namespace.
 func (ctrl *ApplicationSetWatcher) onApplicationSetAdded(obj interface{}) {
 	appSet, ok := canProcessAppSet(obj)
 	if !ok {
@@ -112,7 +113,6 @@ func (ctrl *ApplicationSetWatcher) onApplicationSetUpdated(old, new interface{})
 		log.Info().Str("key", key).Msg("appsetwatcher: onApplicationSetUpdated")
 		ctrl.vcsToArgoMap.UpdateAppSet(old.(*appv1alpha1.ApplicationSet), new.(*appv1alpha1.ApplicationSet))
 	}
-
 }
 
 func (ctrl *ApplicationSetWatcher) onApplicationSetDeleted(obj interface{}) {
@@ -128,6 +128,7 @@ func (ctrl *ApplicationSetWatcher) onApplicationSetDeleted(obj interface{}) {
 	log.Info().Str("key", key).Msg("appsetwatcher: onApplicationSetDeleted")
 	ctrl.vcsToArgoMap.DeleteAppSet(app)
 }
+
 func canProcessAppSet(obj interface{}) (*appv1alpha1.ApplicationSet, bool) {
 	app, ok := obj.(*appv1alpha1.ApplicationSet)
 	if !ok {

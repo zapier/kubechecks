@@ -9,13 +9,15 @@ import (
 	appclientsetfake "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zapier/kubechecks/pkg/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/zapier/kubechecks/pkg/appdir"
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 func initTestObjects(t *testing.T) *ApplicationWatcher {
+	t.Helper()
+
 	cfg, err := config.New()
 	// Handle the error appropriately, e.g., log it or fail the test
 	require.NoError(t, err, "failed to create config")
@@ -57,7 +59,7 @@ func TestApplicationAdded(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(appWatcher.vcsToArgoMap.GetMap()), 2)
+	assert.Len(t, appWatcher.vcsToArgoMap.GetMap(), 2)
 
 	_, err := appWatcher.applicationClientset.ArgoprojV1alpha1().Applications("default").Create(ctx, &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-3", Namespace: "default"},
@@ -70,7 +72,7 @@ func TestApplicationAdded(t *testing.T) {
 	}
 
 	time.Sleep(time.Second * 1)
-	assert.Equal(t, len(appWatcher.vcsToArgoMap.GetMap()), 3)
+	assert.Len(t, appWatcher.vcsToArgoMap.GetMap(), 3)
 }
 
 func TestApplicationUpdated(t *testing.T) {
@@ -83,12 +85,12 @@ func TestApplicationUpdated(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
+	assert.Len(t, ctrl.vcsToArgoMap.GetMap(), 2)
 
 	oldAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	newAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
-	assert.Equal(t, oldAppDirectory.Count(), 1)
-	assert.Equal(t, newAppDirectory.Count(), 0)
+	assert.Equal(t, 1, oldAppDirectory.Count())
+	assert.Equal(t, 0, newAppDirectory.Count())
 	//
 	_, err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications("default").Update(ctx, &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},
@@ -102,8 +104,8 @@ func TestApplicationUpdated(t *testing.T) {
 	time.Sleep(time.Second * 1)
 	oldAppDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	newAppDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
-	assert.Equal(t, oldAppDirectory.Count(), 0)
-	assert.Equal(t, newAppDirectory.Count(), 1)
+	assert.Equal(t, 0, oldAppDirectory.Count())
+	assert.Equal(t, 1, newAppDirectory.Count())
 }
 
 func TestApplicationDeleted(t *testing.T) {
@@ -116,10 +118,10 @@ func TestApplicationDeleted(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
+	assert.Len(t, ctrl.vcsToArgoMap.GetMap(), 2)
 
 	appDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
-	assert.Equal(t, appDirectory.Count(), 1)
+	assert.Equal(t, 1, appDirectory.Count())
 	//
 	err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications("default").Delete(ctx, "test-app-1", metav1.DeleteOptions{})
 	if err != nil {
@@ -128,7 +130,7 @@ func TestApplicationDeleted(t *testing.T) {
 	time.Sleep(time.Second * 1)
 
 	appDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
-	assert.Equal(t, appDirectory.Count(), 0)
+	assert.Equal(t, 0, appDirectory.Count())
 }
 
 // TestIsGitRepo will test various URLs against the isGitRepo function.
@@ -236,7 +238,6 @@ func TestCanProcessApp(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			app, canProcess := canProcessApp(tc.resource)
 

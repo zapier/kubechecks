@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chainguard-dev/git-urls"
+	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v62/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -32,7 +32,7 @@ type Client struct {
 	username, email string
 }
 
-// GClient is a struct that holds the services for the GitHub client
+// GClient is a struct that holds the services for the GitHub client.
 type GClient struct {
 	PullRequests PullRequestsServices
 	Repositories RepositoriesServices
@@ -40,8 +40,8 @@ type GClient struct {
 }
 
 // CreateGithubClient creates a new GitHub client using the auth token provided. We
-// can't validate the token at this point, so if it exists we assume it works
-func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
+// can't validate the token at this point, so if it exists we assume it works.
+func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
 	var (
 		err            error
 		googleClient   *github.Client
@@ -54,7 +54,6 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 		log.Fatal().Msg("github token needs to be set")
 	}
 	log.Debug().Msgf("Token Length - %d", len(t))
-	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: t},
 	)

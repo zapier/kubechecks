@@ -49,7 +49,7 @@ type toEmoji interface {
 
 // Message type that allows concurrent updates
 // Has a reference to the owner/repo (ie zapier/kubechecks),
-// the PR/MR id, and the actual messsage
+// the PR/MR id, and the actual messsage.
 type Message struct {
 	Name    string
 	Owner   string
@@ -141,7 +141,7 @@ func (m *Message) buildFooter(start time.Time, commitSHA, labelFilter string, sh
 	return fmt.Sprintf("<small> _Done: Pod: %s, Dur: %v, SHA: %s%s_ <small>\n", hostname, duration, pkg.GitCommit, envStr)
 }
 
-// BuildComment iterates the map of all apps in this message, building a final comment from their current state
+// BuildComment iterates the map of all apps in this message, building a final comment from their current state.
 func (m *Message) BuildComment(ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool) string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()

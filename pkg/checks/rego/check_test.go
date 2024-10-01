@@ -18,7 +18,9 @@ import (
 )
 
 func mustWrite(t *testing.T, filePath, content string) {
-	err := os.WriteFile(filePath, []byte(content), 0o666)
+	t.Helper()
+
+	err := os.WriteFile(filePath, []byte(content), 0o600)
 	require.NoError(t, err)
 }
 
@@ -149,8 +151,9 @@ warn[msg] {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			policiesPath, err := os.MkdirTemp("", "kubechecks-test-policies-")
 			require.NoError(t, err)
 

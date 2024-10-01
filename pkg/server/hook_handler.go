@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -32,6 +33,7 @@ func NewVCSHookHandler(ctr container.Container, processors []checks.ProcessorEnt
 		processors: processors,
 	}
 }
+
 func (h *VCSHookHandler) AttachHandlers(grp *echo.Group) {
 	projectHookPath := fmt.Sprintf("/%s/project", h.ctr.VcsClient.GetName())
 	grp.POST(projectHookPath, h.groupHandler)
@@ -49,15 +51,14 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 
 	pr, err := h.ctr.VcsClient.ParseHook(c.Request(), payload)
 	if err != nil {
-		switch err {
-		case vcs.ErrInvalidType:
+		if errors.Is(err, vcs.ErrInvalidType) {
 			log.Debug().Msg("Ignoring event, not a merge request")
 			return c.String(http.StatusOK, "Skipped")
-		default:
-			// TODO: do something ELSE with the error
-			log.Error().Err(err).Msg("Failed to create a repository locally")
-			return echo.ErrBadRequest
 		}
+
+		// TODO: do something ELSE with the error
+		log.Error().Err(err).Msg("Failed to create a repository locally")
+		return echo.ErrBadRequest
 	}
 
 	// We now have a generic repo with all the info we need to start processing an event. Hand off to the event processor
@@ -76,8 +77,7 @@ func (h *VCSHookHandler) processCheckEvent(ctx context.Context, pullRequest vcs.
 	ProcessCheckEvent(ctx, pullRequest, h.ctr, h.processors)
 }
 
-type RepoDirectory struct {
-}
+type RepoDirectory struct{}
 
 func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry) {
 	ctx, span := tracer.Start(ctx, "processCheckEvent",

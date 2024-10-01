@@ -2,17 +2,15 @@ package argo_client
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
-	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
-
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -34,7 +32,7 @@ func (argo *ArgoClient) GetApplicationByName(ctx context.Context, name string) (
 	resp, err := appClient.Get(ctx, &application.ApplicationQuery{Name: &name})
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Application error")
-		return nil, fmt.Errorf("failed to retrieve the application: %v", err)
+		return nil, errors.Wrap(err, "failed to retrieve the application")
 	}
 
 	return resp, nil
@@ -65,7 +63,7 @@ func (argo *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, a
 	clusterResponse, err := clusterClient.Get(ctx, clusterRequest)
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Cluster error")
-		return "", fmt.Errorf("failed to retrieve the destination Kubernetes cluster: %v", err)
+		return "", errors.Wrap(err, "failed to retrieve the destination Kubernetes cluster")
 	}
 
 	// Get Kubernetes version
@@ -95,7 +93,7 @@ func (argo *ArgoClient) GetApplicationsByLabels(ctx context.Context, labels stri
 	resp, err := appClient.List(ctx, &application.ApplicationQuery{Selector: &labels})
 	if err != nil {
 		telemetry.SetError(span, err, "Argo List Application error")
-		return nil, fmt.Errorf("failed to retrieve applications from labels: %v", err)
+		return nil, errors.Wrap(err, "failed to retrieve applications from labels")
 	}
 
 	return resp, nil

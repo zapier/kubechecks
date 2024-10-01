@@ -4,7 +4,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/config"
 )
 
-// PullRequest represents an PR/MR
+// PullRequest represents an PR/MR.
 type PullRequest struct {
 	BaseRef       string   // base ref is the branch that the PR is being merged into
 	HeadRef       string   // head ref is the branch that the PR is coming from

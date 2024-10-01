@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/imdario/mergo"
-
 	"github.com/argoproj/argo-cd/v2/applicationset/utils"
 	argoprojiov1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-
+	"github.com/imdario/mergo"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
 
@@ -33,7 +32,6 @@ func NewMatrixGenerator(supportedGenerators map[string]Generator) Generator {
 }
 
 func (m *MatrixGenerator) GenerateParams(appSetGenerator *argoprojiov1alpha1.ApplicationSetGenerator, appSet *argoprojiov1alpha1.ApplicationSet) ([]map[string]interface{}, error) {
-
 	if appSetGenerator.Matrix == nil {
 		return nil, EmptyAppSetGeneratorError
 	}
@@ -58,7 +56,6 @@ func (m *MatrixGenerator) GenerateParams(appSetGenerator *argoprojiov1alpha1.App
 			return nil, fmt.Errorf("failed to get params for second generator in the matrix generator: %w", err)
 		}
 		for _, b := range g1 {
-
 			if appSet.Spec.GoTemplate {
 				tmp := map[string]interface{}{}
 				if err := mergo.Merge(&tmp, b, mergo.WithOverride); err != nil {
@@ -120,13 +117,12 @@ func (m *MatrixGenerator) getParams(appSetBaseGenerator argoprojiov1alpha1.Appli
 		argoprojiov1alpha1.ApplicationSetTemplate{},
 		appSet,
 		params)
-
 	if err != nil {
-		return nil, fmt.Errorf("child generator returned an error on parameter generation: %v", err)
+		return nil, errors.Wrap(err, "child generator returned an error on parameter generation")
 	}
 
 	if len(t) == 0 {
-		return nil, fmt.Errorf("child generator generated no parameters")
+		return nil, ErrNoParameters
 	}
 
 	if len(t) > 1 {
@@ -135,6 +131,8 @@ func (m *MatrixGenerator) getParams(appSetBaseGenerator argoprojiov1alpha1.Appli
 
 	return t[0].Params, nil
 }
+
+var ErrNoParameters = errors.New("child generator generated no parameters")
 
 const maxDuration time.Duration = 1<<63 - 1
 
@@ -172,7 +170,6 @@ func (m *MatrixGenerator) GetRequeueAfter(appSetGenerator *argoprojiov1alpha1.Ap
 	} else {
 		return NoRequeueAfter
 	}
-
 }
 
 func getMatrixGenerator(r argoprojiov1alpha1.ApplicationSetNestedGenerator) (*argoprojiov1alpha1.MatrixGenerator, error) {

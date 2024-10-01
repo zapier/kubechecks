@@ -135,7 +135,7 @@ func phasesAndWaves(obj *unstructured.Unstructured) ([]hookInfo, error) {
 	}
 
 	for hookType := range hookTypes(obj) {
-		hookInfos = append(hookInfos, hookInfo{hookType: hookType, hookWave: waveNum(syncWave)})
+		hookInfos = append(hookInfos, hookInfo{hookType: hookType, hookWave: waveNum(syncWave)}) //nolint:gosec
 	}
 
 	return hookInfos, nil
