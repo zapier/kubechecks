@@ -71,11 +71,6 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 		shurcoolClient = githubv4.NewEnterpriseClient(githubUrl, githubClient)
 	}
 
-	user, _, err := googleClient.Users.Get(ctx, "")
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get user")
-	}
-
 	client := &Client{
 		cfg: cfg,
 		googleClient: &GClient{
@@ -84,13 +79,20 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 			Issues:       IssuesService{googleClient.Issues},
 		},
 		shurcoolClient: shurcoolClient,
+		username:       cfg.VcsUsername,
+		email:          cfg.VcsEmail,
 	}
-	if user != nil {
-		if user.Login != nil {
-			client.username = *user.Login
-		}
-		if user.Email != nil {
-			client.email = *user.Email
+
+	if client.username == "" || client.email == "" {
+		user, _, err := googleClient.Users.Get(ctx, "")
+		if err == nil {
+			if user.Login != nil {
+				client.username = *user.Login
+			}
+
+			if user.Email != nil {
+				client.email = *user.Email
+			}
 		}
 	}
 

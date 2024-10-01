@@ -69,8 +69,10 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||
+|`KUBECHECKS_VCS_EMAIL`|VCS Email.||
 |`KUBECHECKS_VCS_TOKEN`|VCS API token.||
 |`KUBECHECKS_VCS_TYPE`|VCS type. One of gitlab or github.|`gitlab`|
+|`KUBECHECKS_VCS_USERNAME`|VCS Username.||
 |`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.||
 |`KUBECHECKS_WEBHOOK_URL_BASE`|The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.||
 |`KUBECHECKS_WEBHOOK_URL_PREFIX`|If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.||

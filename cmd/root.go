@@ -55,6 +55,8 @@ func init() {
 			withChoices("github", "gitlab").
 			withDefault("gitlab"))
 	stringFlag(flags, "vcs-token", "VCS API token.")
+	stringFlag(flags, "vcs-username", "VCS Username.")
+	stringFlag(flags, "vcs-email", "VCS Email.")
 	stringFlag(flags, "github-private-key", "Github App Private Key.")
 	int64Flag(flags, "github-app-id", "Github App ID.")
 	int64Flag(flags, "github-installation-id", "Github Installation ID.")
