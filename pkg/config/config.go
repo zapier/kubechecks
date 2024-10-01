@@ -33,10 +33,17 @@ type ServerConfig struct {
 	OtelCollectorPort string `mapstructure:"otel-collector-port"`
 
 	// vcs
+	VcsUsername  string `mapstructure:"vcs-username"`
+	VcsEmail     string `mapstructure:"vcs-email"`
 	VcsBaseUrl   string `mapstructure:"vcs-base-url"`
 	VcsUploadUrl string `mapstructure:"vcs-upload-url"` // github enterprise upload URL
 	VcsToken     string `mapstructure:"vcs-token"`
 	VcsType      string `mapstructure:"vcs-type"`
+
+	//github
+	GithubPrivateKey     string `mapstructure:"github-private-key"`
+	GithubAppID          int64  `mapstructure:"github-app-id"`
+	GithubInstallationID int64  `mapstructure:"github-installation-id"`
 
 	// webhooks
 	EnsureWebhooks bool   `mapstructure:"ensure-webhooks"`

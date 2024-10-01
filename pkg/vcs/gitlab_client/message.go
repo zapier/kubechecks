@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
 
@@ -16,8 +17,8 @@ import (
 
 const MaxCommentLength = 1_000_000
 
-func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) *msg.Message {
-	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
+func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
+	_, span := tracer.Start(ctx, "PostMessage")
 	defer span.End()
 
 	if len(message) > MaxCommentLength {
@@ -32,10 +33,10 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 		})
 	if err != nil {
 		telemetry.SetError(span, err, "Create Merge Request Note")
-		log.Error().Err(err).Msg("could not post message to MR")
+		return nil, errors.Wrap(err, "could not post message to MR")
 	}
 
-	return msg.NewMessage(pr.FullName, pr.CheckID, n.ID, c)
+	return msg.NewMessage(pr.FullName, pr.CheckID, n.ID, c), nil
 }
 
 func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
