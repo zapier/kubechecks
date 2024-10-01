@@ -2,11 +2,12 @@ package cmd
 
 import (
 	"context"
+	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/docker/docker/builder/remotecontext/urlutil"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -35,7 +36,7 @@ var ErrCannotUseQueryWithFilePath = errors.New("relative and absolute file paths
 
 func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDuration time.Duration, location, vcsUsername string) (string, error) {
 	result := strings.SplitN(location, "?", 2)
-	if !urlutil.IsGitURL(result[0]) {
+	if !isGitURL(result[0]) {
 		if len(result) > 1 {
 			return "", ErrCannotUseQueryWithFilePath
 		}
@@ -81,4 +82,27 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDurati
 	}
 
 	return path, nil
+}
+
+func isGitURL(url string) bool {
+	str := strings.ToLower(url)
+	if isValidURL(str) && urlPathWithFragmentSuffix.MatchString(str) {
+		return true
+	}
+	for _, prefix := range []string{"git://", "github.com/", "gitlab.com/", "git@"} {
+		if strings.HasPrefix(str, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// urlPathWithFragmentSuffix matches fragments to use as Git reference and build
+// context from the Git repository. See IsGitURL for details.
+var urlPathWithFragmentSuffix = regexp.MustCompile(`\.git(?:#.+)?$`)
+
+// isValidURL returns true if the provided str is a well-formed HTTP(S) URL.
+func isValidURL(str string) bool {
+	u, err := url.Parse(str)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
