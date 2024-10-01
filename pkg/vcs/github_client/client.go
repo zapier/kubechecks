@@ -47,36 +47,13 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 		err            error
 		googleClient   *github.Client
 		shurcoolClient *githubv4.Client
-		githubClient   *http.Client
 	)
-
-	if (cfg.GithubAppID == 0 || cfg.GithubInstallationID == 0 || cfg.GithubPrivateKey == "") && cfg.VcsToken == "" {
-		log.Fatal().Msg("Either GitHub token or GitHub App credentials (App ID, Installation ID, Private Key) must be set")
-	}
-
-	// Initialize the GitHub client with app key if provided
-	if cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != "" {
-		appTransport, err := ghinstallation.New(http.DefaultTransport, cfg.GithubAppID, cfg.GithubInstallationID, []byte(cfg.GithubPrivateKey))
-		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create github app transport")
-		}
-		githubClient = &http.Client{Transport: appTransport}
-	}
 
 	ctx := context.Background()
 
-	// Initialize the GitHub client with access token if app key is not provided
-	if githubClient == nil {
-		vscToken := cfg.VcsToken
-		if vscToken != "" {
-			log.Debug().Msgf("Token Length - %d", len(vscToken))
-			ts := oauth2.StaticTokenSource(
-				&oauth2.Token{AccessToken: vscToken},
-			)
-			githubClient = oauth2.NewClient(ctx, ts)
-		}
-	} else {
-		log.Fatal().Msg("github client is not initialized")
+	githubClient, err := createHttpClient(ctx, cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create github http client")
 	}
 
 	githubUrl := cfg.VcsBaseUrl
@@ -124,6 +101,32 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 		client.email = vcs.DefaultVcsEmail
 	}
 	return client, nil
+}
+
+func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, error) {
+	// Initialize the GitHub client with app key if provided
+	if cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != "" {
+		appTransport, err := ghinstallation.New(
+			http.DefaultTransport, cfg.GithubAppID, cfg.GithubInstallationID, []byte(cfg.GithubPrivateKey),
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create github app transport")
+		}
+
+		return &http.Client{Transport: appTransport}, nil
+	}
+
+	// Initialize the GitHub client with access token if app key is not provided
+	vcsToken := cfg.VcsToken
+	if vcsToken != "" {
+		log.Debug().Msgf("Token Length - %d", len(vcsToken))
+		ts := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: vcsToken},
+		)
+		return oauth2.NewClient(ctx, ts), nil
+	}
+
+	return nil, errors.New("Either GitHub token or GitHub App credentials (App ID, Installation ID, Private Key) must be set")
 }
 
 func (c *Client) Username() string { return c.username }
