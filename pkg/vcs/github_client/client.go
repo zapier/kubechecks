@@ -190,20 +190,9 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 
 // buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
 func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) vcs.PullRequest {
-	prURL, err := url.Parse(comment.Issue.GetURL())
-	if err != nil {
-		log.Error().Msgf("failed to parse pr url: %+v", prURL)
-		return nilPr
-	}
-	pathSegments := strings.Split(prURL.Path, "/")
-	if len(pathSegments) < 5 {
-		// invalid path, return nilPr
-		log.Error().Msgf("invalid pr url path: %s", prURL.Path)
-		return nilPr
-	}
-	owner := pathSegments[2]
-	repo := pathSegments[3]
-	prNumber, err := strconv.Atoi(pathSegments[4])
+	owner := comment.GetIssue().GetRepository().GetOwner().GetName()
+	repo := comment.GetIssue().GetRepository().GetName()
+	prNumber := comment.GetIssue().GetNumber()
 	if err != nil {
 		log.Error().Msgf("failed to convert prNumber: %s", err)
 		return nilPr
