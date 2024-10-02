@@ -40,10 +40,12 @@ runs:
 
     - name: Build and push the Docker image
       shell: bash
+      env:
+        ACTIONS_STEP_DEBUG: "true"
       run: >-       
         ./earthly.sh 
         --push 
         +docker-multiarch
-        ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }} 
+        ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }}
         --GIT_TAG=${{ inputs.image_tag }}
         --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
