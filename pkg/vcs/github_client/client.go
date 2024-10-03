@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chainguard-dev/git-urls"
+	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v62/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -127,7 +127,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 
 var nilPr vcs.PullRequest
 
-func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, error) {
+func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte) (vcs.PullRequest, error) {
 	payload, err := github.ParseWebHook(github.WebHookType(r), request)
 	if err != nil {
 		return nilPr, err
@@ -143,6 +143,20 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, er
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
 			return nilPr, vcs.ErrInvalidType
 		}
+	case *github.IssueCommentEvent:
+		switch p.GetAction() {
+		case "created":
+			if strings.ToLower(p.Comment.GetBody()) == c.cfg.ReplanCommentMessage {
+				log.Info().Msgf("Got %s comment, Running again", c.cfg.ReplanCommentMessage)
+				return c.buildRepoFromComment(ctx, p), nil
+			} else {
+				log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
+				return nilPr, vcs.ErrInvalidType
+			}
+		default:
+			log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
+			return nilPr, vcs.ErrInvalidType
+		}
 	default:
 		log.Error().Msg("invalid event provided to Github client")
 		return nilPr, vcs.ErrInvalidType
@@ -156,15 +170,50 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 	}
 
 	return vcs.PullRequest{
-		BaseRef:       *event.PullRequest.Base.Ref,
-		HeadRef:       *event.PullRequest.Head.Ref,
-		DefaultBranch: *event.Repo.DefaultBranch,
-		CloneURL:      *event.Repo.CloneURL,
+		BaseRef:       event.PullRequest.Base.GetRef(),
+		HeadRef:       event.PullRequest.Head.GetRef(),
+		DefaultBranch: event.Repo.GetDefaultBranch(),
+		CloneURL:      event.Repo.GetCloneURL(),
 		FullName:      event.Repo.GetFullName(),
-		Owner:         *event.Repo.Owner.Login,
+		Owner:         event.Repo.Owner.GetLogin(),
 		Name:          event.Repo.GetName(),
-		CheckID:       *event.PullRequest.Number,
-		SHA:           *event.PullRequest.Head.SHA,
+		CheckID:       event.PullRequest.GetNumber(),
+		SHA:           event.PullRequest.Head.GetSHA(),
+		Username:      c.username,
+		Email:         c.email,
+		Labels:        labels,
+
+		Config: c.cfg,
+	}
+}
+
+// buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
+func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) vcs.PullRequest {
+	owner := comment.GetIssue().GetRepository().GetOwner().GetName()
+	repo := comment.GetIssue().GetRepository().GetName()
+	prNumber := comment.GetIssue().GetNumber()
+	if prNumber == 0 || repo == "" || owner == "" {
+		return nilPr
+	}
+	pr, ghStatus, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
+	if err != nil || ghStatus.StatusCode < 200 || ghStatus.StatusCode >= 300 {
+		log.Error().Msgf("failed to get pull request: %s", err)
+		return nilPr
+	}
+	var labels []string
+	for _, label := range pr.Labels {
+		labels = append(labels, label.GetName())
+	}
+	return vcs.PullRequest{
+		BaseRef:       pr.Base.GetRef(),
+		HeadRef:       pr.Head.GetRef(),
+		DefaultBranch: comment.Repo.GetDefaultBranch(),
+		CloneURL:      pr.Base.Repo.GetCloneURL(),
+		FullName:      comment.Repo.GetFullName(),
+		Owner:         pr.Base.Repo.Owner.GetLogin(),
+		Name:          comment.Repo.GetName(),
+		CheckID:       pr.GetNumber(),
+		SHA:           pr.Head.GetSHA(),
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
@@ -260,7 +309,7 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 			Secret:      pkg.Pointer(webhookSecret),
 		},
 		Events: []string{
-			"pull_request",
+			"pull_request", "issue_comment",
 		},
 		Name: pkg.Pointer("web"),
 	})

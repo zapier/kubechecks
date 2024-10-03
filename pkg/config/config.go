@@ -71,6 +71,7 @@ type ServerConfig struct {
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
 	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
 	MaxConcurrenctChecks     int           `mapstructure:"max-concurrenct-checks"`
+	ReplanCommentMessage     string        `mapstructure:"replan-comment-msg"`
 }
 
 func New() (ServerConfig, error) {
