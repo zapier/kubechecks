@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// RootCmd represents the base command when called without any subcommands
+// RootCmd represents the base command when called without any subcommands.
 var RootCmd = &cobra.Command{
 	Use:              "kubechecks",
 	Short:            "Argo Git Hooks",
@@ -130,15 +130,14 @@ func setupLogOutput() {
 	// set logrus log level to overwrite the logs exporting from argo-cd package
 	logrusLevel := logrus.ErrorLevel
 	if viper.GetBool("persist_log_level") {
-		if log.Debug().Enabled() {
+		if log.Debug().Enabled() { //nolint: zerologlint
 			logrusLevel = logrus.DebugLevel
 		}
-		if log.Trace().Enabled() {
+		if log.Trace().Enabled() { //nolint: zerologlint
 			logrusLevel = logrus.TraceLevel
 		}
 	}
 
 	logrus.StandardLogger().Level = logrusLevel
 	log.Info().Str("log_level", logrus.StandardLogger().Level.String()).Msg("setting logrus log level")
-
 }

@@ -14,7 +14,7 @@ type WebHookConfig struct {
 	Events    []string
 }
 
-// Client represents a VCS client
+// Client represents a VCS client.
 type Client interface {
 	// PostMessage takes in project name in form "owner/repo" (ie zapier/kubechecks), the PR/MR id, and the actual message
 	PostMessage(context.Context, PullRequest, string) *msg.Message

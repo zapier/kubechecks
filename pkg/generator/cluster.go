@@ -5,21 +5,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rs/zerolog/log"
-
+	"github.com/argoproj/argo-cd/v2/applicationset/utils"
+	argoappsetv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/util/settings"
-
+	"github.com/rs/zerolog/log"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/argoproj/argo-cd/v2/applicationset/utils"
-	argoappsetv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
 
 const (
-	ArgoCDSecretTypeLabel   = "argocd.argoproj.io/secret-type"
+	ArgoCDSecretTypeLabel   = "argocd.argoproj.io/secret-type" //nolint:gosec
 	ArgoCDSecretTypeCluster = "cluster"
 )
 
@@ -28,7 +25,7 @@ var _ Generator = (*ClusterGenerator)(nil)
 // ClusterGenerator generates Applications for some or all clusters registered with ArgoCD.
 type ClusterGenerator struct {
 	client.Client
-	ctx       context.Context
+	ctx       context.Context //nolint:containedctx
 	clientset kubernetes.Interface
 	// namespace is the Argo CD namespace
 	namespace       string
@@ -38,7 +35,6 @@ type ClusterGenerator struct {
 var render = &utils.Render{}
 
 func NewClusterGenerator(c client.Client, ctx context.Context, clientset kubernetes.Interface, namespace string) Generator {
-
 	settingsManager := settings.NewSettingsManager(ctx, clientset, namespace)
 
 	g := &ClusterGenerator{
@@ -52,7 +48,7 @@ func NewClusterGenerator(c client.Client, ctx context.Context, clientset kuberne
 }
 
 // GetRequeueAfter never requeue the cluster generator because the `clusterSecretEventHandler` will requeue the appsets
-// when the cluster secrets change
+// when the cluster secrets change.
 func (g *ClusterGenerator) GetRequeueAfter(_ *argoappsetv1alpha1.ApplicationSetGenerator) time.Duration {
 	return NoRequeueAfter
 }
@@ -62,7 +58,6 @@ func (g *ClusterGenerator) GetTemplate(appSetGenerator *argoappsetv1alpha1.Appli
 }
 
 func (g *ClusterGenerator) GenerateParams(appSetGenerator *argoappsetv1alpha1.ApplicationSetGenerator, appSet *argoappsetv1alpha1.ApplicationSet) ([]map[string]interface{}, error) {
-
 	if appSetGenerator == nil {
 		return nil, EmptyAppSetGeneratorError
 	}
@@ -95,12 +90,10 @@ func (g *ClusterGenerator) GenerateParams(appSetGenerator *argoappsetv1alpha1.Ap
 	var secretsFound []corev1.Secret
 
 	for _, cluster := range clustersFromArgoCD.Items {
-
 		// If there is a secret for this cluster, then it's a non-local cluster, so it will be
 		// handled by the next step.
 		if secretForCluster, exists := clusterSecrets[cluster.Name]; exists {
 			secretsFound = append(secretsFound, secretForCluster)
-
 		} else if !ignoreLocalClusters {
 			// If there is no secret for the cluster, it's the local cluster, so handle it here.
 			params := map[string]interface{}{}
@@ -185,5 +178,4 @@ func (g *ClusterGenerator) getSecretsByClusterName(appSetGenerator *argoappsetv1
 	}
 
 	return res, nil
-
 }

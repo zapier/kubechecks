@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -53,9 +52,9 @@ func (s *Server) Start(ctx context.Context) {
 	ghHooks := NewVCSHookHandler(s.ctr, s.processors)
 	ghHooks.AttachHandlers(hooksGroup)
 
-	fmt.Println("Method\tPath")
+	log.Debug().Msg("Method\tPath")
 	for _, r := range e.Routes() {
-		fmt.Printf("%s\t%s\n", r.Method, r.Path)
+		log.Warn().Msgf("%s\t%s\n", r.Method, r.Path)
 	}
 
 	if err := e.Start(":8080"); err != nil {

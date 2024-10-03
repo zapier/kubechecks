@@ -23,8 +23,8 @@ func TestNew(t *testing.T) {
 	cfg, err := NewWithViper(v)
 	require.NoError(t, err)
 	assert.Equal(t, zerolog.InfoLevel, cfg.LogLevel)
-	assert.Equal(t, true, cfg.ArgoCDInsecure)
-	assert.Equal(t, true, cfg.ArgoCDPlainText)
+	assert.True(t, cfg.ArgoCDInsecure)
+	assert.True(t, cfg.ArgoCDPlainText)
 	assert.Equal(t, pkg.StateWarning, cfg.WorstConfTestState, "worst states can be overridden")
 	assert.Equal(t, time.Minute*10, cfg.RepoRefreshInterval)
 }

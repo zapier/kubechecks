@@ -1,17 +1,16 @@
 package gitlab_client
 
 import (
-	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/xanzy/go-gitlab"
 )
 
-// getBackOff returns a backoff pointer to use to retry requests
+// getBackOff returns a backoff pointer to use to retry requests.
 func getBackOff() *backoff.ExponentialBackOff {
-
 	// Lets setup backoff logic to retry this request for 1 minute
 	bOff := backoff.NewExponentialBackOff()
 	bOff.InitialInterval = 60 * time.Second
@@ -22,23 +21,17 @@ func getBackOff() *backoff.ExponentialBackOff {
 	return bOff
 }
 
+var ErrRateLimited = errors.New("rate limited")
+
 func checkReturnForBackoff(resp *gitlab.Response, err error) error {
 	// if the error is nil lets check it out
-	if resp != nil {
-		if resp.StatusCode == 429 {
-			log.Warn().Msg("being rate limited doing backoff")
-			return fmt.Errorf("%s", "Rate Limited")
-		}
-	}
-	if err != nil {
-		// Lets check the error and see if we need to trigger backoff
-		switch err.(type) {
-		default:
-			// If it is not one of the above errors lets skip the backoff logic
-			return &backoff.PermanentError{Err: err}
-		}
+	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+		return ErrRateLimited
 	}
 
-	// Return nil as the error passed in must have been nil as it passed the switch statement
+	if err != nil {
+		return &backoff.PermanentError{Err: err}
+	}
+
 	return nil
 }

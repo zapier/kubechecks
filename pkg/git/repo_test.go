@@ -14,6 +14,8 @@ import (
 )
 
 func wipe(t *testing.T, path string) {
+	t.Helper()
+
 	err := os.RemoveAll(path)
 	require.NoError(t, err)
 }

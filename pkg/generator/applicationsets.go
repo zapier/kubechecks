@@ -7,30 +7,30 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/applicationset/utils"
 	argov1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/rs/zerolog/log"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/zapier/kubechecks/pkg/container"
 )
 
 func New() AppsGenerator {
 	return &gen{}
 }
 
-type gen struct {
-}
+type gen struct{}
 
 type AppsGenerator interface {
 	GenerateApplicationSetApps(ctx context.Context, appset argov1alpha1.ApplicationSet, ctr *container.Container) ([]argov1alpha1.Application, error)
 }
 
 func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha1.ApplicationSet, ctr *container.Container) ([]argov1alpha1.Application, error) {
-
 	appSetGenerators := getGenerators(ctx, *ctr.KubeClientSet.ControllerClient(), ctr.KubeClientSet.ClientSet(), ctr.Config.ArgoCDNamespace)
 
 	apps, appsetReason, err := generateApplications(appset, appSetGenerators)
 	if err != nil {
-		fmt.Printf("error generating applications: %v, appset reason: %v", err, appsetReason)
+		log.Error().Err(err).Msgf("error generating applications, appset reason: %v", appsetReason)
 		return nil, fmt.Errorf("error generating applications: %w", err)
 	}
 	return apps, nil
@@ -38,9 +38,8 @@ func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha
 
 // GetGenerators returns the generators that will be used to generate applications for the ApplicationSet
 //
-// only support List and Clusters generators
+// only support List and Clusters generators.
 func getGenerators(ctx context.Context, c client.Client, k8sClient kubernetes.Interface, namespace string) map[string]Generator {
-
 	terminalGenerators := map[string]Generator{
 		"List":     NewListGenerator(),
 		"Clusters": NewClusterGenerator(c, ctx, k8sClient, namespace),
@@ -62,7 +61,7 @@ func getGenerators(ctx context.Context, c client.Client, k8sClient kubernetes.In
 	return topLevelGenerators
 }
 
-// generateApplications generates applications from the ApplicationSet
+// generateApplications generates applications from the ApplicationSet.
 func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[string]Generator) (
 	[]argov1alpha1.Application, argov1alpha1.ApplicationSetReasonType, error,
 ) {
@@ -87,7 +86,7 @@ func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[
 			for _, p := range a.Params {
 				app, err := renderer.RenderTemplateParams(tmplApplication, applicationSetInfo.Spec.SyncPolicy, p, applicationSetInfo.Spec.GoTemplate, applicationSetInfo.Spec.GoTemplateOptions)
 				if err != nil {
-					//logCtx.WithError(err).WithField("params", a.Params).WithField("generator", requestedGenerator).
+					// logCtx.WithError(err).WithField("params", a.Params).WithField("generator", requestedGenerator).
 					//	Error("error generating application from params")
 
 					if firstError == nil {
@@ -117,8 +116,8 @@ func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[
 			}
 		}
 
-		//logCtx.WithField("generator", requestedGenerator).Infof("generated %d applications", len(res))
-		//logCtx.WithField("generator", requestedGenerator).Debugf("apps from generator: %+v", res)
+		// logCtx.WithField("generator", requestedGenerator).Infof("generated %d applications", len(res))
+		// logCtx.WithField("generator", requestedGenerator).Debugf("apps from generator: %+v", res)
 	}
 
 	return res, applicationSetReason, firstError
@@ -147,14 +146,12 @@ func getTempApplication(applicationSetTemplate argov1alpha1.ApplicationSetTempla
 }
 
 func applyTemplatePatch(app *argov1alpha1.Application, templatePatch string) (*argov1alpha1.Application, error) {
-
 	appString, err := json.Marshal(app)
 	if err != nil {
 		return nil, fmt.Errorf("error while marhsalling Application %w", err)
 	}
 
 	convertedTemplatePatch, err := utils.ConvertYAMLToJSON(templatePatch)
-
 	if err != nil {
 		return nil, fmt.Errorf("error while converting template to json %q: %w", convertedTemplatePatch, err)
 	}
@@ -164,7 +161,6 @@ func applyTemplatePatch(app *argov1alpha1.Application, templatePatch string) (*a
 	}
 
 	data, err := strategicpatch.StrategicMergePatch(appString, []byte(convertedTemplatePatch), argov1alpha1.Application{})
-
 	if err != nil {
 		return nil, fmt.Errorf("error while applying templatePatch template to json %q: %w", convertedTemplatePatch, err)
 	}

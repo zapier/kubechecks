@@ -17,8 +17,10 @@ type OpenAiClient struct {
 	enabled bool
 }
 
-var openAiClient *OpenAiClient
-var once sync.Once
+var (
+	openAiClient *OpenAiClient
+	once         sync.Once
+)
 
 func GetOpenAiClient(apiToken string) *OpenAiClient {
 	once.Do(func() {
@@ -35,7 +37,7 @@ func GetOpenAiClient(apiToken string) *OpenAiClient {
 }
 
 func createCompletionRequest(model, appName string, prompt string, content string, prefix string) openai.ChatCompletionRequest {
-	var summarizeRequest = openai.ChatCompletionRequest{
+	summarizeRequest := openai.ChatCompletionRequest{
 		Model:       model,
 		MaxTokens:   500,
 		Temperature: 0.4,

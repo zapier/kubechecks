@@ -1,7 +1,6 @@
 package repo_config
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -73,7 +72,7 @@ func LoadRepoConfigBytes(b []byte) (*Config, error) {
 	cfg := &Config{}
 	err := yaml.Unmarshal(b, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse Project config file (.kubechecks.yaml): %v", err)
+		return nil, errors.Wrap(err, "could not parse Project config file (.kubechecks.yaml)")
 	}
 
 	if err := validate.Validate(cfg); err != nil {

@@ -44,7 +44,7 @@ func GetTraceID(ctx context.Context) string {
 	return strconv.FormatUint(traceIDToUint64(tID), 10)
 }
 
-// traceIDToUint64 converts 128bit traceId to 64 bit uint64
+// traceIDToUint64 converts 128bit traceId to 64 bit uint64.
 func traceIDToUint64(b [16]byte) uint64 {
 	return binary.BigEndian.Uint64(b[len(b)-8:])
 }

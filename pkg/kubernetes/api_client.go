@@ -10,7 +10,7 @@ import (
 	controllerClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// ClusterTypes must match with the cmd/root.go kubernetes-type flag
+// ClusterTypes must match with the cmd/root.go kubernetes-type flag.
 const (
 	ClusterTypeEKS   = "eks"
 	ClusterTypeLOCAL = "local"
@@ -29,7 +29,6 @@ type NewClientInput struct {
 
 // New creates new Kubernetes clients with the specified options.
 func New(input *NewClientInput, opts ...NewClientOption) (Interface, error) {
-
 	var (
 		k8sConfig *rest.Config
 		err       error
@@ -50,7 +49,6 @@ func New(input *NewClientInput, opts ...NewClientOption) (Interface, error) {
 				return nil, err
 			}
 		}
-
 	}
 
 	input.restConfig = k8sConfig

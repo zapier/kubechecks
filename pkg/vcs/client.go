@@ -10,7 +10,7 @@ const (
 )
 
 var (
-	// ErrInvalidType is a sentinel error for use in client implementations
+	// ErrInvalidType is a sentinel error for use in client implementations.
 	ErrInvalidType  = errors.New("invalid event type")
 	ErrHookNotFound = errors.New("webhook not found")
 )

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/rs/zerolog"
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/checks"
@@ -31,7 +31,7 @@ type worker struct {
 	queueApp, removeApp func(application v1alpha1.Application)
 }
 
-// process apps
+// process apps.
 func (w *worker) run(ctx context.Context) {
 	for app := range w.appChannel {
 		if app != nil {

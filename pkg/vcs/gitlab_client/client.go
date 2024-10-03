@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chainguard-dev/git-urls"
+	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
@@ -18,8 +18,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
-
-const GitlabTokenHeader = "X-Gitlab-Token"
 
 type Client struct {
 	c   *gitlab.Client
@@ -74,10 +72,10 @@ func (c *Client) GetName() string {
 	return "gitlab"
 }
 
-// VerifyHook returns an err if the webhook isn't valid
+// VerifyHook returns an err if the webhook isn't valid.
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// If we have a secret, and the secret doesn't match, return an error
-	if secret != "" && secret != r.Header.Get(GitlabTokenHeader) {
+	if secret != "" && secret != r.Header.Get("X-Gitlab-Token") {
 		return nil, fmt.Errorf("invalid secret")
 	}
 
@@ -88,7 +86,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 
 var nilPr vcs.PullRequest
 
-// ParseHook parses and validates a webhook event; return an err if this isn't valid
+// ParseHook parses and validates a webhook event; return an err if this isn't valid.
 func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, error) {
 	eventRequest, err := gitlab.ParseHook(gitlab.HookEventType(r), request)
 	if err != nil {
@@ -166,7 +164,6 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 		MergeRequestsEvents: pkg.Pointer(true),
 		Token:               pkg.Pointer(webhookSecret),
 	})
-
 	if err != nil {
 		return errors.Wrap(err, "failed to create project webhook")
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/argoproj/gitops-engine/pkg/utils/kube"
 	"github.com/ghodss/yaml"
 	"github.com/go-logr/zerologr"
+	"github.com/pkg/errors"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/rs/zerolog/log"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -72,27 +73,27 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 
 	argoSettings, err := getArgoSettings(ctx, request)
 	if err != nil {
-		return msg.Result{}, err
+		return msg.Result{}, errors.Wrap(err, "failed to get Argo settings")
 	}
 
 	resources, err := getResources(ctx, request)
 	if err != nil {
-		return msg.Result{}, err
+		return msg.Result{}, errors.Wrap(err, "failed to get resources")
 	}
 
 	liveObjs, err := cmdutil.LiveObjects(resources)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Argo Live Objects")
-		return msg.Result{}, err
+		return msg.Result{}, errors.Wrap(err, "failed to get live objects")
 	}
 
 	groupedObjs, err := groupObjsByKey(unstructureds, liveObjs, app.Spec.Destination.Namespace)
 	if err != nil {
-		return msg.Result{}, err
+		return msg.Result{}, errors.Wrap(err, "failed to group objects by key")
 	}
 
 	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name); err != nil {
-		return msg.Result{}, err
+		return msg.Result{}, errors.Wrap(err, "failed to group objects for diff")
 	}
 
 	var diffBuffer strings.Builder
@@ -107,13 +108,13 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 
 		diffRes, err := generateDiff(ctx, request, argoSettings, item)
 		if err != nil {
-			return msg.Result{}, err
+			return msg.Result{}, errors.Wrap(err, "failed to generate diff")
 		}
 
 		if diffRes.Modified || item.target == nil || item.live == nil {
 			err := addResourceDiffToMessage(ctx, &diffBuffer, resourceId, item, diffRes)
 			if err != nil {
-				return msg.Result{}, err
+				return msg.Result{}, errors.Wrap(err, "failed to add diff to message")
 			}
 
 			processResources(item, diffRes, request, &added, &modified, &removed)
@@ -305,7 +306,7 @@ func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructu
 func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.ResourceKey]*unstructured.Unstructured, items []objKeyLiveTarget, argoSettings *settings.Settings, appName string) ([]objKeyLiveTarget, error) {
 	resourceTracking := argo.NewResourceTracking()
 	for _, res := range resources {
-		var live = &unstructured.Unstructured{}
+		live := &unstructured.Unstructured{}
 		if err := json.Unmarshal([]byte(res.NormalizedLiveState), &live); err != nil {
 			return nil, err
 		}
@@ -351,7 +352,7 @@ func (p *resourceInfoProvider) IsNamespaced(gk schema.GroupKind) (bool, error) {
 }
 
 // PrintDiff prints a diff between two unstructured objects to stdout using an external diff utility
-// Honors the diff utility set in the KUBECTL_EXTERNAL_DIFF environment variable
+// Honors the diff utility set in the KUBECTL_EXTERNAL_DIFF environment variable.
 func PrintDiff(w io.Writer, live *unstructured.Unstructured, target *unstructured.Unstructured) error {
 	var err error
 	targetData := []byte("")
@@ -370,7 +371,7 @@ func PrintDiff(w io.Writer, live *unstructured.Unstructured, target *unstructure
 		}
 	}
 
-	diff := difflib.UnifiedDiff{
+	theDiff := difflib.UnifiedDiff{
 		A: difflib.SplitLines(string(liveData)),
 		B: difflib.SplitLines(string(targetData)),
 		// FromFile: "Original",
@@ -378,7 +379,7 @@ func PrintDiff(w io.Writer, live *unstructured.Unstructured, target *unstructure
 		Context: 2,
 	}
 
-	return difflib.WriteUnifiedDiff(w, diff)
-	//return difflib.GetUnifiedDiffString(diff)
+	return difflib.WriteUnifiedDiff(w, theDiff)
+	// return difflib.GetUnifiedDiffString(diff)
 	// return dmp.DiffPrettyText(diff), nil
 }
