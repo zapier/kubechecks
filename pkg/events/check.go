@@ -3,44 +3,365 @@ package events
 import (
 	"context"
 	"fmt"
-	"os"
+	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
-	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/affected_apps"
-	"github.com/zapier/kubechecks/pkg/argo_client"
-	"github.com/zapier/kubechecks/pkg/conftest"
-	"github.com/zapier/kubechecks/pkg/diff"
-	"github.com/zapier/kubechecks/pkg/kubepug"
-	"github.com/zapier/kubechecks/pkg/repo"
+	"github.com/zapier/kubechecks/pkg/generator"
 	"github.com/zapier/kubechecks/pkg/repo_config"
-	"github.com/zapier/kubechecks/pkg/validate"
-	"github.com/zapier/kubechecks/pkg/vcs_clients"
-	"github.com/zapier/kubechecks/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
+
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/affected_apps"
+	"github.com/zapier/kubechecks/pkg/checks"
+	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/git"
+	"github.com/zapier/kubechecks/pkg/msg"
+	"github.com/zapier/kubechecks/pkg/vcs"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
+var tracer = otel.Tracer("pkg/events")
+
 type CheckEvent struct {
-	client         vcs_clients.Client // Client exposing methods to communicate with platform of user choice
-	fileList       []string           // What files have changed in this PR/MR
-	repoFiles      []string           // All files in this repository
-	TempWorkingDir string             // Location of the local repo
-	repo           *repo.Repo
-	logger         zerolog.Logger
-	workerLimits   int
-	vcsNote        *vcs_clients.Message
+	fileList    []string // What files have changed in this PR/MR
+	pullRequest vcs.PullRequest
+	logger      zerolog.Logger
+	vcsNote     *msg.Message
 
 	affectedItems affected_apps.AffectedItems
 
-	cfg *pkg.ServerConfig
+	ctr         container.Container
+	repoManager repoManager
+	processors  []checks.ProcessorEntry
+	repoLock    sync.Mutex
+	clonedRepos map[string]*git.Repo
+
+	addedAppsSet     map[string]v1alpha1.Application
+	addedAppsSetLock sync.Mutex
+
+	appsSent   int32
+	appChannel chan *v1alpha1.Application
+	wg         sync.WaitGroup
+	generator  generator.AppsGenerator
+	matcher    affected_apps.Matcher
+}
+
+type repoManager interface {
+	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
+}
+
+func GenerateMatcher(ce *CheckEvent, repo *git.Repo) error {
+	log.Debug().Msg("using the argocd matcher")
+	m, err := affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
+	if err != nil {
+		return errors.Wrap(err, "failed to create argocd matcher")
+	}
+	ce.matcher = m
+	cfg, err := repo_config.LoadRepoConfig(repo.Directory)
+	if err != nil {
+		return errors.Wrap(err, "failed to load repo config")
+	} else if cfg != nil {
+		log.Debug().Msg("using the config matcher")
+		configMatcher := affected_apps.NewConfigMatcher(cfg, ce.ctr)
+		ce.matcher = affected_apps.NewMultiMatcher(ce.matcher, configMatcher)
+	}
+	return nil
+}
+
+func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry) *CheckEvent {
+
+	ce := &CheckEvent{
+		addedAppsSet: make(map[string]v1alpha1.Application),
+		appChannel:   make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
+		ctr:          ctr,
+		clonedRepos:  make(map[string]*git.Repo),
+		processors:   processors,
+		pullRequest:  pullRequest,
+		repoManager:  repoManager,
+		generator:    generator.New(),
+		logger: log.Logger.With().
+			Str("repo", pullRequest.Name).
+			Int("event_id", pullRequest.CheckID).
+			Logger(),
+	}
+
+	return ce
+}
+
+func (ce *CheckEvent) UpdateListOfChangedFiles(ctx context.Context, repo *git.Repo) error {
+	ctx, span := tracer.Start(ctx, "CheckEventGetListOfChangedFiles")
+	defer span.End()
+
+	files, err := repo.GetListOfChangedFiles(ctx)
+	if err != nil {
+		return err
+	}
+
+	ce.logger.Debug().Msgf("Changed files: %s", strings.Join(files, ","))
+	ce.fileList = files
+	return nil
+}
+
+type MatcherFn func(ce *CheckEvent, repo *git.Repo) error
+
+// GenerateListOfAffectedApps walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
+func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.Repo, targetBranch string, initMatcherFn MatcherFn) error {
+	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
+	defer span.End()
+	var err error
+
+	err = initMatcherFn(ce, repo)
+	if err != nil {
+		return errors.Wrap(err, "failed to create argocd matcher")
+	}
+
+	// use the changed file path to get the list of affected apps
+	// fileList is a list of changed files in the PR/MR, e.g. ["path/to/file1", "path/to/file2"]
+	ce.affectedItems, err = ce.matcher.AffectedApps(ctx, ce.fileList, targetBranch, repo)
+	if err != nil {
+		telemetry.SetError(span, err, "Get Affected Apps")
+		ce.logger.Error().Err(err).Msg("could not get list of affected apps and appsets")
+	}
+	for _, appSet := range ce.affectedItems.ApplicationSets {
+		apps, err := ce.generator.GenerateApplicationSetApps(ctx, appSet, &ce.ctr)
+		if err != nil {
+			ce.logger.Error().Err(err).Msg("could not generate apps from appSet")
+			continue
+		}
+		ce.affectedItems.Applications = append(ce.affectedItems.Applications, apps...)
+	}
+
+	span.SetAttributes(
+		attribute.Int("numAffectedApps", len(ce.affectedItems.Applications)),
+		attribute.Int("numAffectedAppSets", len(ce.affectedItems.ApplicationSets)),
+		attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.Applications)),
+		attribute.String("affectedAppSets", fmt.Sprintf("%+v", ce.affectedItems.ApplicationSets)),
+	)
+	ce.logger.Debug().Msgf("Affected apps: %+v", ce.affectedItems.Applications)
+	ce.logger.Debug().Msgf("Affected appSets: %+v", ce.affectedItems.ApplicationSets)
+
+	return err
+}
+
+func canonicalize(cloneURL string) (pkg.RepoURL, error) {
+	parsed, _, err := pkg.NormalizeRepoUrl(cloneURL)
+	if err != nil {
+		return pkg.RepoURL{}, errors.Wrap(err, "failed to parse clone url")
+	}
+
+	return parsed, nil
+}
+
+func generateRepoKey(cloneURL pkg.RepoURL, branchName string) string {
+	return fmt.Sprintf("%s|||%s", cloneURL.CloneURL(""), branchName)
+}
+
+type hasUsername interface {
+	Username() string
+}
+
+func (ce *CheckEvent) getRepo(ctx context.Context, vcsClient hasUsername, cloneURL, branchName string) (*git.Repo, error) {
+	var (
+		err  error
+		repo *git.Repo
+	)
+	ce.logger.Info().Stack().Str("branchName", branchName).Msg("cloning repo")
+	ce.repoLock.Lock()
+	defer ce.repoLock.Unlock()
+
+	parsed, err := canonicalize(cloneURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse clone url")
+	}
+	cloneURL = parsed.CloneURL(vcsClient.Username())
+
+	branchName = strings.TrimSpace(branchName)
+	if branchName == "" {
+		branchName = "HEAD"
+	}
+	reposKey := generateRepoKey(parsed, branchName)
+
+	if repo, ok := ce.clonedRepos[reposKey]; ok {
+		return repo, nil
+	}
+
+	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to clone repo")
+	}
+
+	ce.clonedRepos[reposKey] = repo
+
+	// if we cloned 'HEAD', figure out its original branch and store a copy of the repo there
+	if branchName == "" || branchName == "HEAD" {
+		remoteHeadBranchName, err := repo.GetRemoteHead()
+		if err != nil {
+			return repo, errors.Wrap(err, "failed to determine remote head")
+		}
+
+		repo.BranchName = remoteHeadBranchName
+		ce.clonedRepos[generateRepoKey(parsed, remoteHeadBranchName)] = repo
+	}
+
+	// if we don't have a 'HEAD' saved for the cloned repo, figure out which branch HEAD points to,
+	// and if it's the one we just cloned, store a copy of it as 'HEAD' for usage later
+	headKey := generateRepoKey(parsed, "HEAD")
+	if _, ok := ce.clonedRepos[headKey]; !ok {
+		remoteHeadBranchName, err := repo.GetRemoteHead()
+		if err != nil {
+			return repo, errors.Wrap(err, "failed to determine remote head")
+		}
+		if remoteHeadBranchName == repo.BranchName {
+			ce.clonedRepos[headKey] = repo
+		}
+	}
+
+	return repo, nil
+}
+
+func (ce *CheckEvent) Process(ctx context.Context) error {
+	start := time.Now()
+
+	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
+	defer span.End()
+
+	// Clone the repo's BaseRef (main, etc.) locally into the temp dir we just made
+	repo, err := ce.getRepo(ctx, ce.ctr.VcsClient, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
+	if err != nil {
+		return errors.Wrap(err, "failed to clone repo")
+	}
+
+	// Merge the most recent changes into the branch we just cloned
+	if err = repo.MergeIntoTarget(ctx, ce.pullRequest.SHA); err != nil {
+		return errors.Wrap(err, "failed to merge into target")
+	}
+
+	// Get the diff between the two branches, storing them within the CheckEvent (also returns but discarded here)
+	if err = ce.UpdateListOfChangedFiles(ctx, repo); err != nil {
+		return errors.Wrap(err, "failed to get list of changed files")
+	}
+
+	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
+	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef, GenerateMatcher); err != nil {
+		return errors.Wrap(err, "failed to generate a list of affected apps")
+	}
+
+	if err = ce.ctr.VcsClient.TidyOutdatedComments(ctx, ce.pullRequest); err != nil {
+		ce.logger.Error().Err(err).Msg("Failed to tidy outdated comments")
+	}
+
+	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
+		ce.logger.Info().Msg("No affected apps or appsets, skipping")
+		ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "No changes")
+		return nil
+	}
+
+	// We make one comment per run, containing output for all the apps
+	ce.vcsNote = ce.createNote(ctx)
+
+	for num := 0; num <= ce.ctr.Config.MaxConcurrenctChecks; num++ {
+
+		w := worker{
+			appChannel: ce.appChannel,
+			ctr:        ce.ctr,
+			logger:     ce.logger.With().Int("workerID", num).Logger(),
+			processors: ce.processors,
+			vcsNote:    ce.vcsNote,
+
+			done:      ce.wg.Done,
+			getRepo:   ce.getRepo,
+			queueApp:  ce.queueApp,
+			removeApp: ce.removeApp,
+		}
+		go w.run(ctx)
+	}
+	ce.logger.Info().Msgf("adding %d apps to the queue", len(ce.affectedItems.Applications))
+	// Produce apps onto channel
+	for _, app := range ce.affectedItems.Applications {
+		ce.queueApp(app)
+	}
+
+	ce.wg.Wait()
+
+	close(ce.appChannel)
+
+	ce.logger.Debug().Msg("finished an app/appsets")
+
+	ce.logger.Debug().
+		Int("all apps", len(ce.addedAppsSet)).
+		Int32("sent apps", ce.appsSent).
+		Msg("completed apps")
+
+	ce.logger.Debug().Msg("Closing channels")
+
+	ce.logger.Info().Msg("Finished")
+
+	comment := ce.vcsNote.BuildComment(ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo)
+
+	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
+		return errors.Wrap(err, "failed to push comment")
+	}
+
+	worstStatus := ce.vcsNote.WorstState()
+	ce.CommitStatus(ctx, worstStatus)
+
+	return nil
+}
+
+func (ce *CheckEvent) removeApp(app v1alpha1.Application) {
+	ce.logger.Info().Str("app", app.Name).Msg("removing app")
+
+	ce.vcsNote.RemoveApp(app.Name)
+}
+
+func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
+	ce.addedAppsSetLock.Lock()
+	defer ce.addedAppsSetLock.Unlock()
+
+	name := app.Name
+	dir := app.Spec.GetSource().Path
+
+	if old, ok := ce.addedAppsSet[name]; ok {
+		if reflect.DeepEqual(old, app) {
+			return
+		}
+	}
+
+	ce.addedAppsSet[name] = app
+
+	logger := ce.logger.With().
+		Str("app", name).
+		Str("dir", dir).
+		Str("cluster-name", app.Spec.Destination.Name).
+		Str("cluster-server", app.Spec.Destination.Server).
+		Logger()
+	logger.Info().Msg("adding app for processing")
+
+	ce.wg.Add(1)
+	atomic.AddInt32(&ce.appsSent, 1)
+
+	logger.Debug().Msg("producing app on channel")
+	ce.appChannel <- &app
+	logger.Debug().Msg("finished producing app")
+}
+
+// CommitStatus sets the commit status on the MR
+// To set the PR/MR status
+func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) {
+	_, span := tracer.Start(ctx, "CommitStatus")
+	defer span.End()
+
+	if err := ce.ctr.VcsClient.CommitStatus(ctx, ce.pullRequest, status); err != nil {
+		log.Warn().Err(err).Msg("failed to update commit status")
+	}
 }
 
 const (
@@ -54,415 +375,19 @@ Check kubechecks application logs for more information.
 `
 )
 
-var (
-	hostname = ""
-	inFlight int32
-)
-
-func init() {
-	hostname, _ = os.Hostname()
-}
-
-func NewCheckEvent(repo *repo.Repo, client vcs_clients.Client, cfg *pkg.ServerConfig) *CheckEvent {
-	ce := &CheckEvent{
-		cfg:    cfg,
-		client: client,
-		repo:   repo,
-	}
-
-	ce.logger = log.Logger.With().Str("repo", repo.Name).Int("event_id", repo.CheckID).Logger()
-	return ce
-}
-
-// Get the Repo from a CheckEvent. In normal operations a CheckEvent can only be made by the VCSHookHandler
-// As the Repo is built from a webhook payload via the VCSClient, it should always be present. If not, error
-func (ce *CheckEvent) GetRepo(ctx context.Context) (*repo.Repo, error) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetRepo")
-	defer span.End()
-	var err error
-
-	if ce.repo == nil {
-		ce.logger.Error().Err(err).Msg("Repo is nil, did you forget to create it?")
-		return nil, err
-	}
-	return ce.repo, nil
-}
-
-func (ce *CheckEvent) CreateTempDir() error {
-	var err error
-	ce.TempWorkingDir, err = os.MkdirTemp("/tmp", "kubechecks-mr-clone")
-	if err != nil {
-		ce.logger.Error().Err(err).Msg("Unable to make temp directory")
-		return err
-	}
-	return nil
-}
-
-func (ce *CheckEvent) Cleanup(ctx context.Context) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "Cleanup")
-	defer span.End()
-
-	if ce.TempWorkingDir != "" {
-		if err := os.RemoveAll(ce.TempWorkingDir); err != nil {
-			log.Warn().Err(err).Msgf("failed to remove %s", ce.TempWorkingDir)
-		}
-	}
-}
-
-// InitializeGit sets the username and email for a git repo
-func (ce *CheckEvent) InitializeGit(ctx context.Context) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "InitializeGit")
-	defer span.End()
-
-	return repo.InitializeGitSettings(ce.repo.Username, ce.repo.Email)
-}
-
-// CloneRepoLocal takes the repo inside the Check Event and try to clone it locally
-func (ce *CheckEvent) CloneRepoLocal(ctx context.Context) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "CloneRepoLocal")
-	defer span.End()
-
-	return ce.repo.CloneRepoLocal(ctx, ce.TempWorkingDir)
-}
-
-// MergeIntoTarget merges the changes from the MR/PR into the base branch
-func (ce *CheckEvent) MergeIntoTarget(ctx context.Context) error {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "MergeIntoTarget")
-	defer span.End()
-	gitRepo, err := ce.GetRepo(ctx)
-	if err != nil {
-		return err
-	}
-
-	return gitRepo.MergeIntoTarget(ctx)
-}
-
-func (ce *CheckEvent) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "CheckEventGetListOfChangedFiles")
-	defer span.End()
-
-	gitRepo, err := ce.GetRepo(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(ce.fileList) == 0 {
-		ce.fileList, err = gitRepo.GetListOfChangedFiles(ctx)
-	}
-
-	if err == nil {
-		ce.logger.Debug().Msgf("Changed files: %s", strings.Join(ce.fileList, ","))
-	}
-
-	return ce.fileList, err
-}
-
-// Walks the repo to find any apps or appsets impacted by the changes in the MR/PR.
-func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context) error {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "GenerateListOfAffectedApps")
-	defer span.End()
-	var err error
-
-	var matcher affected_apps.Matcher
-	cfg, _ := repo_config.LoadRepoConfig(ce.TempWorkingDir)
-	if cfg != nil {
-		log.Debug().Msg("using the config matcher")
-		matcher = affected_apps.NewConfigMatcher(cfg)
-	} else if viper.GetBool("monitor-all-applications") {
-		log.Debug().Msg("using an argocd matcher")
-		matcher = affected_apps.NewArgocdMatcher(ce.cfg.VcsToArgoMap, ce.repo)
-	} else {
-		log.Debug().Msg("using best effort matcher")
-		ce.repoFiles, err = ce.repo.GetListOfRepoFiles()
-		if err != nil {
-			telemetry.SetError(span, err, "Get List of Repo Files")
-
-			ce.logger.Error().Err(err).Msg("could not get list of repo files")
-			// continue with an empty list
-			ce.repoFiles = []string{}
-		}
-		matcher = affected_apps.NewBestEffortMatcher(ce.repo.Name, ce.repoFiles)
-	}
-	ce.affectedItems, err = matcher.AffectedApps(ctx, ce.fileList)
-	if err != nil {
-		telemetry.SetError(span, err, "Get Affected Apps")
-		ce.logger.Error().Err(err).Msg("could not get list of affected apps and appsets")
-	}
-	span.SetAttributes(
-		attribute.Int("numAffectedApps", len(ce.affectedItems.Applications)),
-		attribute.Int("numAffectedAppSets", len(ce.affectedItems.ApplicationSets)),
-		attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.Applications)),
-		attribute.String("affectedAppSets", fmt.Sprintf("%+v", ce.affectedItems.ApplicationSets)),
-	)
-	ce.logger.Debug().Msgf("Affected apps: %+v", ce.affectedItems.Applications)
-	ce.logger.Debug().Msgf("Affected appSets: %+v", ce.affectedItems.ApplicationSets)
-
-	return err
-}
-
-type appStruct struct {
-	name string
-	dir  string
-}
-
-func (ce *CheckEvent) ProcessApps(ctx context.Context) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "ProcessApps",
-		trace.WithAttributes(
-			attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.Applications)),
-			attribute.Int("workerLimits", ce.workerLimits),
-			attribute.Int("numAffectedApps", len(ce.affectedItems.Applications)),
-		))
-	defer span.End()
-
-	err := ce.client.TidyOutdatedComments(ctx, ce.repo)
-	if err != nil {
-		ce.logger.Error().Err(err).Msg("Failed to tidy outdated comments")
-	}
-
-	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
-		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, "No changes")
-		return
-	}
-
-	// Concurrently process all apps, with a corresponding error channel for reporting back failures
-	appChannel := make(chan appStruct, len(ce.affectedItems.Applications))
-	errChannel := make(chan error, len(ce.affectedItems.Applications))
-
-	// If the number of affected apps that we have is less than our worker limit, lower the worker limit
-	if ce.workerLimits > len(ce.affectedItems.Applications) {
-		ce.workerLimits = len(ce.affectedItems.Applications)
-	}
-
-	// We make one comment per run, containing output for all the apps
-	ce.vcsNote = ce.createNote(ctx)
-
-	for w := 0; w <= ce.workerLimits; w++ {
-		go ce.appWorkers(ctx, w, appChannel, errChannel)
-	}
-
-	// Produce apps onto channel
-	for _, app := range ce.affectedItems.Applications {
-		a := appStruct{
-			name: app.Name,
-			dir:  app.Path,
-		}
-		ce.logger.Trace().Str("app", a.name).Str("dir", a.dir).Msg("producing app on channel")
-		appChannel <- a
-	}
-
-	returnCount := 0
-	resultError := false
-	for err := range errChannel {
-		returnCount++
-		if err != nil {
-			resultError = true
-			ce.logger.Error().Err(err).Msg("error running tool")
-		}
-		if returnCount == len(ce.affectedItems.Applications) {
-			ce.logger.Debug().Msg("Closing channels")
-			close(appChannel)
-			close(errChannel)
-		}
-	}
-	ce.logger.Info().Msg("Finished")
-
-	if resultError {
-		ce.CommitStatus(ctx, vcs_clients.Failure)
-		ce.logger.Error().Msg("Errors found")
-		return
-	}
-
-	ce.CommitStatus(ctx, vcs_clients.Success)
-}
-
-// CommitStatus takes one of "success", "failure", "pending" or "error" and pass off to client
-// To set the PR/MR status
-func (ce *CheckEvent) CommitStatus(ctx context.Context, status vcs_clients.CommitState) {
-	_, span := otel.Tracer("Kubechecks").Start(ctx, "CommitStatus")
-	defer span.End()
-
-	if err := ce.client.CommitStatus(ctx, ce.repo, status); err != nil {
-		log.Warn().Err(err).Msg("failed to update commit status")
-	}
-}
-
-// Process all apps on the provided channel
-func (ce *CheckEvent) appWorkers(ctx context.Context, workerID int, appChannel chan appStruct, resultChannel chan error) {
-	for app := range appChannel {
-		ce.logger.Info().Int("workerID", workerID).Str("app", app.name).Msg("Processing App")
-		resultChannel <- ce.processApp(ctx, app.name, app.dir)
-	}
-}
-
-// processApp is a function that validates and processes a given application manifest against various checks,
-// such as ArgoCD schema validation, diff generation, conftest policy validation, and pre-upgrade checks using kubepug.
-// It takes a context (ctx), application name (app), directory (dir) as input and returns an error if any check fails.
-// The processing is performed concurrently using Go routines and error groups. Any check results are sent through
-// the returnChan. The function also manages the inFlight atomic counter to track active processing routines.
-func (ce *CheckEvent) processApp(ctx context.Context, app, dir string) error {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "processApp", trace.WithAttributes(
-		attribute.String("app", app),
-		attribute.String("dir", dir),
-	))
-	defer span.End()
-
-	atomic.AddInt32(&inFlight, 1)
-	defer atomic.AddInt32(&inFlight, -1)
-
-	start := time.Now()
-	ce.logger.Info().Str("app", app).Msg("Adding new app")
-	// Build a new section for this app in the parent comment
-	ce.vcsNote.AddNewApp(ctx, app)
-
-	ce.logger.Debug().Msgf("Getting manifests for app: %s with code at %s/%s", app, ce.TempWorkingDir, dir)
-	manifests, err := argo_client.GetManifestsLocal(ctx, app, ce.TempWorkingDir, dir)
-	if err != nil {
-		ce.logger.Error().Err(err).Msgf("Unable to get manifests for %s in %s", app, dir)
-		ce.vcsNote.AddToAppMessage(ctx, app, fmt.Sprintf("Unable to get manifests for application: \n\n ```\n%s\n```", ce.cleanupGetManifestsError(err)))
-		return nil
-	}
-
-	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
-	formattedManifests := argo_client.FormatManifestsYAML(manifests)
-	ce.logger.Trace().Msgf("Manifests:\n%+v\n", formattedManifests)
-
-	k8sVersion, err := argo_client.GetArgoClient().GetKubernetesVersionByApplicationName(ctx, app)
-	if err != nil {
-		ce.logger.Error().Err(err).Msg("Error retrieving the Kubernetes version")
-		k8sVersion = viper.GetString("fallback-k8s-version")
-	} else {
-		k8sVersion = fmt.Sprintf("%s.0", k8sVersion)
-		ce.logger.Info().Msgf("Kubernetes version: %s", k8sVersion)
-	}
-
-	grp, grpCtx := errgroup.WithContext(ctx)
-	grp.Go(func() error {
-		const taskDescription = "validating app against schema"
-		defer func() {
-			if r := recover(); r != nil {
-				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
-			}
-		}()
-
-		s, err := validate.ArgoCdAppValidate(grpCtx, app, k8sVersion, formattedManifests)
-		if err != nil {
-			telemetry.SetError(span, err, taskDescription)
-			ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-			return fmt.Errorf("argo Validate: %s", err)
-		}
-
-		if s != "" {
-			ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-		}
-		return nil
-
-	})
-
-	grp.Go(func() error {
-		const taskDescription = "generating diff for app"
-		defer func() {
-			if r := recover(); r != nil {
-				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
-			}
-		}()
-
-		s, rawDiff, err := diff.GetDiff(grpCtx, app, manifests)
-		if err != nil {
-			telemetry.SetError(span, err, taskDescription)
-			ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-			return fmt.Errorf("argo Diff: %s", err)
-		}
-
-		if s != "" {
-			ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-			diff.AIDiffSummary(grpCtx, ce.vcsNote, app, manifests, rawDiff)
-		}
-
-		return nil
-	})
-
-	if viper.GetBool("enable-conftest") {
-		grp.Go(func() error {
-			const taskDescription = "validating app against policy"
-			defer func() {
-				if r := recover(); r != nil {
-					telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-					ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
-				}
-			}()
-
-			argoApp, err := argo_client.GetArgoClient().GetApplicationByName(grpCtx, app)
-			if err != nil {
-				telemetry.SetError(span, err, taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf("Could not retrieve Argo App details. %v", err))
-				return fmt.Errorf("could not retrieve ArgoCD App data: %v", err)
-			}
-
-			s, err := conftest.Conftest(grpCtx, argoApp, ce.TempWorkingDir)
-			if err != nil {
-				telemetry.SetError(span, err, taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-				return fmt.Errorf("confTest: %s", err)
-			}
-
-			if s != "" {
-				ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-			}
-			return nil
-		})
-	}
-
-	grp.Go(func() error {
-		const taskDescription = "running pre-upgrade check"
-		defer func() {
-			if r := recover(); r != nil {
-				telemetry.SetError(span, fmt.Errorf("%v", r), taskDescription)
-				ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, r))
-			}
-		}()
-
-		s, err := kubepug.CheckApp(grpCtx, app, k8sVersion, formattedManifests)
-		if err != nil {
-			telemetry.SetError(span, err, taskDescription)
-			ce.vcsNote.AddToAppMessage(grpCtx, app, fmt.Sprintf(errorCommentFormat, taskDescription, err))
-			return fmt.Errorf("kubePug: %s", err)
-		}
-
-		if s != "" {
-			ce.vcsNote.AddToAppMessage(grpCtx, app, s)
-		}
-		return nil
-
-	})
-
-	err = grp.Wait()
-	if err != nil {
-		telemetry.SetError(span, err, "running checks")
-	}
-
-	ce.vcsNote.AddToAppMessage(ctx, app, renderInfoFooter(time.Since(start), ce.repo.SHA))
-
-	return err
-}
-
 // Creates a generic Note struct that we can write into across all worker threads
-func (ce *CheckEvent) createNote(ctx context.Context) *vcs_clients.Message {
+func (ce *CheckEvent) createNote(ctx context.Context) *msg.Message {
 	ctx, span := otel.Tracer("check").Start(ctx, "createNote")
 	defer span.End()
 
-	var sb strings.Builder
-	_, _ = fmt.Fprintf(&sb, "# Kubechecks Report:\n")
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.client.PostMessage(ctx, ce.repo, ce.repo.CheckID, sb.String())
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, ":hourglass: kubechecks running ... ")
 }
 
 // cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.
 // It reformats Helm error messages by removing excess information, and makes file paths relative to the git repo root.
-func (ce *CheckEvent) cleanupGetManifestsError(err error) string {
+func cleanupGetManifestsError(err error, repoDirectory string) string {
 	// cleanup the chonky helm error message for a better DX
 	errStr := err.Error()
 	if strings.Contains(errStr, "helm template") && strings.Contains(errStr, "failed exit status") {
@@ -471,20 +396,7 @@ func (ce *CheckEvent) cleanupGetManifestsError(err error) string {
 	}
 
 	// strip the temp directory from any files mentioned to make file paths relative to git repo root
-	errStr = strings.ReplaceAll(errStr, ce.TempWorkingDir+"/", "")
+	errStr = strings.ReplaceAll(errStr, repoDirectory+"/", "")
 
 	return errStr
-}
-
-func renderInfoFooter(duration time.Duration, commitSHA string) string {
-	if viper.GetBool("show-debug-info") {
-		label := viper.GetString("label-filter")
-		envStr := ""
-		if label != "" {
-			envStr = fmt.Sprintf(", Env: %s", label)
-		}
-		return fmt.Sprintf("<small>_Done: Pod: %s, Dur: %v, SHA: %s%s_<small>\n", hostname, duration, pkg.GitCommit, envStr)
-	} else {
-		return fmt.Sprintf("<small>_Done. CommitSHA: %s_<small>\n", commitSHA)
-	}
 }

@@ -1,95 +1,151 @@
 package cmd
 
 import (
-	"fmt"
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/zapier/kubechecks/pkg/events"
-
 	_ "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/checks"
+	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/events"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/server"
+	"github.com/zapier/kubechecks/telemetry"
 )
 
-// controllerCmd represents the run command
-var controllerCmd = &cobra.Command{
+// ControllerCmd represents the run command
+var ControllerCmd = &cobra.Command{
 	Use:   "controller",
 	Short: "Start the VCS Webhook handler.",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Starting KubeChecks:", pkg.GitTag, pkg.GitCommit)
+		ctx := context.Background()
 
-		server := server.NewServer(&pkg.ServerConfig{
-			UrlPrefix:     viper.GetString("webhook-url-prefix"),
-			WebhookSecret: viper.GetString("webhook-secret"),
-		})
-		go server.Start()
+		log.Info().
+			Str("git-tag", pkg.GitTag).
+			Str("git-commit", pkg.GitCommit).
+			Msg("Starting KubeChecks")
 
-		// graceful termination handler.
-		// when we receive a SIGTERM from kubernetes, check for in-flight requests before exiting.
-		sigs := make(chan os.Signal, 1)
-		signal.Notify(sigs, syscall.SIGTERM)
-		done := make(chan bool, 1)
-
-		go func() {
-			sig := <-sigs
-			log.Debug().Str("signal", sig.String()).Msg("received signal")
-			done <- true
-		}()
-
-		<-done
-		log.Info().Msg("shutting down...")
-		for events.GetInFlight() > 0 {
-			log.Info().Int("count", events.GetInFlight()).Msg("waiting for in-flight requests to complete")
-			time.Sleep(time.Second * 3)
+		log.Info().Msg("parsing configuration")
+		cfg, err := config.New()
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to parse configuration")
 		}
-		log.Info().Msg("good bye.")
 
-	},
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		log.Info().Msg("Server Configuration: ")
-		log.Info().Msgf("Webhook URL Base: %s", viper.GetString("webhook-url-base"))
-		log.Info().Msgf("Webhook URL Prefix: %s", viper.GetString("webhook-url-prefix"))
-		log.Info().Msgf("VCS Type: %s", viper.GetString("vcs-type"))
-		return nil
+		ctr, err := newContainer(ctx, cfg, true)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create container")
+		}
+
+		log.Info().Msg("initializing git settings")
+		if err = initializeGit(ctr); err != nil {
+			log.Fatal().Err(err).Msg("failed to initialize git settings")
+		}
+
+		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
+			log.Fatal().Err(err).Msg("failed to process policy locations")
+		}
+		if err = processLocations(ctx, ctr, cfg.SchemasLocations); err != nil {
+			log.Fatal().Err(err).Msg("failed to process schema locations")
+		}
+
+		processors, err := getProcessors(ctr)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create processors")
+		}
+
+		t, err := initTelemetry(ctx, cfg)
+		if err != nil {
+			log.Panic().Err(err).Msg("Failed to initialize telemetry")
+		}
+		defer t.Shutdown()
+
+		log.Info().Msgf("starting web server")
+		startWebserver(ctx, ctr, processors)
+
+		log.Info().Msgf("listening for requests")
+		waitForShutdown()
+
+		log.Info().Msg("shutting down gracefully")
+		waitForPendingRequest()
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(controllerCmd)
+func initTelemetry(ctx context.Context, cfg config.ServerConfig) (*telemetry.OperatorTelemetry, error) {
+	return telemetry.Init(
+		ctx, "kubechecks", pkg.GitTag, pkg.GitCommit,
+		cfg.EnableOtel, cfg.OtelCollectorHost, cfg.OtelCollectorPort,
+	)
+}
 
-	flags := controllerCmd.Flags()
-	flags.String("fallback-k8s-version", "1.23.0", "Fallback target Kubernetes version for schema / upgrade checks (KUBECHECKS_FALLBACK_K8S_VERSION).")
-	flags.Bool("show-debug-info", false, "Set to true to print debug info to the footer of MR comments (KUBECHECKS_SHOW_DEBUG_INFO).")
-	flags.Bool("enable-conftest", false, "Set to true to enable conftest policy checking of manifests (KUBECHECKS_ENABLE_CONFTEST).")
-	flags.String("label-filter", "", "(Optional) If set, The label that must be set on an MR (as \"kubechecks:<value>\") for kubechecks to process the merge request webhook (KUBECHECKS_LABEL_FILTER).")
-	flags.String("openai-api-token", "", "OpenAI API Token (KUBECHECKS_OPENAI_API_TOKEN).")
-	flags.String("webhook-url-base", "", "The URL where KubeChecks receives webhooks from Gitlab")
-	flags.String("webhook-url-prefix", "", "If your application is running behind a proxy that uses path based routing, set this value to match the path prefix.")
-	flags.String("webhook-secret", "", "Optional secret key for validating the source of incoming webhooks.")
-	flags.Bool("monitor-all-applications", false, "Monitor all applications in argocd automatically")
-	flags.Bool("ensure-webhooks", false, "Ensure that webhooks are created in repositories referenced by argo")
+func startWebserver(ctx context.Context, ctr container.Container, processors []checks.ProcessorEntry) {
+	srv := server.NewServer(ctr, processors)
+	go srv.Start(ctx)
+}
 
-	// Map viper to cobra flags, so we can get these parameters from Environment variables if set.
-	panicIfError := func(err error) {
-		if err != nil {
-			panic(err)
-		}
+func initializeGit(ctr container.Container) error {
+	if err := git.SetCredentials(ctr.Config, ctr.VcsClient); err != nil {
+		return err
 	}
-	panicIfError(viper.BindPFlag("enable-conftest", flags.Lookup("enable-conftest")))
-	panicIfError(viper.BindPFlag("fallback-k8s-version", flags.Lookup("fallback-k8s-version")))
-	panicIfError(viper.BindPFlag("show-debug-info", flags.Lookup("show-debug-info")))
-	panicIfError(viper.BindPFlag("label-filter", flags.Lookup("label-filter")))
-	panicIfError(viper.BindPFlag("openai-api-token", flags.Lookup("openai-api-token")))
-	panicIfError(viper.BindPFlag("webhook-url-base", flags.Lookup("webhook-url-base")))
-	panicIfError(viper.BindPFlag("webhook-url-prefix", flags.Lookup("webhook-url-prefix")))
-	panicIfError(viper.BindPFlag("webhook-secret", flags.Lookup("webhook-secret")))
-	panicIfError(viper.BindPFlag("ensure-webhooks", flags.Lookup("ensure-webhooks")))
-	panicIfError(viper.BindPFlag("monitor-all-applications", flags.Lookup("monitor-all-applications")))
+
+	return nil
+}
+
+func waitForPendingRequest() {
+	for events.GetInFlight() > 0 {
+		log.Info().Int("count", events.GetInFlight()).Msg("waiting for in-flight requests to complete")
+		time.Sleep(time.Second * 3)
+	}
+}
+
+func waitForShutdown() {
+	// graceful termination handler.
+	// when we receive a SIGTERM from kubernetes, check for in-flight requests before exiting.
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	done := make(chan bool, 1)
+
+	go func() {
+		sig := <-sigs
+		log.Debug().Str("signal", sig.String()).Msg("received signal")
+		done <- true
+	}()
+
+	<-done
+}
+
+func panicIfError(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func init() {
+	RootCmd.AddCommand(ControllerCmd)
+
+	flags := ControllerCmd.Flags()
+	stringFlag(flags, "fallback-k8s-version", "Fallback target Kubernetes version for schema / upgrade checks (KUBECHECKS_FALLBACK_K8S_VERSION).",
+		newStringOpts().withDefault("1.23.0"))
+	boolFlag(flags, "show-debug-info", "Set to true to print debug info to the footer of MR comments (KUBECHECKS_SHOW_DEBUG_INFO).")
+
+	stringFlag(flags, "label-filter", `(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook (KUBECHECKS_LABEL_FILTER).`)
+	stringFlag(flags, "openai-api-token", "OpenAI API Token.")
+	stringFlag(flags, "webhook-url-base", "The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.")
+	stringFlag(flags, "webhook-url-prefix", "If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.")
+	stringFlag(flags, "webhook-secret", "Optional secret key for validating the source of incoming webhooks.")
+	boolFlag(flags, "monitor-all-applications", "Monitor all applications in argocd automatically.")
+	boolFlag(flags, "ensure-webhooks", "Ensure that webhooks are created in repositories referenced by argo.")
+	stringFlag(flags, "repo-refresh-interval", "Interval between static repo refreshes (for schemas and policies).",
+		newStringOpts().withDefault("5m"))
+
+	panicIfError(viper.BindPFlags(flags))
 }

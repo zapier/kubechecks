@@ -1,11 +1,11 @@
-deployment:
-  annotations:
-    reloader.stakater.com/auto: "true" 
+configMap:
+  create: true
   env:
     KUBECHECKS_LOG_LEVEL: debug
-    KUBECHECKS_ENABLE_WEBHOOK_CONTROLLER: false
-    KUBECHECKS_ARGOCD_API_INSECURE: true
+    KUBECHECKS_ENABLE_WEBHOOK_CONTROLLER: "false"
+    KUBECHECKS_ARGOCD_API_INSECURE: "true"
     KUBECHECKS_ARGOCD_API_PATH_PREFIX : '/argocd'
+    KUBECHECKS_ARGOCD_API_NAMESPACE: 'kubechecks'
     KUBECHECKS_WEBHOOK_URL_PREFIX: 'kubechecks'
     KUBECHECKS_NAMESPACE: 'kubechecks'
     KUBECHECKS_FALLBACK_K8S_VERSION: "1.25.0"
@@ -20,10 +20,15 @@ deployment:
     # KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
     # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
     KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
+    KUBECHECKS_ENABLE_CONFTEST: "false"
 
+
+deployment:
+  annotations:
+    reloader.stakater.com/auto: "true" 
+  
   image:
-    repository: ""
-    pullPolicy: Always
+    pullPolicy: Never
     name: "kubechecks"
     tag: ""
 

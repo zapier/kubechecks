@@ -1,12 +1,15 @@
 VERSION 0.7
 
+ARG --global USERARCH
+
 test:
     BUILD +ci-golang
     BUILD +ci-helm
 
 ci-golang:
-    # This should be enabled at some point
-    BUILD +lint-golang
+    BUILD +fmt-golang
+    BUILD +staticcheck-golang
+    BUILD +golang-ci-lint
     BUILD +validate-golang
     BUILD +test-golang
 
@@ -14,7 +17,7 @@ ci-helm:
     BUILD +test-helm
     BUILD +release-helm
 
-build:
+docker-multiarch:
     BUILD --platform=linux/amd64 --platform=linux/arm64 +docker
 
 release:
@@ -22,8 +25,11 @@ release:
     BUILD +release-helm
 
 go-deps:
-    ARG GOLANG_VERSION="1.19.3"
-    FROM golang:$GOLANG_VERSION-bullseye
+    ARG GOOS=linux
+    ARG GOARCH=$USERARCH
+    ARG --required GOLANG_VERSION
+
+    FROM --platform=linux/$USERARCH golang:$GOLANG_VERSION-bullseye
 
     ENV GO111MODULE=on
     ENV CGO_ENABLED=0
@@ -33,6 +39,14 @@ go-deps:
     RUN go mod download
     SAVE ARTIFACT go.mod AS LOCAL go.mod
     SAVE ARTIFACT go.sum AS LOCAL go.sum
+
+rebuild-docs:
+    FROM +go-deps
+
+    COPY . /src
+    RUN go run hacks/env-to-docs.go
+
+    SAVE ARTIFACT ./docs/usage.md AS LOCAL ./docs/usage.md
 
 validate-golang:
     FROM +go-deps
@@ -50,23 +64,32 @@ test-golang:
     RUN go test ./...
 
 build-binary:
-    FROM +go-deps
-
     ARG GOOS=linux
-    ARG GOARCH=amd64
+    ARG GOARCH=$USERARCH
     ARG VARIANT
     ARG --required GIT_TAG
     ARG --required GIT_COMMIT
+
+    FROM --platform=linux/$USERARCH +go-deps
 
     WORKDIR /src
     COPY . /src
     RUN GOARM=${VARIANT#v} go build -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit=$GIT_COMMIT -X github.com/zapier/kubechecks/pkg.GitTag=$GIT_TAG" -o kubechecks
     SAVE ARTIFACT kubechecks
 
+build-debug-binary:
+    FROM --platform=linux/$USERARCH +go-deps
+    WORKDIR /src
+    COPY . /src
+    RUN go build -gcflags="all=-N -l" -ldflags "-X github.com/zapier/kubechecks/pkg.GitCommit=$GIT_COMMIT -X github.com/zapier/kubechecks/pkg.GitTag=$GIT_TAG" -o kubechecks
+    SAVE ARTIFACT kubechecks
+
 docker:
-    FROM ubuntu:20.04
+    ARG TARGETPLATFORM
+    ARG TARGETARCH
     ARG TARGETVARIANT
 
+    FROM --platform=$TARGETPLATFORM ubuntu:20.04
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
@@ -98,30 +121,21 @@ docker:
 
     WORKDIR /app
 
-    COPY ./policy ./policy
-    COPY ./schemas ./schemas
-    COPY (+build-binary/kubechecks --GOARCH=amd64 --VARIANT=$TARGETVARIANT) .
+    VOLUME /app/policies
+    VOLUME /app/schemas
+
+    COPY (+build-binary/kubechecks --platform=linux/$USERARCH --GOARCH=$TARGETARCH --VARIANT=$TARGETVARIANT) .
     RUN ./kubechecks help
 
     CMD ["./kubechecks", "controller"]
-
-docker-dev:
-    FROM +docker
-
-    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:dev
-
-docker-tag:
-    FROM +docker
-
-    ARG CI_REGISTRY_IMAGE="ghcr.io/zapier/kubechecks"
-    ARG --required GIT_TAG
-
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:latest
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE:$GIT_TAG
+    ARG --required IMAGE_NAME
+    ARG LATEST_IMAGE_NAME=""
+    SAVE IMAGE --push $IMAGE_NAME $LATEST_IMAGE_NAME
 
 dlv:
-    FROM golang:1.19
+    ARG --required GOLANG_VERSION
+
+    FROM golang:$GOLANG_VERSION-bullseye
 
     RUN apt update && apt install -y ca-certificates curl git
     RUN go install github.com/go-delve/delve/cmd/dlv@latest
@@ -129,23 +143,44 @@ dlv:
     SAVE ARTIFACT /go/bin/dlv
 
 docker-debug:
-    ARG CI_REGISTRY_IMAGE="kubechecks"
     FROM +docker --GIT_TAG=debug --GIT_COMMIT=abcdef
 
-    COPY (+dlv/dlv --GOARCH=$GOARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
+    COPY (+build-debug-binary/kubechecks --GOARCH=$USERARCH --VARIANT=$TARGETVARIANT) .
+
+    COPY (+dlv/dlv --GOARCH=$USERARCH --VARIANT=$TARGETVARIANT) /usr/local/bin/dlv
 
     CMD ["/usr/local/bin/dlv", "--listen=:2345", "--api-version=2", "--headless=true", "--accept-multiclient", "exec", "--continue", "./kubechecks", "controller"]
 
-    SAVE IMAGE --push $CI_REGISTRY_IMAGE
+    ARG IMAGE_NAME="kubechecks:debug"
+    SAVE IMAGE --push $IMAGE_NAME
 
-lint-golang:
-    ARG STATICCHECK_VERSION="0.3.3"
+fmt-golang:
+    FROM +go-deps
+
+    WORKDIR /src
+    COPY . /src
+
+    RUN go fmt \
+        && ./hacks/exit-on-changed-files.sh
+
+golang-ci-lint:
+    ARG --required GOLANGCI_LINT_VERSION
+
+    FROM golangci/golangci-lint:v${GOLANGCI_LINT_VERSION}
+
+    WORKDIR /src
+    COPY . .
+
+    RUN golangci-lint --timeout 15m run --verbose
+
+staticcheck-golang:
+    ARG --required STATICCHECK_VERSION
 
     FROM +go-deps
 
     # install staticcheck
     RUN FILE=staticcheck.tgz \
-        && URL=https://github.com/dominikh/go-tools/releases/download/v$STATICCHECK_VERSION/staticcheck_linux_amd64.tar.gz \
+        && URL=https://github.com/dominikh/go-tools/releases/download/$STATICCHECK_VERSION/staticcheck_linux_$USERARCH.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \
@@ -165,9 +200,9 @@ test-helm:
     FROM quay.io/helmpack/chart-testing:v${CHART_TESTING_VERSION}
 
     # install kubeconform
-    ARG KUBECONFORM_VERSION="0.5.0"
+    ARG KUBECONFORM_VERSION="0.6.4"
     RUN FILE=kubeconform.tgz \
-        && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz \
+        && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-${USERARCH}.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \
@@ -194,7 +229,7 @@ release-helm:
 
     ARG HELM_VERSION="3.8.1"
     RUN FILE=helm.tgz \
-        && URL=https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz \
+        && URL=https://get.helm.sh/helm-v${HELM_VERSION}-linux-${USERARCH}.tar.gz \
         && wget ${URL} \
             --output-document ${FILE} \
         && tar \

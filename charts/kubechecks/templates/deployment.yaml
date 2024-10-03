@@ -5,8 +5,7 @@ metadata:
   {{- with .Values.deployment.annotations }}
   annotations: {{ toYaml . | nindent 4 }}
   {{- end}}
-  labels:
-    {{- include "kubechecks.labels" . | nindent 4 }}
+  labels: {{- include "kubechecks.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.deployment.replicaCount }}
   selector:
@@ -14,6 +13,10 @@ spec:
       {{- include "kubechecks.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- with .Values.deployment.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
         {{- if .Values.commonLabels }}
         {{- toYaml .Values.commonLabels | nindent 8 }}
@@ -27,27 +30,32 @@ spec:
       {{- if .Values.serviceAccount.enabled}}
       serviceAccountName: {{ include "kubechecks.serviceAccountName" . }}
       {{- end }}
-      securityContext: {{- toYaml .Values.deployment.securityContext | nindent 8 }}
+      securityContext:
+        {{- toYaml .Values.deployment.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.deployment.image }}
-          image: "{{ .name }}:{{ coalesce .tag (printf "v%s" $.Chart.AppVersion) }}"
+          image: "{{ .name }}:{{ required "must set .deployment.image.tag" .tag }}"
           imagePullPolicy: {{ .pullPolicy }}
           {{- end }}
+          {{- with .Values.deployment.args }}
+          args: {{ . | toYaml | nindent 12 }}
+          {{- end }}
           envFrom:
+            {{- if .Values.configMap.create }}
             - configMapRef:
                 name: {{ include "kubechecks.name" . }}
+            {{- end }}
+            {{- if .Values.secrets.create }}
             - secretRef:
                 name: {{ include "kubechecks.secretsName" . }}
-          env:
-          - name: POD_NAMESPACE
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.namespace
-          - name: KUBECHECKS_OTEL_COLLECTOR_HOST
-            valueFrom:
-              fieldRef:
-                fieldPath: status.hostIP
+            {{- end }}
+          {{- with .Values.deployment.envFrom }}
+            {{- . | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with .Values.deployment.env }}
+          env: {{ . | toYaml | nindent 12 }}
+          {{- end }}
           ports:
             - name: {{ .Values.service.name }}
               containerPort: 8080
@@ -76,6 +84,9 @@ spec:
               port: 8080
               scheme: HTTP
             {{- toYaml .Values.deployment.readinessProbe | nindent 12 }}
+          {{- with .Values.deployment.volumeMounts }}
+          volumeMounts: {{ . | toYaml | nindent 12 }}
+          {{- end }}
       {{- with .Values.deployment.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -87,4 +98,7 @@ spec:
       {{- with .Values.deployment.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.deployment.volumes }}
+      volumes: {{ . | toYaml | nindent 8 }}
       {{- end }}

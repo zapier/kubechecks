@@ -4,52 +4,47 @@ import (
 	"io"
 	"sync"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
-
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
+	"github.com/rs/zerolog/log"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
+
+	"github.com/zapier/kubechecks/pkg/config"
 )
 
 type ArgoClient struct {
 	client apiclient.Client
+
+	manifestsLock sync.Mutex
 }
 
-var argoClient *ArgoClient
-var once sync.Once
-
-func GetArgoClient() *ArgoClient {
-	once.Do(func() {
-		argoClient = createArgoClient()
-	})
-	return argoClient
-}
-
-func createArgoClient() *ArgoClient {
-	clientOptions := &apiclient.ClientOptions{
-		ServerAddr:      viper.GetString("argocd-api-server-addr"),
-		AuthToken:       viper.GetString("argocd-api-token"),
-		GRPCWebRootPath: viper.GetString("argocd-api-path-prefix"),
-		Insecure:        viper.GetBool("argocd-api-insecure"),
+func NewArgoClient(cfg config.ServerConfig) (*ArgoClient, error) {
+	opts := &apiclient.ClientOptions{
+		ServerAddr:      cfg.ArgoCDServerAddr,
+		AuthToken:       cfg.ArgoCDToken,
+		GRPCWebRootPath: cfg.ArgoCDPathPrefix,
+		Insecure:        cfg.ArgoCDInsecure,
+		PlainText:       cfg.ArgoCDPlainText,
 	}
-	argo, err := apiclient.NewClient(clientOptions)
+
+	log.Info().
+		Str("server-addr", opts.ServerAddr).
+		Int("auth-token", len(opts.AuthToken)).
+		Str("grpc-web-root-path", opts.GRPCWebRootPath).
+		Bool("insecure", cfg.ArgoCDInsecure).
+		Msg("ArgoCD client configuration")
+
+	argo, err := apiclient.NewClient(opts)
 	if err != nil {
-		log.Fatal().Err(err).Msg("could not create ArgoCD API client")
+		return nil, err
 	}
 
 	return &ArgoClient{
 		client: argo,
-	}
-}
-
-func NewArgoClient(client apiclient.Client) *ArgoClient {
-	return &ArgoClient{
-		client: client,
-	}
+	}, nil
 }
 
 // GetApplicationClient has related argocd diff code https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L899

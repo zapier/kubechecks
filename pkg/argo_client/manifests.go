@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
 	argoappv1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -13,14 +12,17 @@ import (
 	"github.com/argoproj/argo-cd/v2/reposerver/repository"
 	"github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/ghodss/yaml"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/telemetry"
-	"go.opentelemetry.io/otel"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/zapier/kubechecks/telemetry"
 )
 
-func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, changedAppFilePath string) ([]string, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "GetManifestsLocal")
+func (argo *ArgoClient) GetManifestsLocal(ctx context.Context, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
+	var err error
+
+	ctx, span := tracer.Start(ctx, "GetManifestsLocal")
 	defer span.End()
 
 	log.Debug().Str("name", name).Msg("GetManifestsLocal")
@@ -30,74 +32,36 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 		duration := time.Since(start)
 		getManifestsDuration.WithLabelValues(name).Observe(duration.Seconds())
 	}()
-	argoClient := GetArgoClient()
 
-	appCloser, appClient := argoClient.GetApplicationClient()
-	defer appCloser.Close()
-
-	clusterCloser, clusterIf := argoClient.GetClusterClient()
+	clusterCloser, clusterClient := argo.GetClusterClient()
 	defer clusterCloser.Close()
 
-	settingsCloser, settingsClient := argoClient.GetSettingsClient()
+	settingsCloser, settingsClient := argo.GetSettingsClient()
 	defer settingsCloser.Close()
 
-	log.Debug().Str("name", name).Msg("generating diff for application...")
-
-	appName := name
-	app, err := appClient.Get(ctx, &application.ApplicationQuery{
-		Name: &appName,
-	})
-	if err != nil {
-		telemetry.SetError(span, err, "Argo Get App")
-		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
-	}
-	log.Trace().Msgf("Argo App: %+v", app)
-
-	cluster, err := clusterIf.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
+	log.Debug().
+		Str("clusterName", app.Spec.Destination.Name).
+		Str("clusterServer", app.Spec.Destination.Server).
+		Msg("getting cluster")
+	cluster, err := clusterClient.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Cluster")
 		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get cluster")
 	}
 
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
 		telemetry.SetError(span, err, "Argo Get Settings")
 		getManifestsFailed.WithLabelValues(name).Inc()
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get settings")
 	}
 
-	// Code is commented out until Argo fixes the server side manifest generation
-	/*
-		localIncludes := []string{"*.yaml", "*.json", "*.yml"}
-		// sends files to argocd to generate a diff based on them.
-
-		client, err := appClient.GetManifestsWithFiles(context.Background(), grpc_retry.Disable())
-		errors.CheckError(err)
-
-		err = manifeststream.SendApplicationManifestQueryWithFiles(context.Background(), client, appName, appNamespace, changedFilePath, localIncludes)
-		errors.CheckError(err)
-	*/
-
-	source := app.Spec.GetSource()
-	log.Debug().Msgf("App source: %+v", source)
-
-	res, err := repository.GenerateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, source.TargetRevision, &repoapiclient.ManifestRequest{
-		Repo:              &argoappv1.Repository{Repo: source.RepoURL},
-		AppLabelKey:       argoSettings.AppLabelKey,
-		AppName:           app.Name,
-		Namespace:         app.Spec.Destination.Namespace,
-		ApplicationSource: &source,
-		KustomizeOptions:  argoSettings.KustomizeOptions,
-		KubeVersion:       cluster.Info.ServerVersion,
-		ApiVersions:       cluster.Info.APIVersions,
-		Plugins:           argoSettings.ConfigManagementPlugins,
-		TrackingMethod:    argoSettings.TrackingMethod,
-	}, true, &git.NoopCredsStore{}, resource.MustParse("0"), nil)
+	log.Debug().Str("name", name).Msg("generating diff for application...")
+	res, err := argo.generateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, app, argoSettings, cluster)
 	if err != nil {
 		telemetry.SetError(span, err, "Generate Manifests")
-		return nil, err
+		return nil, errors.Wrap(err, "failed to generate manifests")
 	}
 
 	if res.Manifests == nil {
@@ -107,9 +71,40 @@ func GetManifestsLocal(ctx context.Context, name string, tempRepoDir string, cha
 	return res.Manifests, nil
 }
 
-func FormatManifestsYAML(manifestBytes []string) []string {
-	manifests := []string{}
-	for _, manifest := range manifestBytes {
+func (argo *ArgoClient) generateManifests(
+	ctx context.Context, appPath, tempRepoDir string, app argoappv1.Application, argoSettings *settings.Settings, cluster *argoappv1.Cluster,
+) (*repoapiclient.ManifestResponse, error) {
+	argo.manifestsLock.Lock()
+	defer argo.manifestsLock.Unlock()
+
+	source := app.Spec.GetSource()
+
+	return repository.GenerateManifests(
+		ctx,
+		appPath,
+		tempRepoDir,
+		source.TargetRevision,
+		&repoapiclient.ManifestRequest{
+			Repo:              &argoappv1.Repository{Repo: source.RepoURL},
+			AppLabelKey:       argoSettings.AppLabelKey,
+			AppName:           app.Name,
+			Namespace:         app.Spec.Destination.Namespace,
+			ApplicationSource: &source,
+			KustomizeOptions:  argoSettings.KustomizeOptions,
+			KubeVersion:       cluster.Info.ServerVersion,
+			ApiVersions:       cluster.Info.APIVersions,
+			TrackingMethod:    argoSettings.TrackingMethod,
+		},
+		true,
+		new(git.NoopCredsStore),
+		resource.MustParse("0"),
+		nil,
+	)
+}
+
+func ConvertJsonToYamlManifests(jsonManifests []string) []string {
+	var manifests []string
+	for _, manifest := range jsonManifests {
 		ret, err := yaml.JSONToYAML([]byte(manifest))
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to format manifest")

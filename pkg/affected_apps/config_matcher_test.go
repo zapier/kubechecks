@@ -2,51 +2,13 @@ package affected_apps
 
 import (
 	"context"
-	"io"
 	"testing"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
-	"google.golang.org/grpc"
 
-	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 )
-
-type MockArgoApplicationServiceClient struct {
-	application.ApplicationServiceClient
-}
-
-type MockCloser struct {
-	CloseFunc func() error
-}
-
-func (m MockCloser) Close() error {
-	if m.CloseFunc != nil {
-		return m.CloseFunc()
-	}
-	return nil
-}
-
-type MockArgoClient struct {
-	apiclient.Client
-}
-
-func (m MockArgoApplicationServiceClient) List(_ context.Context, _ *application.ApplicationQuery, _ ...grpc.CallOption) (*v1alpha1.ApplicationList, error) {
-	return &v1alpha1.ApplicationList{}, nil
-}
-
-func (m MockArgoClient) NewApplicationClient() (io.Closer, application.ApplicationServiceClient, error) {
-	return MockCloser{}, MockArgoApplicationServiceClient{}, nil
-
-}
-
-func NewMockArgoClient() *argo_client.ArgoClient {
-	apiClient := MockArgoClient{}
-	return argo_client.NewArgoClient(apiClient)
-}
 
 func Test_dirMatchForApp(t *testing.T) {
 	type args struct {
@@ -132,9 +94,12 @@ func TestConfigMatcher_triggeredApps(t *testing.T) {
 		},
 	}
 
-	mockArgoClient := NewMockArgoClient()
 	for _, tt := range tests {
+		tt := tt
+
 		t.Run(tt.name, func(t *testing.T) {
+			mockArgoClient := newMockArgoClient()
+
 			c := testLoadConfig(t, tt.configDir)
 			b := &ConfigMatcher{
 				cfg:        c,
@@ -146,6 +111,23 @@ func TestConfigMatcher_triggeredApps(t *testing.T) {
 		})
 	}
 }
+
+func newMockArgoClient() argoClient {
+	return new(mockArgoClient)
+}
+
+type mockArgoClient struct {
+}
+
+func (m mockArgoClient) GetApplications(ctx context.Context) (*v1alpha1.ApplicationList, error) {
+	return new(v1alpha1.ApplicationList), nil
+}
+
+func (m mockArgoClient) GetApplicationsByAppset(ctx context.Context, appsetName string) (*v1alpha1.ApplicationList, error) {
+	return new(v1alpha1.ApplicationList), nil
+}
+
+var _ argoClient = new(mockArgoClient)
 
 func testLoadConfig(t *testing.T, configDir string) *repo_config.Config {
 	cfg, err := repo_config.LoadRepoConfig(configDir)

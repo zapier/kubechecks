@@ -1,53 +1,43 @@
 name: pr_build
+
 on:
   pull_request:
     paths:
       - '*'
       - '*/**'
       - '!README.md'
-      - '!.tool-versions'
       - '!COPYING.LGPL-3'
       - '!.gitattributes'
       - '!.gitignore'
+    types:
+      - opened
+      - reopened
+      - synchronize
 
-# TODO: Move this to repo config
 env:
-  EARTHLY_TOOL_VERSION: 0.7
-  GOLANG_TOOL_VERSION: 1.19.3
+  FS_TAG: 0.0.0-pr${{ github.event.pull_request.number }}
+
 jobs:
   build:
     runs-on: ubuntu-22.04
 
-    strategy:
-      matrix:
-        platform:
-          - linux/amd64
-#          - linux/arm64
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
 
     steps:
-      - name: Set up QEMU
-        id: qemu
-        uses: docker/setup-qemu-action@v1
-        with:
-          image: tonistiigi/binfmt:latest
-          platforms: all
-        if: matrix.platform == 'linux/arm64'
-
       - uses: actions/checkout@v3
 
-      - name: extract git sha
-        run: echo "GIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      - uses: ./.github/actions/build-image
+        id: build-image
+        with:
+          push: '${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}'
+          image_tag: ${{ env.FS_TAG }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Reads in .tools-versions and spits out env variables
-      - uses: wistia/parse-tool-versions@v1.0
-
-      - uses: earthly/actions-setup@v1
-        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
-
-      - run: |
-          earthly \
-            --platform ${{ matrix.platform }} \
-            +docker \
-              --GIT_COMMIT=${{ env.GIT_SHA_SHORT }} \
-              --GIT_TAG=mr \
-              --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}
+      - uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            Temporary image available at `${{ steps.build-image.outputs.image }}`.
+        if: github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name

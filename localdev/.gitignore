@@ -2,3 +2,5 @@ terraform.tfstate*
 .terraform.lock.hcl
 .terraform/**
 .terraform.tfstate.lock.info
+/terraform/modules/vcs_files/base_files/appsets/httpdump/httpdump.yaml
+/terraform/modules/vcs_files/base_files/appsets/echo-server/echo-server.yaml

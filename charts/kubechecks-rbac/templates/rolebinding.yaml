@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.clusterRoleBindingName | default "kubechecks-remote-role-binding" }}
+  namespace: {{ .Values.namespace | default "argocd" }}
+subjects:
+  - kind: Group
+    apiGroup: rbac.authorization.k8s.io
+    name: {{ .Values.clusterRoleBindingGroup | default "kubechecks-remote-group" }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Values.clusterRoleName | default "kubechecks-remote-role" }}
+  apiGroup: rbac.authorization.k8s.io

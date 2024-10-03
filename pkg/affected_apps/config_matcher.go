@@ -6,26 +6,33 @@ import (
 	"path"
 	"strings"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/app_directory"
+	"github.com/zapier/kubechecks/pkg/git"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/zapier/kubechecks/pkg/argo_client"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/repo_config"
 )
 
 type ConfigMatcher struct {
 	cfg        *repo_config.Config
-	argoClient *argo_client.ArgoClient
+	argoClient argoClient
 }
 
-func NewConfigMatcher(cfg *repo_config.Config) *ConfigMatcher {
-	argoClient := argo_client.GetArgoClient()
-	return &ConfigMatcher{cfg: cfg, argoClient: argoClient}
+type argoClient interface {
+	GetApplications(ctx context.Context) (*v1alpha1.ApplicationList, error)
+	GetApplicationsByAppset(ctx context.Context, appsetName string) (*v1alpha1.ApplicationList, error)
 }
 
-func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error) {
-	appsMap := make(map[string]string)
-	var appSetList []ApplicationSet
+func NewConfigMatcher(cfg *repo_config.Config, ctr container.Container) *ConfigMatcher {
+	return &ConfigMatcher{cfg: cfg, argoClient: ctr.ArgoClient}
+}
+
+func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string, _ string, _ *git.Repo) (AffectedItems, error) {
+	triggeredAppsMap := make(map[string]string)
+	var appSetList []v1alpha1.ApplicationSet
 
 	triggeredApps, triggeredAppsets, err := b.triggeredApps(ctx, changeList)
 	if err != nil {
@@ -33,19 +40,32 @@ func (b *ConfigMatcher) AffectedApps(ctx context.Context, changeList []string) (
 	}
 
 	for _, app := range triggeredApps {
-		appsMap[app.Name] = app.Path
+		triggeredAppsMap[app.Name] = app.Path
 	}
 
 	for _, appset := range triggeredAppsets {
-		appSetList = append(appSetList, ApplicationSet{appset.Name})
+		appSetList = append(appSetList, v1alpha1.ApplicationSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: appset.Name,
+			},
+		})
 	}
 
-	var appsSlice []app_directory.ApplicationStub
-	for name, appPath := range appsMap {
-		appsSlice = append(appsSlice, app_directory.ApplicationStub{Name: name, Path: appPath})
+	allArgoApps, err := b.argoClient.GetApplications(ctx)
+	if err != nil {
+		return AffectedItems{}, errors.Wrap(err, "failed to list applications")
 	}
 
-	return AffectedItems{Applications: appsSlice, ApplicationSets: appSetList}, nil
+	var triggeredAppsSlice []v1alpha1.Application
+	for _, app := range allArgoApps.Items {
+		if _, ok := triggeredAppsMap[app.Name]; !ok {
+			continue
+		}
+
+		triggeredAppsSlice = append(triggeredAppsSlice, app)
+	}
+
+	return AffectedItems{Applications: triggeredAppsSlice, ApplicationSets: appSetList}, nil
 }
 
 func (b *ConfigMatcher) triggeredApps(ctx context.Context, modifiedFiles []string) ([]*repo_config.ArgoCdApplicationConfig, []*repo_config.ArgocdApplicationSetConfig, error) {
@@ -121,7 +141,8 @@ func (b *ConfigMatcher) appsFromApplicationSetForDir(ctx context.Context, dir st
 		}
 	}
 
-	apps := []*repo_config.ArgoCdApplicationConfig{}
+	var apps []*repo_config.ArgoCdApplicationConfig
+
 	for _, appset := range appsets {
 		appList, err := b.argoClient.GetApplicationsByAppset(ctx, appset.Name)
 		if err != nil {
@@ -139,6 +160,7 @@ func (b *ConfigMatcher) appsFromApplicationSetForDir(ctx context.Context, dir st
 			})
 		}
 	}
+
 	return appsets, apps, nil
 }
 

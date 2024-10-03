@@ -3,28 +3,20 @@
 # Test ArgoCD Applications
 # /////////////////////////////////////////////////////////////////////////////
 
-def install_test_appsets(cfg):
+def copy_test_appsets(cfg):
     # Load the terraform url we output, default to gitlab if cant find a vcs-type variable
     vcsPath = "./localdev/terraform/{}/project.url".format(cfg.get('vcs-type', 'gitlab'))
     print("Path to url: " + vcsPath)
     projectUrl=str(read_file(vcsPath, "")).strip('\n')
     print("Remote Project URL: " + projectUrl)
 
-    k8s_kind('ApplicationSets', api_version="apiextensions.k8s.io/v1")
-
     if projectUrl != "":
-      for appset in ["httpdump"]:
-        print("Creating Test ApplicationSet: " + appset)
+      for appset in ["httpdump","echo-server"]:
+        source_file = "./localdev/test_appsets/{}.yaml".format(appset)
+        dest_file = "./localdev/terraform/modules/vcs_files/base_files/appsets/{}/{}.yaml".format(appset,appset)
 
-        # read the application YAML and patch the repoURL
-        objects = read_yaml_stream("localdev/test_appsets/{}.yaml".format(appset))
-        for o in objects:
-          o['spec']['template']['spec']['source']['repoURL'] = projectUrl
-        k8s_yaml(encode_yaml_stream(objects))
+        # Copy the file to the specific terraform directory
+        local("mkdir -p ./localdev/terraform/modules/vcs_files/base_files/appsets/{} && cp {} {}".format(appset, source_file, dest_file))
 
-        k8s_resource(
-            new_name=appset,
-            objects=['{}:applicationset'.format(appset)],
-            labels=["test_appsets"],
-            resource_deps=["argocd-crds","argocd"],
-        )
+        # Modify the copied file to replace ${REPO_URL} with projectUrl
+        local("sed -i '' 's#REPO_URL#{}#g' {}".format(projectUrl, dest_file))

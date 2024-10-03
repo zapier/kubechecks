@@ -8,18 +8,15 @@ on:
       - '*.go'
       - 'go.mod'
       - 'go.sum'
-env:
-  EARTHLY_TOOL_VERSION: 0.7
-  GOLANG_TOOL_VERSION: 1.19.3
 jobs:
   ci-golang:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
 
-      - uses: wistia/parse-tool-versions@v1.0
+      - uses: djeebus/parse-tool-versions@v2.1
 
       - uses: earthly/actions-setup@v1
-        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
+        with: { version: "v${{ env.EARTHLY }}" }
 
-      - run: earthly +ci-golang --GOLANG_VERSION=${{ env.GOLANG_TOOL_VERSION }}
+      - run: ./earthly.sh +ci-golang

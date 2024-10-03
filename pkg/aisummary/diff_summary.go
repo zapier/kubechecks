@@ -10,12 +10,14 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
+var tracer = otel.Tracer("pkg/aisummary")
+
 // SummarizeDiff uses ChatGPT to summarize changes to a Kubernetes application.
-func (c *OpenAiClient) SummarizeDiff(ctx context.Context, appName string, manifests []string, diff string) (string, error) {
-	ctx, span := otel.Tracer("Kubechecks").Start(ctx, "SummarizeDiff")
+func (c *OpenAiClient) SummarizeDiff(ctx context.Context, appName, diff string) (string, error) {
+	ctx, span := tracer.Start(ctx, "SummarizeDiff")
 	defer span.End()
 
-	model := openai.GPT40314
+	model := openai.GPT4o
 	if len(diff) < 3500 {
 		model = openai.GPT3Dot5Turbo
 	}

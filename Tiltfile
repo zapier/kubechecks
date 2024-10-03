@@ -1,12 +1,19 @@
 load('ext://dotenv', 'dotenv')
 load('ext://earthly', 'earthly_build', 'earthly_build_with_restart')
 load('ext://helm_remote', 'helm_remote')
-load('ext://namespace', 'namespace_yaml')
 load('ext://tests/golang', 'test_go')
+load('ext://namespace', 'namespace_create')
 load('ext://uibutton', 'cmd_button')
+load('ext://helm_resource', 'helm_resource')
+load('ext://local_output', 'local_output')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
-dotenv()
+
+# Check if the .secret file exists
+if not os.path.exists('.secret'):
+    fail('The .secret file is missing. Please copy .secret file from .secret.example and setup before running Tilt.')
+
+dotenv(fn='.secret')
 
 config.define_bool("enable_repo", True, 'create a new project for testing this app')
 config.define_string("vcs-type")
@@ -21,9 +28,9 @@ allow_k8s_contexts([
 ])
 
 k8s_namespace='kubechecks'
-k8s_yaml(namespace_yaml(k8s_namespace), allow_duplicates=False)
+namespace_create(k8s_namespace)
 k8s_resource(
-  objects=['kubechecks:namespace'],
+  objects=[k8s_namespace + ':namespace'],
   labels=["localdev"],
   new_name='k8s:namespace'
 )
@@ -45,7 +52,9 @@ deploy_ngrok(cfg)
 # /////////////////////////////////////////////////////////////////////////////
 
 # Load ArgoCD Tiltfile
-load('./localdev/argocd/Tiltfile', 'deploy_argo')
+load('./localdev/argocd/Tiltfile', 'deploy_argo', 'delete_argocd_apps_on_tilt_down', 'force_argocd_cleanup_on_tilt_down')
+# make sure apps get removed (cleanly) before ArgoCD is shutdown
+delete_argocd_apps_on_tilt_down()
 deploy_argo()
 
 #load('./localdev/reloader/Tiltfile', 'deploy_reloader')
@@ -70,7 +79,7 @@ if cfg.get('enable_repo', True):
     check_env_set("GITLAB_TOKEN")
 
     gitlabOutputs=local_terraform_resource(
-      'tf-gitlab',
+      'tf-vcs',
       dir='./localdev/terraform/gitlab',
       env={
         'GITLAB_TOKEN': os.getenv('GITLAB_TOKEN'),
@@ -95,7 +104,7 @@ if cfg.get('enable_repo', True):
     check_env_set("GITHUB_TOKEN")
 
     githubOutputs=local_terraform_resource(
-      'tf-github',
+      'tf-vcs',
       dir='./localdev/terraform/github',
       env={
         'GITHUB_TOKEN': os.getenv('GITHUB_TOKEN'),
@@ -123,7 +132,7 @@ if cfg.get('enable_repo', True):
 test_go(
   'go-test', '.',
   recursive=True,
-  timeout='30s',
+  timeout='60s',
   extra_args=['-v'],
   labels=["kubechecks"],
   deps=[
@@ -135,19 +144,54 @@ test_go(
   ],
 )
 
-arch="arm64" if str(local("uname -m")).strip('\n') == "arm64" else "amd64"
+
+
+# read .tool-versions file and return a dictionary of tools and their versions
+def parse_tool_versions(fn):
+    if not os.path.exists(fn):
+        warn("tool versions file not found: '%s'" % fn)
+        return dict()
+
+    f = read_file(fn)
+
+    lines = str(f).splitlines()
+
+    tools = dict()
+
+    for linenumber in range(len(lines)):
+        line = lines[linenumber]
+        parts = line.split("#", 1)
+        if len(parts) == 2:
+            line = parts[0]
+        line = line.strip()
+        if line == "":
+            continue
+        parts = line.split(' ', 1)
+        tools[parts[0].strip()] = parts[1].strip()
+    return tools
+
+tool_versions = parse_tool_versions(".tool-versions")
+
+# get the git commit ref
+git_commit = local_output('git rev-parse --short HEAD')
 
 earthly_build(
     context='.',
     target="+docker-debug",
     ref='kubechecks',
-    image_arg='CI_REGISTRY_IMAGE',
+    image_arg='IMAGE_NAME',
     ignore='./dist',
     extra_args=[
-        '--GOARCH={}'.format(arch),
-    ]
+        '--CHART_RELEASER_VERSION='+tool_versions.get('helm-cr'),
+        '--GOLANG_VERSION='+tool_versions.get('golang'),
+        '--GOLANGCI_LINT_VERSION='+tool_versions.get('golangci-lint'),
+        '--HELM_VERSION='+tool_versions.get('helm'),
+        '--KUBECONFORM_VERSION='+tool_versions.get('kubeconform'),
+        '--KUSTOMIZE_VERSION='+tool_versions.get('kustomize'),
+        '--STATICCHECK_VERSION='+tool_versions.get('staticcheck'),
+        '--GIT_COMMIT='+git_commit,
+        ],
 )
-
 
 cmd_button('loc:go mod tidy',
   argv=['go', 'mod', 'tidy'],
@@ -155,12 +199,7 @@ cmd_button('loc:go mod tidy',
   icon_name='move_up',
   text='go mod tidy',
 )
-cmd_button('generate-mocks',
-   argv=['go', 'generate', './...'],
-   resource='kubechecks',
-   icon_name='change_circle',
-   text='go generate',
-)
+
 cmd_button('restart-pod',
    argv=['kubectl', '-n', 'kubechecks', 'rollout', 'restart', 'deployment/kubechecks'],
    resource='kubechecks',
@@ -168,19 +207,29 @@ cmd_button('restart-pod',
    text='restart pod',
 )
 
-k8s_yaml(helm(
-  './charts/kubechecks/',
-  namespace='kubechecks',
-  name='kubechecks',
-  values='./localdev/kubechecks/values.yaml',
-  set=['deployment.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg), 'deployment.env.NGROK_URL=' + get_ngrok_url(cfg),
-        'deployment.env.KUBECHECKS_ARGOCD_WEBHOOK_URL='+ get_ngrok_url(cfg) +'/argocd/api/webhook',
-        'deployment.env.KUBECHECKS_ENABLE_CONFTEST=true',
-        'deployment.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
-        'secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
-        'secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
-        'secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),],
-))
+
+helm_resource(name='kubechecks', 
+              chart='./charts/kubechecks',
+              image_deps=['kubechecks'],
+              image_keys=[('deployment.image.name', 'deployment.image.tag')],
+              namespace= k8s_namespace,
+              flags=[
+                '--values=./localdev/kubechecks/values.yaml',
+                '--set=configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg),
+                '--set=configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
+                '--set=configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
+                '--set=configMap.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
+                '--set=secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
+                '--set=secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
+                '--set=secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
+              ],
+              labels=["kubechecks"],
+              resource_deps=[
+                'k8s:namespace',
+                'argocd',
+                'argocd-crds',
+                'tf-vcs' if cfg.get('enable_repo', True) else '',
+              ])
 
 k8s_resource(
   'kubechecks',
@@ -188,7 +237,9 @@ k8s_resource(
   resource_deps=[
     # 'go-build',
     'go-test',
-    'k8s:namespace'
+    'k8s:namespace',
+    'argocd',
+    'argocd-crds',
   ],
   labels=["kubechecks"]
 )
@@ -201,20 +252,15 @@ k8s_resource(
       'kubechecks-argocd-server:clusterrolebinding',
     ],
     new_name='kubechecks-rbac',
-    labels=["kubechecks"],
-    resource_deps=['k8s:namespace']
-)
-
-helm_remote(
-    'reloader',
-    repo_url='https://stakater.github.io/stakater-charts',
-    release_name='reloader',
-    namespace='kubechecks',
-    version='1.0.26'
+    resource_deps=['k8s:namespace'],
+    labels=["kubechecks"]
 )
 
 load("localdev/test_apps/Tiltfile", "install_test_apps")
 install_test_apps(cfg)
 
-load("localdev/test_appsets/Tiltfile", "install_test_appsets")
-install_test_appsets(cfg)
+load("localdev/test_appsets/Tiltfile", "copy_test_appsets")
+copy_test_appsets(cfg)
+
+
+force_argocd_cleanup_on_tilt_down()

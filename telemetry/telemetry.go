@@ -6,14 +6,11 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg"
-
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	mGlobal "go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -54,7 +51,7 @@ func (ot *OperatorTelemetry) StartMetricCollectors() error {
 	return nil
 }
 
-func Init(ctx context.Context, serviceName string, otelEnabled bool, otelHost string, otelPort string) (*OperatorTelemetry, error) {
+func Init(ctx context.Context, serviceName, gitTag, gitCommit string, otelEnabled bool, otelHost, otelPort string) (*OperatorTelemetry, error) {
 	log.Info().Msg("Initializing telemetry")
 	bt := &OperatorTelemetry{
 		BaseTelemetry: &BaseTelemetry{
@@ -64,8 +61,8 @@ func Init(ctx context.Context, serviceName string, otelEnabled bool, otelHost st
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(serviceName),
-			semconv.ServiceVersionKey.String(pkg.GitTag),
-			attribute.String("SHA", pkg.GitCommit),
+			semconv.ServiceVersionKey.String(gitTag),
+			attribute.String("SHA", gitCommit),
 		),
 	)
 	if err != nil {
@@ -89,7 +86,7 @@ func createGRPCConn(ctx context.Context, enabled bool, otelHost string, otelPort
 		return nil, nil
 	}
 
-	conn, err := grpc.DialContext(ctx,
+	conn, err := grpc.NewClient(
 		fmt.Sprintf("%s:%s", otelHost, otelPort),
 		grpc.WithTransportCredentials(
 			insecure.NewCredentials(),
@@ -186,7 +183,6 @@ func (bt *BaseTelemetry) initOTLPMetric(conn *grpc.ClientConn, res *resource.Res
 
 	otelReader := metric.NewPeriodicReader(
 		mClient,
-		metric.WithAggregationSelector(metric.DefaultAggregationSelector),
 		metric.WithInterval(DefaultMetricInterval*time.Second),
 	)
 
@@ -195,7 +191,7 @@ func (bt *BaseTelemetry) initOTLPMetric(conn *grpc.ClientConn, res *resource.Res
 		metric.WithReader(otelReader),
 	)
 
-	mGlobal.SetMeterProvider(bt.metric)
+	otel.SetMeterProvider(bt.metric)
 
 	return nil
 }

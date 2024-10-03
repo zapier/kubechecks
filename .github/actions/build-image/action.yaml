@@ -1,0 +1,55 @@
+name: Build multiarch image
+description: Builds a multiarch image
+
+inputs:
+  image_tag:
+    description: The image tag
+    required: true
+  push:
+    description: True to push image after building, false otherwise
+    required: false
+    default: "false"
+  tag_latest:
+    description: Tag latest as well as the provided tag
+    default: "false"
+  token:
+    description: Github token
+    required: true
+
+outputs:
+  image:
+    description: The full image name and tag
+    value: ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
+
+runs:
+  using: composite
+
+  steps:
+    - uses: docker/setup-qemu-action@v3
+      with:
+        image: tonistiigi/binfmt:latest
+        platforms: all
+
+    - uses: wistia/parse-tool-versions@v1.0
+
+    - uses: earthly/actions-setup@v1
+      with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
+
+    - name: login to registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ inputs.token }}
+
+    - name: Build and push the Docker image
+      shell: bash
+      env:
+        ACTIONS_STEP_DEBUG: "true"
+      run: >-       
+        ./earthly.sh 
+        ${{ inputs.push == 'true' && '--push' || '' }} 
+        +docker-multiarch
+        ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }}
+        --GIT_TAG=${{ inputs.image_tag }}
+        --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}

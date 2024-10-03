@@ -4,12 +4,44 @@ import (
 	"context"
 	"path"
 
-	"github.com/zapier/kubechecks/pkg/app_directory"
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 type AffectedItems struct {
-	Applications    []app_directory.ApplicationStub
-	ApplicationSets []ApplicationSet
+	Applications    []v1alpha1.Application
+	ApplicationSets []v1alpha1.ApplicationSet
+}
+
+func (ai AffectedItems) Union(other AffectedItems) AffectedItems {
+	// merge apps
+	appNameSet := make(map[string]struct{})
+	for _, app := range ai.Applications {
+		appNameSet[app.Name] = struct{}{}
+	}
+	for _, app := range other.Applications {
+		if _, ok := appNameSet[app.Name]; ok {
+			continue
+		}
+
+		ai.Applications = append(ai.Applications, app)
+	}
+
+	// merge appsets
+	appSetNameSet := make(map[string]struct{})
+	for _, appSet := range ai.ApplicationSets {
+		appSetNameSet[appSet.Name] = struct{}{}
+	}
+	for _, appSet := range other.ApplicationSets {
+		if _, ok := appSetNameSet[appSet.Name]; ok {
+			continue
+		}
+
+		ai.ApplicationSets = append(ai.ApplicationSets, appSet)
+	}
+
+	// return the merge
+	return ai
 }
 
 type ApplicationSet struct {
@@ -17,7 +49,7 @@ type ApplicationSet struct {
 }
 
 type Matcher interface {
-	AffectedApps(ctx context.Context, changeList []string) (AffectedItems, error)
+	AffectedApps(ctx context.Context, changeList []string, targetBranch string, repo *git.Repo) (AffectedItems, error)
 }
 
 // modifiedDirs filters a list of changed files down to a list
