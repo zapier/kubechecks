@@ -5,6 +5,10 @@ inputs:
   image_tag:
     description: The image tag
     required: true
+  push:
+    description: True to push image after building, false otherwise
+    required: false
+    default: "false"
   tag_latest:
     description: Tag latest as well as the provided tag
     default: "false"
@@ -21,7 +25,7 @@ runs:
   using: composite
 
   steps:
-    - uses: docker/setup-qemu-action@v1
+    - uses: docker/setup-qemu-action@v3
       with:
         image: tonistiigi/binfmt:latest
         platforms: all
@@ -32,7 +36,7 @@ runs:
       with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
 
     - name: login to registry
-      uses: docker/login-action@v1
+      uses: docker/login-action@v3
       with:
         registry: ghcr.io
         username: ${{ github.repository_owner }}
@@ -42,8 +46,8 @@ runs:
       shell: bash
       run: >-       
         ./earthly.sh 
-        --push 
+        ${{ inputs.push == 'true' && '--push' || '' }} 
         +docker-multiarch
-        ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }} 
+        ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }}
         --GIT_TAG=${{ inputs.image_tag }}
         --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}

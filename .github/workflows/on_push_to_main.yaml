@@ -23,6 +23,7 @@ jobs:
 
       - uses: ./.github/actions/build-image
         with:
+          push: 'true'
           image_tag: ${{ env.GIT_TAG }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
