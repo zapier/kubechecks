@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -193,8 +192,7 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.I
 	owner := comment.GetIssue().GetRepository().GetOwner().GetName()
 	repo := comment.GetIssue().GetRepository().GetName()
 	prNumber := comment.GetIssue().GetNumber()
-	if err != nil {
-		log.Error().Msgf("failed to convert prNumber: %s", err)
+	if prNumber == 0 || repo == "" || owner == "" {
 		return nilPr
 	}
 	pr, ghStatus, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
