@@ -44,8 +44,6 @@ runs:
 
     - name: Build and push the Docker image
       shell: bash
-      env:
-        ACTIONS_STEP_DEBUG: "true"
       run: >-       
         ./earthly.sh 
         ${{ inputs.push == 'true' && '--push' || '' }} 
