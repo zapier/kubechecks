@@ -5,6 +5,10 @@ inputs:
   image_tag:
     description: The image tag
     required: true
+  push:
+    description: True to push image after building, false otherwise
+    required: false
+    default: "false"
   tag_latest:
     description: Tag latest as well as the provided tag
     default: "false"
@@ -44,7 +48,7 @@ runs:
         ACTIONS_STEP_DEBUG: "true"
       run: >-       
         ./earthly.sh 
-        --push 
+        ${{ inputs.push == 'true' && '--push' || '' }} 
         +docker-multiarch
         ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }}
         --GIT_TAG=${{ inputs.image_tag }}
