@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	_ "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -30,52 +30,53 @@ var ControllerCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 
-		log.Info().
-			Str("git-tag", pkg.GitTag).
-			Str("git-commit", pkg.GitCommit).
-			Msg("Starting KubeChecks")
+		slog.Log(ctx, slog.LevelInfo, "Starting KubeChecks",
+			"git-tag", pkg.GitTag,
+			"git-commit", pkg.GitCommit,
+		)
 
-		log.Info().Msg("parsing configuration")
+		slog.Info("parse configuration")
 		cfg, err := config.New()
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to parse configuration")
+			LogFatal(ctx, "failed to parse configuration", "error", err)
 		}
 
 		ctr, err := newContainer(ctx, cfg, true)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create container")
+			LogFatal(ctx, "failed to create container", "error", err)
 		}
 
-		log.Info().Msg("initializing git settings")
+		slog.Info("initializing git settings")
 		if err = initializeGit(ctr); err != nil {
-			log.Fatal().Err(err).Msg("failed to initialize git settings")
+			LogFatal(ctx, "failed to initialize git settings", "error", err)
 		}
 
 		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
-			log.Fatal().Err(err).Msg("failed to process policy locations")
+			LogFatal(ctx, "failed to process policy locations", "error", err)
 		}
 		if err = processLocations(ctx, ctr, cfg.SchemasLocations); err != nil {
-			log.Fatal().Err(err).Msg("failed to process schema locations")
+			LogFatal(ctx, "failed to process schema locations", "error", err)
 		}
 
 		processors, err := getProcessors(ctr)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create processors")
+			LogFatal(ctx, "failed to create processors", "error", err)
 		}
 
 		t, err := initTelemetry(ctx, cfg)
 		if err != nil {
-			log.Panic().Err(err).Msg("Failed to initialize telemetry")
+			slog.Error("failed to initialize telemetry", "error", err)
+			panic(err)
 		}
 		defer t.Shutdown()
 
-		log.Info().Msgf("starting web server")
+		slog.Info("starting app watcher")
 		startWebserver(ctx, ctr, processors)
 
-		log.Info().Msgf("listening for requests")
+		slog.Info("listening for requests")
 		waitForShutdown()
 
-		log.Info().Msg("shutting down gracefully")
+		slog.Info("shutting down gracefully")
 		waitForPendingRequest()
 	},
 }
@@ -102,7 +103,7 @@ func initializeGit(ctr container.Container) error {
 
 func waitForPendingRequest() {
 	for events.GetInFlight() > 0 {
-		log.Info().Int("count", events.GetInFlight()).Msg("waiting for in-flight requests to complete")
+		slog.Info("waiting for in-flight requests to complete", "count", events.GetInFlight())
 		time.Sleep(time.Second * 3)
 	}
 }
@@ -116,7 +117,7 @@ func waitForShutdown() {
 
 	go func() {
 		sig := <-sigs
-		log.Debug().Str("signal", sig.String()).Msg("received signal")
+		slog.Debug("received signal", "signal", sig.String())
 		done <- true
 	}()
 

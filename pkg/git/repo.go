@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
@@ -53,11 +54,11 @@ func (r *Repo) Clone(ctx context.Context) error {
 		return errors.Wrap(err, "failed to make temp dir")
 	}
 
-	log.Info().
-		Str("temp-dir", r.Directory).
-		Str("clone-url", r.CloneURL).
-		Str("branch", r.BranchName).
-		Msg("cloning git repo")
+	slog.Info("cloing git repo",
+		"temp-dir", r.Directory,
+		"clone-url", r.CloneURL,
+		"branch", r.BranchName,
+	)
 
 	//  Attempt to locally clone the repo based on the provided information stored within
 	_, span := tracer.Start(ctx, "CloneRepo")
@@ -71,7 +72,7 @@ func (r *Repo) Clone(ctx context.Context) error {
 	cmd := r.execCommand("git", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Error().Err(err).Msgf("unable to clone repository, %s", out)
+		slog.Error(fmt.Sprintf("unable to clone repository, %s", out), "error", err)
 		return err
 	}
 

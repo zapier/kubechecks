@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/container"
@@ -65,11 +65,12 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDurati
 				}
 
 				if err := repo.Update(ctx); err != nil {
-					log.Warn().
-						Err(err).
-						Str("path", repo.Directory).
-						Str("url", repo.CloneURL).
-						Msg("failed to update repo")
+					slog.Warn(
+						"failed to update repo",
+						"error", err,
+						"path", repo.Directory,
+						"url", repo.CloneURL,
+					)
 				}
 			}
 		}()

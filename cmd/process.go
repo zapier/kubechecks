@@ -1,7 +1,8 @@
 package cmd
 
 import (
-	"github.com/rs/zerolog/log"
+	"log/slog"
+
 	"github.com/spf13/cobra"
 
 	"github.com/zapier/kubechecks/pkg/config"
@@ -17,28 +18,28 @@ var processCmd = &cobra.Command{
 
 		cfg, err := config.New()
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to generate config")
+			LogFatal(ctx, "failed to generate config", "error", err)
 		}
 
 		ctr, err := newContainer(ctx, cfg, false)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create container")
+			LogFatal(ctx, "failed to create container", "error", err)
 		}
 
-		log.Info().Msg("initializing git settings")
+		slog.Info("initializing git settings")
 		if err = initializeGit(ctr); err != nil {
-			log.Fatal().Err(err).Msg("failed to initialize git settings")
+			LogFatal(ctx, "failed to initialize git settings", "error", err)
 		}
 
 		repo, err := ctr.VcsClient.LoadHook(ctx, args[0])
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to load hook")
+			LogFatal(ctx, "failed to load hook", "error", err)
 			return
 		}
 
 		processors, err := getProcessors(ctr)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create processors")
+			LogFatal(ctx, "failed to create processors", "error", err)
 		}
 
 		server.ProcessCheckEvent(ctx, repo, ctr, processors)
