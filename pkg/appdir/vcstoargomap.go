@@ -80,17 +80,26 @@ func (v2a VcsToArgoMap) WalkKustomizeApps(cloneURL string, fs fs.FS) *AppDirecto
 }
 
 func (v2a VcsToArgoMap) AddApp(app *v1alpha1.Application) {
-	if app.Spec.Source == nil {
+	if app.Spec.Source == nil && app.Spec.Sources == nil {
 		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
 		return
 	}
 
-	appDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
-	appDirectory.ProcessApp(*app)
+	if app.Spec.Source != nil {
+		appDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
+		appDirectory.ProcessApp(*app)
+	}
+	if app.Spec.Sources != nil {
+		for _, src := range app.Spec.Sources {
+			appDirectory := v2a.GetAppsInRepo(src.RepoURL)
+			appDirectory.ProcessApp(*app)
+		}
+	}
+
 }
 
 func (v2a VcsToArgoMap) UpdateApp(old *v1alpha1.Application, new *v1alpha1.Application) {
-	if new.Spec.Source == nil {
+	if new.Spec.Source == nil && new.Spec.Sources == nil {
 		log.Warn().Msgf("%s/%s: no source, skipping", new.Namespace, new.Name)
 		return
 	}
@@ -103,7 +112,7 @@ func (v2a VcsToArgoMap) UpdateApp(old *v1alpha1.Application, new *v1alpha1.Appli
 }
 
 func (v2a VcsToArgoMap) DeleteApp(app *v1alpha1.Application) {
-	if app.Spec.Source == nil {
+	if app.Spec.Source == nil && app.Spec.Sources == nil {
 		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
 		return
 	}
