@@ -28,20 +28,7 @@ func getSchemaLocations(ctr container.Container) []string {
 	}
 
 	// schemas configured globally
-	for _, schemasLocation := range cfg.SchemasLocations {
-		if strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "https://") {
-			locations = append(locations, schemasLocation)
-		} else {
-			if _, err := os.Stat(schemasLocation); err != nil {
-				log.Warn().
-					Err(err).
-					Str("path", schemasLocation).
-					Msg("schemas location is invalid, skipping")
-			} else {
-				locations = append(locations, schemasLocation)
-			}
-		}
-	}
+	locations = append(locations, cfg.SchemasLocations...)
 
 	for index := range locations {
 		location := locations[index]
