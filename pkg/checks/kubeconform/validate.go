@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -20,7 +19,7 @@ import (
 
 var tracer = otel.Tracer("pkg/checks/kubeconform")
 
-func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPath string) []string {
+func getSchemaLocations(ctr container.Container) []string {
 	cfg := ctr.Config
 
 	locations := []string{
@@ -33,10 +32,6 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 		if strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "https://") {
 			locations = append(locations, schemasLocation)
 		} else {
-			if !filepath.IsAbs(schemasLocation) {
-				schemasLocation = filepath.Join(tempRepoPath, schemasLocation)
-			}
-
 			if _, err := os.Stat(schemasLocation); err != nil {
 				log.Warn().
 					Err(err).
@@ -65,7 +60,7 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 	return locations
 }
 
-func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.Result, error) {
+func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -92,7 +87,7 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(ctx, ctr, tempRepoPath)
+		schemaLocations = getSchemaLocations(ctr)
 	)
 
 	log.Debug().Msgf("cache location: %s", vOpts.Cache)
