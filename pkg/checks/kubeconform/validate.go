@@ -32,7 +32,9 @@ func getSchemaLocations(ctr container.Container) []string {
 
 	for index := range locations {
 		location := locations[index]
+		oldLocation := location
 		if location == "default" || strings.Contains(location, "{{") {
+			log.Debug().Str("location", location).Msg("location requires no processing to be valid")
 			continue
 		}
 
@@ -42,6 +44,8 @@ func getSchemaLocations(ctr container.Container) []string {
 
 		location += "{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
 		locations[index] = location
+
+		log.Debug().Str("old", oldLocation).Str("new", location).Msg("processed schema location")
 	}
 
 	return locations

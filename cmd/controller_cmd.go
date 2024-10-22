@@ -51,9 +51,12 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to initialize git settings")
 		}
 
+		log.Info().Strs("locations", cfg.PoliciesLocation).Msg("processing policies locations")
 		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
 			log.Fatal().Err(err).Msg("failed to process policy locations")
 		}
+
+		log.Info().Strs("locations", cfg.SchemasLocations).Msg("processing schemas locations")
 		if err = processLocations(ctx, ctr, cfg.SchemasLocations); err != nil {
 			log.Fatal().Err(err).Msg("failed to process schema locations")
 		}
