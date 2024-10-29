@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -61,8 +62,10 @@ git add ghi.txt
 git commit -m "commit three"
 `)
 	cmd.Env = append(cmd.Env, "TEMPDIR="+originRepo)
+	fmt.Println("Env: ", cmd.Env)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
+	fmt.Println("Script: ", cmd)
 	err = cmd.Run()
 	require.NoError(t, err)
 

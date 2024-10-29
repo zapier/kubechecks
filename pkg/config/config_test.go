@@ -1,10 +1,10 @@
 package config
 
 import (
+	"log/slog"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +22,7 @@ func TestNew(t *testing.T) {
 
 	cfg, err := NewWithViper(v)
 	require.NoError(t, err)
-	assert.Equal(t, zerolog.InfoLevel, cfg.LogLevel)
+	assert.Equal(t, slog.LevelInfo, cfg.LogLevel)
 	assert.Equal(t, true, cfg.ArgoCDInsecure)
 	assert.Equal(t, true, cfg.ArgoCDPlainText)
 	assert.Equal(t, pkg.StateWarning, cfg.WorstConfTestState, "worst states can be overridden")

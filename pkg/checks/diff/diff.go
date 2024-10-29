@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -21,9 +23,8 @@ import (
 	"github.com/argoproj/gitops-engine/pkg/sync/ignore"
 	"github.com/argoproj/gitops-engine/pkg/utils/kube"
 	"github.com/ghodss/yaml"
-	"github.com/go-logr/zerologr"
+	"github.com/go-logr/logr"
 	"github.com/pmezard/go-difflib/difflib"
-	"github.com/rs/zerolog/log"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -56,14 +57,17 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 
 	app := request.App
 
-	log.Debug().Str("name", app.Name).Msg("generating diff for application...")
+	slog.Debug(
+		"generating diff for application...",
+		"name", app.Name,
+	)
 
 	items := make([]objKeyLiveTarget, 0)
 	var unstructureds []*unstructured.Unstructured
 	for _, mfst := range request.JsonManifests {
 		obj, err := argoappv1.UnmarshalToUnstructured(mfst)
 		if err != nil {
-			log.Warn().Err(err).Msg("failed to unmarshal to unstructured")
+			slog.Warn("Failed to unmarshal to unstructured", "error", err)
 			continue
 		}
 
@@ -99,7 +103,7 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 	var added, modified, removed int
 	for _, item := range items {
 		resourceId := fmt.Sprintf("%s/%s %s/%s", item.key.Group, item.key.Kind, item.key.Namespace, item.key.Name)
-		log.Trace().Str("resource", resourceId).Msg("diffing object")
+		slog.Log(ctx, slog.Level(-8), "diffing object", "resource", resourceId)
 
 		if item.target != nil && hook.IsHook(item.target) || item.live != nil && hook.IsHook(item.live) {
 			continue
@@ -171,7 +175,7 @@ func addResourceDiffToMessage(ctx context.Context, diffBuffer *strings.Builder, 
 		live = item.live
 		if err := json.Unmarshal(diffRes.PredictedLive, target); err != nil {
 			telemetry.SetError(span, err, "JSON Unmarshall")
-			log.Warn().Err(err).Msg("failed to unmarshall json")
+			slog.Warn("failed to unmarshall json", "error", err)
 		}
 	} else {
 		live = item.live
@@ -201,8 +205,10 @@ func generateDiff(ctx context.Context, request checks.Request, argoSettings *set
 	ignoreNormalizerOpts := normalizers.IgnoreNormalizerOpts{
 		JQExecutionTimeout: 1 * time.Second,
 	}
+	slogLogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
+	slogCtx := logr.NewContextWithSlogLogger(ctx, slogLogger)
 	diffConfig, err := argodiff.NewDiffConfigBuilder().
-		WithLogger(zerologr.New(&log.Logger)).
+		WithLogger(logr.FromContextOrDiscard(slogCtx)).
 		WithDiffSettings(request.App.Spec.IgnoreDifferences, overrides, ignoreAggregatedRoles, ignoreNormalizerOpts).
 		WithTracking(argoSettings.AppLabelKey, argoSettings.TrackingMethod).
 		WithNoCache().
@@ -260,17 +266,17 @@ var nilApp = argoappv1.Application{}
 
 func isApp(item objKeyLiveTarget, manifests []byte) (argoappv1.Application, bool) {
 	if strings.ToLower(item.key.Group) != "argoproj.io" {
-		log.Debug().Str("group", item.key.Group).Msg("group is not correct")
+		slog.Debug("group is not correct", "group", item.key.Group)
 		return nilApp, false
 	}
 	if strings.ToLower(item.key.Kind) != "application" {
-		log.Debug().Str("kind", item.key.Kind).Msg("kind is not correct")
+		slog.Debug("kind is not correct", "kind", item.key.Kind)
 		return nilApp, false
 	}
 
 	var app argoappv1.Application
 	if err := json.Unmarshal(manifests, &app); err != nil {
-		log.Warn().Err(err).Msg("failed to deserialize application")
+		slog.Warn("failed to unmarshal application", "error", err)
 		return nilApp, false
 	}
 
