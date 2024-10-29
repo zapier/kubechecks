@@ -69,7 +69,7 @@ func convertState(state pkg.CommitState) gitlab.BuildStateValue {
 		return gitlab.Running
 	case pkg.StateFailure, pkg.StateError, pkg.StatePanic:
 		return gitlab.Failed
-	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone:
+	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone, pkg.StateSkip:
 		return gitlab.Success
 	}
 
