@@ -2,13 +2,14 @@ package container
 
 import (
 	"context"
-	"io/fs"
+	"fmt"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	client "github.com/zapier/kubechecks/pkg/kubernetes"
+	"github.com/zapier/kubechecks/pkg/vcs/github_client"
+	"github.com/zapier/kubechecks/pkg/vcs/gitlab_client"
 
-	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/app_watcher"
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/config"
@@ -17,35 +18,107 @@ import (
 )
 
 type Container struct {
-	ApplicationWatcher    *app_watcher.ApplicationWatcher
-	ApplicationSetWatcher *app_watcher.ApplicationSetWatcher
-	ArgoClient            *argo_client.ArgoClient
+	ArgoClient *argo_client.ArgoClient
 
 	Config config.ServerConfig
 
 	RepoManager *git.RepoManager
 
 	VcsClient    vcs.Client
-	VcsToArgoMap VcsToArgoMap
+	VcsToArgoMap appdir.VcsToArgoMap
 
 	KubeClientSet client.Interface
-}
-
-type VcsToArgoMap interface {
-	AddApp(*v1alpha1.Application)
-	AddAppSet(*v1alpha1.ApplicationSet)
-	UpdateApp(old, new *v1alpha1.Application)
-	UpdateAppSet(old *v1alpha1.ApplicationSet, new *v1alpha1.ApplicationSet)
-	DeleteApp(*v1alpha1.Application)
-	DeleteAppSet(app *v1alpha1.ApplicationSet)
-	GetVcsRepos() []string
-	GetAppsInRepo(string) *appdir.AppDirectory
-	GetAppSetsInRepo(string) *appdir.AppSetDirectory
-	GetMap() map[pkg.RepoURL]*appdir.AppDirectory
-	WalkKustomizeApps(cloneURL string, fs fs.FS) *appdir.AppDirectory
 }
 
 type ReposCache interface {
 	Clone(ctx context.Context, repoUrl string) (string, error)
 	CloneWithBranch(ctx context.Context, repoUrl, targetBranch string) (string, error)
+}
+
+func New(ctx context.Context, cfg config.ServerConfig) (Container, error) {
+	var err error
+
+	var ctr = Container{
+		Config:      cfg,
+		RepoManager: git.NewRepoManager(cfg),
+	}
+
+	// create vcs client
+	switch cfg.VcsType {
+	case "gitlab":
+		ctr.VcsClient, err = gitlab_client.CreateGitlabClient(cfg)
+	case "github":
+		ctr.VcsClient, err = github_client.CreateGithubClient(cfg)
+	default:
+		err = fmt.Errorf("unknown vcs-type: %q", cfg.VcsType)
+	}
+	if err != nil {
+		return ctr, errors.Wrap(err, "failed to create vcs client")
+	}
+	var kubeClient client.Interface
+
+	switch cfg.KubernetesType {
+	// TODO: expand with other cluster types
+	case client.ClusterTypeLOCAL:
+		kubeClient, err = client.New(&client.NewClientInput{
+			KubernetesConfigPath: cfg.KubernetesConfig,
+			ClusterType:          cfg.KubernetesType,
+		})
+		if err != nil {
+			return ctr, errors.Wrap(err, "failed to create kube client")
+		}
+	case client.ClusterTypeEKS:
+		kubeClient, err = client.New(&client.NewClientInput{
+			KubernetesConfigPath: cfg.KubernetesConfig,
+			ClusterType:          cfg.KubernetesType,
+		},
+			client.EKSClientOption(ctx, cfg.KubernetesClusterID),
+		)
+		if err != nil {
+			return ctr, errors.Wrap(err, "failed to create kube client")
+		}
+	}
+	ctr.KubeClientSet = kubeClient
+	// create argo client
+	if ctr.ArgoClient, err = argo_client.NewArgoClient(cfg, kubeClient); err != nil {
+		return ctr, errors.Wrap(err, "failed to create argo client")
+	}
+
+	// create vcs to argo map
+	vcsToArgoMap := appdir.NewVcsToArgoMap(ctr.VcsClient.Username())
+	ctr.VcsToArgoMap = vcsToArgoMap
+
+	if cfg.MonitorAllApplications {
+		if err = buildAppsMap(ctx, ctr.ArgoClient, ctr.VcsToArgoMap); err != nil {
+			log.Fatal().Err(err).Msg("failed to build apps map")
+		}
+
+		if err = buildAppSetsMap(ctx, ctr.ArgoClient, ctr.VcsToArgoMap); err != nil {
+			log.Fatal().Err(err).Msg("failed to build appsets map")
+		}
+	}
+
+	return ctr, nil
+}
+
+func buildAppsMap(ctx context.Context, argoClient *argo_client.ArgoClient, result appdir.VcsToArgoMap) error {
+	apps, err := argoClient.GetApplications(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to list applications")
+	}
+	for _, app := range apps.Items {
+		result.AddApp(&app)
+	}
+	return nil
+}
+
+func buildAppSetsMap(ctx context.Context, argoClient *argo_client.ArgoClient, result appdir.VcsToArgoMap) error {
+	appSets, err := argoClient.GetApplicationSets(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to list application sets")
+	}
+	for _, appSet := range appSets.Items {
+		result.AddAppSet(&appSet)
+	}
+	return nil
 }

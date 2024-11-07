@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/zapier/kubechecks/pkg/app_watcher"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
@@ -41,9 +42,26 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to parse configuration")
 		}
 
-		ctr, err := newContainer(ctx, cfg, true)
+		ctr, err := container.New(ctx, cfg)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create container")
+		}
+
+		// watch app modifications, if necessary
+		if cfg.MonitorAllApplications {
+			appWatcher, err := app_watcher.NewApplicationWatcher(ctr)
+			if err != nil {
+				log.Fatal().Err(err).Msg("failed to create watch applications")
+			}
+			go appWatcher.Run(ctx, 1)
+
+			appSetWatcher, err := app_watcher.NewApplicationSetWatcher(ctr)
+			if err != nil {
+				log.Fatal().Err(err).Msg("failed to create watch application sets")
+			}
+			go appSetWatcher.Run(ctx)
+		} else {
+			log.Info().Msgf("not monitoring applications, MonitorAllApplications: %+v", cfg.MonitorAllApplications)
 		}
 
 		log.Info().Msg("initializing git settings")
@@ -51,9 +69,12 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to initialize git settings")
 		}
 
+		log.Info().Strs("locations", cfg.PoliciesLocation).Msg("processing policies locations")
 		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
 			log.Fatal().Err(err).Msg("failed to process policy locations")
 		}
+
+		log.Info().Strs("locations", cfg.SchemasLocations).Msg("processing schemas locations")
 		if err = processLocations(ctx, ctr, cfg.SchemasLocations); err != nil {
 			log.Fatal().Err(err).Msg("failed to process schema locations")
 		}

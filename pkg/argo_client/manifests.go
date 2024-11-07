@@ -19,7 +19,7 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-func (argo *ArgoClient) GetManifestsLocal(ctx context.Context, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
+func (a *ArgoClient) GetManifestsLocal(ctx context.Context, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
 	var err error
 
 	ctx, span := tracer.Start(ctx, "GetManifestsLocal")
@@ -33,10 +33,10 @@ func (argo *ArgoClient) GetManifestsLocal(ctx context.Context, name, tempRepoDir
 		getManifestsDuration.WithLabelValues(name).Observe(duration.Seconds())
 	}()
 
-	clusterCloser, clusterClient := argo.GetClusterClient()
+	clusterCloser, clusterClient := a.GetClusterClient()
 	defer clusterCloser.Close()
 
-	settingsCloser, settingsClient := argo.GetSettingsClient()
+	settingsCloser, settingsClient := a.GetSettingsClient()
 	defer settingsCloser.Close()
 
 	log.Debug().
@@ -58,7 +58,7 @@ func (argo *ArgoClient) GetManifestsLocal(ctx context.Context, name, tempRepoDir
 	}
 
 	log.Debug().Str("name", name).Msg("generating diff for application...")
-	res, err := argo.generateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, app, argoSettings, cluster)
+	res, err := a.generateManifests(ctx, fmt.Sprintf("%s/%s", tempRepoDir, changedAppFilePath), tempRepoDir, app, argoSettings, cluster)
 	if err != nil {
 		telemetry.SetError(span, err, "Generate Manifests")
 		return nil, errors.Wrap(err, "failed to generate manifests")
@@ -71,30 +71,57 @@ func (argo *ArgoClient) GetManifestsLocal(ctx context.Context, name, tempRepoDir
 	return res.Manifests, nil
 }
 
-func (argo *ArgoClient) generateManifests(
+type repoRef struct {
+	// revision is the git revision - can be any valid revision like a branch, tag, or commit SHA.
+	revision string
+	// commitSHA is the actual commit to which revision refers.
+	commitSHA string
+	// key is the name of the key which was used to reference this repo.
+	key string
+}
+
+func (a *ArgoClient) generateManifests(
 	ctx context.Context, appPath, tempRepoDir string, app argoappv1.Application, argoSettings *settings.Settings, cluster *argoappv1.Cluster,
 ) (*repoapiclient.ManifestResponse, error) {
-	argo.manifestsLock.Lock()
-	defer argo.manifestsLock.Unlock()
+	a.manifestsLock.Lock()
+	defer a.manifestsLock.Unlock()
 
 	source := app.Spec.GetSource()
+
+	var projectSourceRepos []string
+	var helmRepos []*argoappv1.Repository
+	var helmCreds []*argoappv1.RepoCreds
+	var enableGenerateManifests map[string]bool
+	var helmOptions *argoappv1.HelmOptions
+	var refSources map[string]*argoappv1.RefTarget
+
+	q := repoapiclient.ManifestRequest{
+		Repo:               &argoappv1.Repository{Repo: source.RepoURL},
+		Revision:           source.TargetRevision,
+		AppLabelKey:        argoSettings.AppLabelKey,
+		AppName:            app.Name,
+		Namespace:          app.Spec.Destination.Namespace,
+		ApplicationSource:  &source,
+		Repos:              helmRepos,
+		KustomizeOptions:   argoSettings.KustomizeOptions,
+		KubeVersion:        cluster.Info.ServerVersion,
+		ApiVersions:        cluster.Info.APIVersions,
+		HelmRepoCreds:      helmCreds,
+		TrackingMethod:     argoSettings.TrackingMethod,
+		EnabledSourceTypes: enableGenerateManifests,
+		HelmOptions:        helmOptions,
+		HasMultipleSources: app.Spec.HasMultipleSources(),
+		RefSources:         refSources,
+		ProjectSourceRepos: projectSourceRepos,
+		ProjectName:        app.Spec.Project,
+	}
 
 	return repository.GenerateManifests(
 		ctx,
 		appPath,
 		tempRepoDir,
 		source.TargetRevision,
-		&repoapiclient.ManifestRequest{
-			Repo:              &argoappv1.Repository{Repo: source.RepoURL},
-			AppLabelKey:       argoSettings.AppLabelKey,
-			AppName:           app.Name,
-			Namespace:         app.Spec.Destination.Namespace,
-			ApplicationSource: &source,
-			KustomizeOptions:  argoSettings.KustomizeOptions,
-			KubeVersion:       cluster.Info.ServerVersion,
-			ApiVersions:       cluster.Info.APIVersions,
-			TrackingMethod:    argoSettings.TrackingMethod,
-		},
+		&q,
 		true,
 		new(git.NoopCredsStore),
 		resource.MustParse("0"),

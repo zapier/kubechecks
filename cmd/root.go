@@ -45,7 +45,7 @@ func init() {
 				zerolog.LevelDebugValue,
 				zerolog.LevelTraceValue,
 			).
-			withDefault("info").
+			withDefault("debug").
 			withShortHand("l"),
 	)
 	boolFlag(flags, "persist-log-level", "Persists the set log level down to other module loggers.")
@@ -79,7 +79,7 @@ func init() {
 		newStringOpts().
 			withChoices("hide", "delete").
 			withDefault("hide"))
-	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. Can be common paths inside the repos being checked or git urls in either git or http(s) format.")
+	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.")
 	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests.")
 	stringSliceFlag(flags, "policies-location", "Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.",
 		newStringSliceOpts().
@@ -115,14 +115,15 @@ func init() {
 }
 
 func setupLogOutput() {
-	output := zerolog.ConsoleWriter{Out: os.Stdout}
-	log.Logger = log.Output(output)
-
 	// Default level is info, unless debug flag is present
 	levelFlag := viper.GetString("log-level")
 	level, _ := zerolog.ParseLevel(levelFlag)
 
 	zerolog.SetGlobalLevel(level)
+
+	output := zerolog.ConsoleWriter{Out: os.Stdout}
+	log.Logger = log.Output(output)
+
 	log.Debug().Msg("Debug level logging enabled.")
 	log.Trace().Msg("Trace level logging enabled.")
 	log.Info().Msg("Initialized logger.")

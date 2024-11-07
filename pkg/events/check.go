@@ -270,11 +270,12 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	for num := 0; num <= ce.ctr.Config.MaxConcurrenctChecks; num++ {
 
 		w := worker{
-			appChannel: ce.appChannel,
-			ctr:        ce.ctr,
-			logger:     ce.logger.With().Int("workerID", num).Logger(),
-			processors: ce.processors,
-			vcsNote:    ce.vcsNote,
+			appChannel:  ce.appChannel,
+			ctr:         ce.ctr,
+			logger:      ce.logger.With().Int("workerID", num).Logger(),
+			pullRequest: ce.pullRequest,
+			processors:  ce.processors,
+			vcsNote:     ce.vcsNote,
 
 			done:      ce.wg.Done,
 			getRepo:   ce.getRepo,
