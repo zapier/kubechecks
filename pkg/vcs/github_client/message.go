@@ -17,6 +17,63 @@ import (
 
 const MaxCommentLength = 64 * 1024
 
+const sepEnd = "\n```\n</details>" +
+"\n<br>\n\n**Warning**: Output length greater than max comment size. Continued in next comment."
+
+const sepStart = "Continued from previous comment.\n<details><summary>Show Output</summary>\n\n"
+
+// SplitComment splits comment into a slice of comments that are under maxSize.
+// It appends sepEnd to all comments that have a following comment.
+// It prepends sepStart to all comments that have a preceding comment.
+func SplitComment(comment string, maxSize int, sepEnd string, sepStart string) []string {
+	if len(comment) <= maxSize {
+		return []string{comment}
+	}
+
+	var comments []string
+	var builder strings.Builder
+	remaining := comment
+	maxWithSep := maxSize - len(sepEnd) - len(sepStart)
+	sepStartWithCode := sepStart + "```diff\n"
+
+	for len(remaining) > 0 {
+		if builder.Len() > 0 && builder.Len()+len(sepEnd) > maxWithSep {
+			comments = append(comments, builder.String()+sepEnd)
+			builder.Reset()
+			builder.WriteString(sepStartWithCode)
+		}
+
+		lineEnd := strings.LastIndex(remaining[:min(len(remaining), maxWithSep-builder.Len())], "\n")
+		if lineEnd == -1 {
+			lineEnd = min(len(remaining), maxWithSep-builder.Len())
+		} else {
+			lineEnd++
+		}
+
+		builder.WriteString(remaining[:lineEnd])
+		remaining = remaining[lineEnd:]
+
+		if builder.Len() >= maxWithSep {
+			comments = append(comments, builder.String()+sepEnd)
+			builder.Reset()
+			builder.WriteString(sepStartWithCode)
+		}
+	}
+
+	if builder.Len() > 0 {
+		comments = append(comments, builder.String())
+	}
+
+	return comments
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) *msg.Message {
 	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
@@ -24,6 +81,11 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	if len(message) > MaxCommentLength {
 		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
 		message = message[:MaxCommentLength]
+	}
+
+	if err := c.deleteLatestRunningComment(ctx, pr); err != nil {
+		log.Error().Err(err).Msg("failed to delete latest 'kubechecks running' comment")
+		return nil
 	}
 
 	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
@@ -43,34 +105,70 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c)
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) error {
+func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message string) error {
 	_, span := tracer.Start(ctx, "UpdateMessage")
 	defer span.End()
 
-	if len(msg) > MaxCommentLength {
-		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
-		msg = msg[:MaxCommentLength]
+	comments := SplitComment(message, MaxCommentLength, sepEnd, sepStart)
+	repoNameComponents := strings.Split(m.Name, "/")
+
+	pr := vcs.PullRequest{
+		Owner:   repoNameComponents[0],
+		Name:    repoNameComponents[1],
+		CheckID: m.CheckID,
+		FullName: fmt.Sprintf("%s/%s", repoNameComponents[0], repoNameComponents[1]),
 	}
 
-	log.Info().Msgf("Updating message for PR %d in repo %s", m.CheckID, m.Name)
+	log.Debug().Msgf("Updating message in PR %d in repo %s", pr.CheckID, pr.FullName)
 
-	repoNameComponents := strings.Split(m.Name, "/")
-	comment, resp, err := c.googleClient.Issues.EditComment(
-		ctx,
-		repoNameComponents[0],
-		repoNameComponents[1],
-		int64(m.NoteID),
-		&github.IssueComment{Body: &msg},
-	)
-
-	if err != nil {
-		telemetry.SetError(span, err, "Update Pull Request comment")
-		log.Error().Err(err).Msgf("could not update message to PR, msg: %s, response: %+v", msg, resp)
+	if err := c.deleteLatestRunningComment(ctx, pr); err != nil {
 		return err
 	}
 
-	// update note id just in case it changed
-	m.NoteID = int(*comment.ID)
+	for _, comment := range comments {
+		comment, _, err := c.googleClient.Issues.CreateComment(
+			ctx,
+			repoNameComponents[0],
+			repoNameComponents[1],
+			m.CheckID,
+			&github.IssueComment{Body: &comment},
+		)
+		if err != nil {
+			telemetry.SetError(span, err, "Update Pull Request comment")
+			log.Error().Err(err).Msg("could not post updated message comment to PR")
+			return err
+		}
+		m.NoteID = int(*comment.ID)
+	}
+
+	return nil
+}
+
+func (c *Client) deleteLatestRunningComment(ctx context.Context, pr vcs.PullRequest) error {
+	_, span := tracer.Start(ctx, "deleteLatestRunningComment")
+	repoNameComponents := strings.Split(pr.FullName, "/")
+
+	existingComments, _, err := c.googleClient.Issues.ListComments(ctx, repoNameComponents[0], repoNameComponents[1], pr.CheckID, &github.IssueListCommentsOptions{
+		Sort:      pkg.Pointer("created"),
+		Direction: pkg.Pointer("asc"),
+	})
+	if err != nil {
+		telemetry.SetError(span, err, "List Pull Request comments")
+		log.Error().Err(err).Msg("could not retrieve existing comments for PR")
+		return fmt.Errorf("failed to list comments: %w", err)
+	}
+
+	for _, existingComment := range existingComments {
+		if existingComment.Body != nil && strings.Contains(*existingComment.Body, ":hourglass: kubechecks running ... ") {
+			log.Debug().Msgf("Deleting 'kubechecks running' comment with ID %d", *existingComment.ID)
+			if _, err := c.googleClient.Issues.DeleteComment(ctx, repoNameComponents[0], repoNameComponents[1], *existingComment.ID); err != nil {
+				telemetry.SetError(span, err, "Delete Pull Request comment")
+				log.Error().Err(err).Msg("failed to delete 'kubechecks running' comment")
+				return fmt.Errorf("failed to delete 'kubechecks running' comment: %w", err)
+			}
+			break
+		}
+	}
 
 	return nil
 }
