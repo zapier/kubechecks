@@ -42,7 +42,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address.|`argocd-server`|
 |`KUBECHECKS_ARGOCD_API_TOKEN`|ArgoCD API token.||
 |`KUBECHECKS_ARGOCD_REPOSITORY_ENDPOINT`|Location of the argocd repository service endpoint.|`argocd-repo-server.argocd:8081`|
-|`KUBECHECKS_ARGOCD_REPOSITORY_INSECURE`|True if you need to skip validating the grpc tls certificate.|`false`|
+|`KUBECHECKS_ARGOCD_REPOSITORY_INSECURE`|True if you need to skip validating the grpc tls certificate.|`true`|
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
 |`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
