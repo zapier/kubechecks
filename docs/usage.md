@@ -66,6 +66,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||
+|`KUBECHECKS_VCS_UPLOAD_URL`|VCS upload url, required for enterprise github.||
 |`KUBECHECKS_VCS_TOKEN`|VCS API token.||
 |`KUBECHECKS_VCS_TYPE`|VCS type. One of gitlab or github.|`gitlab`|
 |`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.||
