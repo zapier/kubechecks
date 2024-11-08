@@ -3,7 +3,6 @@ package argo_client
 import (
 	"crypto/tls"
 	"io"
-	"sync"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
@@ -25,8 +24,6 @@ import (
 
 type ArgoClient struct {
 	client apiclient.Client
-
-	manifestsLock sync.Mutex
 
 	repoClient repoapiclient.RepoServerServiceClient
 	namespace  string
@@ -59,7 +56,7 @@ func NewArgoClient(
 	}
 
 	log.Info().Msg("creating client")
-	tlsConfig := tls.Config{InsecureSkipVerify: true}
+	tlsConfig := tls.Config{InsecureSkipVerify: cfg.ArgoCDRepositoryInsecure}
 	conn, err := grpc.NewClient(cfg.ArgoCDRepositoryEndpoint,
 		grpc.WithTransportCredentials(
 			credentials.NewTLS(&tlsConfig),

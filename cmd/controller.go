@@ -160,6 +160,7 @@ func init() {
 
 	stringFlag(flags, "argocd-repository-endpoint", `Location of the argocd repository service endpoint.`,
 		newStringOpts().withDefault("argocd-repo-server.argocd:8081"))
+	boolFlag(flags, "argocd-repository-insecure", `True if you need to skip validating the grpc tls certificate.`)
 	stringFlag(flags, "label-filter", `(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook (KUBECHECKS_LABEL_FILTER).`)
 	stringFlag(flags, "openai-api-token", "OpenAI API Token.")
 	stringFlag(flags, "webhook-url-base", "The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.")

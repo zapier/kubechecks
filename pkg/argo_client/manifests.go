@@ -283,6 +283,10 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 
 	// copy app files to the temp dir
 	if err = filepath.Walk(appPath, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
 		if info.IsDir() {
 			return nil
 		}

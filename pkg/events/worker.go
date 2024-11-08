@@ -49,32 +49,6 @@ func (w *worker) run(ctx context.Context) {
 	}
 }
 
-type pathAndRepoUrl struct {
-	Path, RepoURL, TargetRevision string
-}
-
-func getAppSources(app v1alpha1.Application) []pathAndRepoUrl {
-	var items []pathAndRepoUrl
-
-	if src := app.Spec.Source; src != nil {
-		items = append(items, pathAndRepoUrl{
-			Path:           src.Path,
-			RepoURL:        src.RepoURL,
-			TargetRevision: src.TargetRevision,
-		})
-	}
-
-	for _, src := range app.Spec.Sources {
-		items = append(items, pathAndRepoUrl{
-			Path:           src.Path,
-			RepoURL:        src.RepoURL,
-			TargetRevision: src.TargetRevision,
-		})
-	}
-
-	return items
-}
-
 // processApp is a function that validates and processes a given application manifest against various checks,
 // such as ArgoCD schema validation, diff generation, conftest policy validation, and pre-upgrade checks using kubepug.
 // It takes a context (ctx), application name (app), directory (dir) as input and returns an error if any check fails.

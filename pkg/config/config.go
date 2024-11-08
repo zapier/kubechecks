@@ -24,6 +24,7 @@ type ServerConfig struct {
 	ArgoCDNamespace          string `mapstructure:"argocd-api-namespace"`
 	ArgoCDPlainText          bool   `mapstructure:"argocd-api-plaintext"`
 	ArgoCDRepositoryEndpoint string `mapstructure:"argocd-repository-endpoint"`
+	ArgoCDRepositoryInsecure bool   `mapstructure:"argocd-repository-insecure"`
 	KubernetesConfig         string `mapstructure:"kubernetes-config"`
 	KubernetesType           string `mapstructure:"kubernetes-type"`
 	KubernetesClusterID      string `mapstructure:"kubernetes-clusterid"`
