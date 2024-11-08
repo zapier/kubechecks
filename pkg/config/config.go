@@ -17,15 +17,16 @@ import (
 
 type ServerConfig struct {
 	// argocd
-	ArgoCDServerAddr    string `mapstructure:"argocd-api-server-addr"`
-	ArgoCDToken         string `mapstructure:"argocd-api-token"`
-	ArgoCDPathPrefix    string `mapstructure:"argocd-api-path-prefix"`
-	ArgoCDInsecure      bool   `mapstructure:"argocd-api-insecure"`
-	ArgoCDNamespace     string `mapstructure:"argocd-api-namespace"`
-	ArgoCDPlainText     bool   `mapstructure:"argocd-api-plaintext"`
-	KubernetesConfig    string `mapstructure:"kubernetes-config"`
-	KubernetesType      string `mapstructure:"kubernetes-type"`
-	KubernetesClusterID string `mapstructure:"kubernetes-clusterid"`
+	ArgoCDServerAddr         string `mapstructure:"argocd-api-server-addr"`
+	ArgoCDToken              string `mapstructure:"argocd-api-token"`
+	ArgoCDPathPrefix         string `mapstructure:"argocd-api-path-prefix"`
+	ArgoCDInsecure           bool   `mapstructure:"argocd-api-insecure"`
+	ArgoCDNamespace          string `mapstructure:"argocd-api-namespace"`
+	ArgoCDPlainText          bool   `mapstructure:"argocd-api-plaintext"`
+	ArgoCDRepositoryEndpoint string `mapstructure:"argocd-repository-endpoint"`
+	KubernetesConfig         string `mapstructure:"kubernetes-config"`
+	KubernetesType           string `mapstructure:"kubernetes-type"`
+	KubernetesClusterID      string `mapstructure:"kubernetes-clusterid"`
 
 	// otel
 	EnableOtel        bool   `mapstructure:"otel-enabled"`

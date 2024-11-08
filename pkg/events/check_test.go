@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	affectedappsmocks "github.com/zapier/kubechecks/mocks/affected_apps/mocks"
 	generatorsmocks "github.com/zapier/kubechecks/mocks/generator/mocks"
+	vcsmocks "github.com/zapier/kubechecks/mocks/vcs/mocks"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/config"
@@ -65,12 +66,6 @@ func TestCleanupGetManifestsError(t *testing.T) {
 	}
 }
 
-type mockVcsClient struct{}
-
-func (m mockVcsClient) Username() string {
-	return "username"
-}
-
 func TestCheckEventGetRepo(t *testing.T) {
 	cloneURL := "https://github.com/zapier/kubechecks.git"
 	canonical, err := canonicalize(cloneURL)
@@ -80,12 +75,16 @@ func TestCheckEventGetRepo(t *testing.T) {
 	ctx := context.TODO()
 
 	t.Run("empty branch name", func(t *testing.T) {
+		vcsClient := new(vcsmocks.MockClient)
+		vcsClient.EXPECT().Username().Return("username")
+
 		ce := CheckEvent{
 			clonedRepos: make(map[string]*git.Repo),
 			repoManager: git.NewRepoManager(cfg),
+			ctr:         container.Container{VcsClient: vcsClient},
 		}
 
-		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "")
+		repo, err := ce.getRepo(ctx, cloneURL, "")
 		require.NoError(t, err)
 		assert.Equal(t, "main", repo.BranchName)
 		assert.Len(t, ce.clonedRepos, 2)
@@ -94,12 +93,16 @@ func TestCheckEventGetRepo(t *testing.T) {
 	})
 
 	t.Run("branch is HEAD", func(t *testing.T) {
+		vcsClient := new(vcsmocks.MockClient)
+		vcsClient.EXPECT().Username().Return("username")
+
 		ce := CheckEvent{
 			clonedRepos: make(map[string]*git.Repo),
 			repoManager: git.NewRepoManager(cfg),
+			ctr:         container.Container{VcsClient: vcsClient},
 		}
 
-		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "HEAD")
+		repo, err := ce.getRepo(ctx, cloneURL, "HEAD")
 		require.NoError(t, err)
 		assert.Equal(t, "main", repo.BranchName)
 		assert.Len(t, ce.clonedRepos, 2)
@@ -108,12 +111,16 @@ func TestCheckEventGetRepo(t *testing.T) {
 	})
 
 	t.Run("branch is the same as HEAD", func(t *testing.T) {
+		vcsClient := new(vcsmocks.MockClient)
+		vcsClient.EXPECT().Username().Return("username")
+
 		ce := CheckEvent{
 			clonedRepos: make(map[string]*git.Repo),
 			repoManager: git.NewRepoManager(cfg),
+			ctr:         container.Container{VcsClient: vcsClient},
 		}
 
-		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "main")
+		repo, err := ce.getRepo(ctx, cloneURL, "main")
 		require.NoError(t, err)
 		assert.Equal(t, "main", repo.BranchName)
 		assert.Len(t, ce.clonedRepos, 2)
@@ -122,12 +129,16 @@ func TestCheckEventGetRepo(t *testing.T) {
 	})
 
 	t.Run("branch is not the same as HEAD", func(t *testing.T) {
+		vcsClient := new(vcsmocks.MockClient)
+		vcsClient.EXPECT().Username().Return("username")
+
 		ce := CheckEvent{
 			clonedRepos: make(map[string]*git.Repo),
 			repoManager: git.NewRepoManager(cfg),
+			ctr:         container.Container{VcsClient: vcsClient},
 		}
 
-		repo, err := ce.getRepo(ctx, mockVcsClient{}, cloneURL, "gh-pages")
+		repo, err := ce.getRepo(ctx, cloneURL, "gh-pages")
 		require.NoError(t, err)
 		assert.Equal(t, "gh-pages", repo.BranchName)
 		assert.Len(t, ce.clonedRepos, 1)

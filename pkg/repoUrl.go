@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/chainguard-dev/git-urls"
+	"github.com/pkg/errors"
 )
 
 type RepoURL struct {
@@ -40,4 +41,13 @@ func NormalizeRepoUrl(s string) (RepoURL, url.Values, error) {
 		Host: r.Host,
 		Path: r.Path,
 	}, r.Query(), nil
+}
+
+func Canonicalize(cloneURL string) (RepoURL, error) {
+	parsed, _, err := NormalizeRepoUrl(cloneURL)
+	if err != nil {
+		return RepoURL{}, errors.Wrap(err, "failed to parse clone url")
+	}
+
+	return parsed, nil
 }

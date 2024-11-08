@@ -6,6 +6,8 @@ import (
 	"runtime/debug"
 	"sync/atomic"
 
+	"github.com/ghodss/yaml"
+	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -13,7 +15,6 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog"
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
@@ -30,7 +31,7 @@ type worker struct {
 	vcsNote     *msg.Message
 
 	done                func()
-	getRepo             func(ctx context.Context, vcsClient hasUsername, cloneURL, branchName string) (*git.Repo, error)
+	getRepo             func(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 	queueApp, removeApp func(application v1alpha1.Application)
 }
 
@@ -120,46 +121,20 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 		}
 	}()
 
-	var jsonManifests []string
-	sources := getAppSources(app)
-	for _, appSrc := range sources {
-		var (
-			appPath    = appSrc.Path
-			appRepoUrl = appSrc.RepoURL
-			logger     = rootLogger.With().
-					Str("app_path", appPath).
-					Logger()
-		)
-
-		repo, err := w.getRepo(ctx, w.ctr.VcsClient, appRepoUrl, appSrc.TargetRevision)
-		if err != nil {
-			logger.Error().Err(err).Msg("Unable to clone repository")
-			w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
-				State:   pkg.StateError,
-				Summary: "failed to clone repo",
-				Details: fmt.Sprintf("Clone URL: `%s`\nTarget Revision: `%s`\n```\n%s\n```", appRepoUrl, appSrc.TargetRevision, err.Error()),
-			})
-			return
-		}
-		repoPath := repo.Directory
-
-		logger.Debug().Str("repo_path", repoPath).Msg("Getting manifests")
-		someJsonManifests, err := w.ctr.ArgoClient.GetManifestsLocal(ctx, appName, repoPath, appPath, app)
-		if err != nil {
-			logger.Error().Err(err).Msg("Unable to get manifests")
-			w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
-				State:   pkg.StateError,
-				Summary: "Unable to get manifests",
-				Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo.Directory)),
-			})
-			return
-		}
-
-		jsonManifests = append(jsonManifests, someJsonManifests...)
+	rootLogger.Debug().Msg("Getting manifests")
+	jsonManifests, err := w.ctr.ArgoClient.GetManifests(ctx, appName, app, w.pullRequest, w.getRepo)
+	if err != nil {
+		rootLogger.Error().Err(err).Msg("Unable to get manifests")
+		w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
+			State:   pkg.StateError,
+			Summary: "Unable to get manifests",
+			Details: fmt.Sprintf("```\n%s\n```", err),
+		})
+		return
 	}
 
 	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
-	yamlManifests := argo_client.ConvertJsonToYamlManifests(jsonManifests)
+	yamlManifests := convertJsonToYamlManifests(jsonManifests)
 	rootLogger.Trace().Msgf("Manifests:\n%+v\n", yamlManifests)
 
 	k8sVersion, err := w.ctr.ArgoClient.GetKubernetesVersionByApplication(ctx, app)
@@ -178,4 +153,17 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 	}
 
 	runner.Wait()
+}
+
+func convertJsonToYamlManifests(jsonManifests []string) []string {
+	var manifests []string
+	for _, manifest := range jsonManifests {
+		ret, err := yaml.JSONToYAML([]byte(manifest))
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to format manifest")
+			continue
+		}
+		manifests = append(manifests, fmt.Sprintf("---\n%s", string(ret)))
+	}
+	return manifests
 }

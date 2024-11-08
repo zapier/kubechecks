@@ -1,6 +1,7 @@
 package argo_client
 
 import (
+	"crypto/tls"
 	"io"
 	"sync"
 
@@ -8,8 +9,12 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
+	repoapiclient "github.com/argoproj/argo-cd/v2/reposerver/apiclient"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	client "github.com/zapier/kubechecks/pkg/kubernetes"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -23,9 +28,10 @@ type ArgoClient struct {
 
 	manifestsLock sync.Mutex
 
-	namespace string
-	k8s       kubernetes.Interface
-	k8sConfig *rest.Config
+	repoClient repoapiclient.RepoServerServiceClient
+	namespace  string
+	k8s        kubernetes.Interface
+	k8sConfig  *rest.Config
 }
 
 func NewArgoClient(
@@ -52,11 +58,23 @@ func NewArgoClient(
 		return nil, err
 	}
 
+	log.Info().Msg("creating client")
+	tlsConfig := tls.Config{InsecureSkipVerify: true}
+	conn, err := grpc.NewClient(cfg.ArgoCDRepositoryEndpoint,
+		grpc.WithTransportCredentials(
+			credentials.NewTLS(&tlsConfig),
+		),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create client")
+	}
+
 	return &ArgoClient{
-		client:    argo,
-		namespace: cfg.ArgoCDNamespace,
-		k8s:       k8s.ClientSet(),
-		k8sConfig: k8s.Config(),
+		repoClient: repoapiclient.NewRepoServerServiceClient(conn),
+		client:     argo,
+		namespace:  cfg.ArgoCDNamespace,
+		k8s:        k8s.ClientSet(),
+		k8sConfig:  k8s.Config(),
 	}, nil
 }
 

@@ -158,6 +158,8 @@ func init() {
 		newStringOpts().withDefault("1.23.0"))
 	boolFlag(flags, "show-debug-info", "Set to true to print debug info to the footer of MR comments (KUBECHECKS_SHOW_DEBUG_INFO).")
 
+	stringFlag(flags, "argocd-repository-endpoint", `Location of the argocd repository service endpoint.`,
+		newStringOpts().withDefault("argocd-repo-server.argocd:8081"))
 	stringFlag(flags, "label-filter", `(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook (KUBECHECKS_LABEL_FILTER).`)
 	stringFlag(flags, "openai-api-token", "OpenAI API Token.")
 	stringFlag(flags, "webhook-url-base", "The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.")
