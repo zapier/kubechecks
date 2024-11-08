@@ -334,7 +334,12 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 				src := filepath.Join(refRepo.Directory, refPath)
 				dst := filepath.Join(tempDir, refPath)
 				if err = copyFile(src, dst); err != nil {
-					return "", errors.Wrapf(err, "failed to copy referenced value file: %q", valueFile)
+					// handle source.spec.helm.ignoreMissingValues = true
+					if errors.Is(err, os.ErrNotExist) && source.Helm.IgnoreMissingValueFiles {
+						log.Debug().Str("valueFile", valueFile).Msg("ignore missing values file, because source.Helm.IgnoreMissingValueFiles is true")
+					} else {
+						return "", errors.Wrapf(err, "failed to copy referenced value file: %q", valueFile)
+					}
 				}
 
 				relPath, err := filepath.Rel(tempAppDir, dst)
