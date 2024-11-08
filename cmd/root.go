@@ -45,7 +45,7 @@ func init() {
 				zerolog.LevelDebugValue,
 				zerolog.LevelTraceValue,
 			).
-			withDefault("debug").
+			withDefault("info").
 			withShortHand("l"),
 	)
 	boolFlag(flags, "persist-log-level", "Persists the set log level down to other module loggers.")
