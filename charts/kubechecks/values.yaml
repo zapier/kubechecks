@@ -1,4 +1,7 @@
 # Labels to apply to all resources created by this Helm chart
+argocd:
+  namespace: argocd
+
 commonLabels: {}
 
 configMap:
