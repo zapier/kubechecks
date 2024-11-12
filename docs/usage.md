@@ -72,6 +72,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_VCS_EMAIL`|VCS Email.||
 |`KUBECHECKS_VCS_TOKEN`|VCS API token.||
 |`KUBECHECKS_VCS_TYPE`|VCS type. One of gitlab or github.|`gitlab`|
+|`KUBECHECKS_VCS_UPLOAD_URL`|VCS upload url, required for enterprise github.||
 |`KUBECHECKS_VCS_USERNAME`|VCS Username.||
 |`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.||
 |`KUBECHECKS_WEBHOOK_URL_BASE`|The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.||

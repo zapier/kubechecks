@@ -204,7 +204,7 @@ func toGithubCommitStatus(state pkg.CommitState) *string {
 		return pkg.Pointer("failure")
 	case pkg.StateRunning:
 		return pkg.Pointer("pending")
-	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone:
+	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone, pkg.StateSkip:
 		return pkg.Pointer("success")
 	}
 
