@@ -148,7 +148,7 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 		case "created":
 			if strings.ToLower(p.Comment.GetBody()) == c.cfg.ReplanCommentMessage {
 				log.Info().Msgf("Got %s comment, Running again", c.cfg.ReplanCommentMessage)
-				return c.buildRepoFromComment(ctx, p), nil
+				return c.buildRepoFromComment(ctx, p)
 			} else {
 				log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
 				return nilPr, vcs.ErrInvalidType
@@ -192,21 +192,20 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 }
 
 // buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
-func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) vcs.PullRequest {
+func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) (vcs.PullRequest, error) {
 	owner := comment.GetIssue().GetRepository().GetOwner().GetName()
 	repo := comment.GetIssue().GetRepository()
 	repoName := repo.GetName()
 	prNumber := comment.GetIssue().GetNumber()
 	if prNumber == 0 || repoName == "" || owner == "" {
-		return nilPr
+		return nilPr, fmt.Errorf("bad data: %d/%s/%s", prNumber, repoName, owner)
 	}
-	pr, ghStatus, err := c.googleClient.PullRequests.Get(context, owner, repoName, prNumber)
-	if err != nil || ghStatus.StatusCode < 200 || ghStatus.StatusCode >= 300 {
-		log.Error().Msgf("failed to get pull request: %s", err)
-		return nilPr
+	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repoName, prNumber)
+	if err != nil {
+		return nilPr, errors.Wrap(err, "failed to get pull request")
 	}
 
-	return c.buildRepo(pr, repo)
+	return c.buildRepo(pr, repo), nil
 }
 
 func toGithubCommitStatus(state pkg.CommitState) *string {
