@@ -163,22 +163,22 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 	}
 }
 
-func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequest {
+func (c *Client) buildRepo(pullRequest *github.PullRequest, repo *github.Repository) vcs.PullRequest {
 	var labels []string
-	for _, label := range event.PullRequest.Labels {
+	for _, label := range pullRequest.Labels {
 		labels = append(labels, label.GetName())
 	}
 
 	return vcs.PullRequest{
-		BaseRef:       event.PullRequest.Base.GetRef(),
-		HeadRef:       event.PullRequest.Head.GetRef(),
-		DefaultBranch: event.Repo.GetDefaultBranch(),
-		CloneURL:      event.Repo.GetCloneURL(),
-		FullName:      event.Repo.GetFullName(),
-		Owner:         event.Repo.Owner.GetLogin(),
-		Name:          event.Repo.GetName(),
-		CheckID:       event.PullRequest.GetNumber(),
-		SHA:           event.PullRequest.Head.GetSHA(),
+		BaseRef:       pullRequest.Base.GetRef(),
+		HeadRef:       pullRequest.Head.GetRef(),
+		DefaultBranch: repo.GetDefaultBranch(),
+		CloneURL:      repo.GetCloneURL(),
+		FullName:      repo.GetFullName(),
+		Owner:         repo.Owner.GetLogin(),
+		Name:          repo.GetName(),
+		CheckID:       pullRequest.GetNumber(),
+		SHA:           pullRequest.Head.GetSHA(),
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
@@ -187,39 +187,26 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 	}
 }
 
+func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequest {
+	return c.buildRepo(event.PullRequest, event.Repo)
+}
+
 // buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
 func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) vcs.PullRequest {
 	owner := comment.GetIssue().GetRepository().GetOwner().GetName()
-	repo := comment.GetIssue().GetRepository().GetName()
+	repo := comment.GetIssue().GetRepository()
+	repoName := repo.GetName()
 	prNumber := comment.GetIssue().GetNumber()
-	if prNumber == 0 || repo == "" || owner == "" {
+	if prNumber == 0 || repoName == "" || owner == "" {
 		return nilPr
 	}
-	pr, ghStatus, err := c.googleClient.PullRequests.Get(context, owner, repo, prNumber)
+	pr, ghStatus, err := c.googleClient.PullRequests.Get(context, owner, repoName, prNumber)
 	if err != nil || ghStatus.StatusCode < 200 || ghStatus.StatusCode >= 300 {
 		log.Error().Msgf("failed to get pull request: %s", err)
 		return nilPr
 	}
-	var labels []string
-	for _, label := range pr.Labels {
-		labels = append(labels, label.GetName())
-	}
-	return vcs.PullRequest{
-		BaseRef:       pr.Base.GetRef(),
-		HeadRef:       pr.Head.GetRef(),
-		DefaultBranch: comment.Repo.GetDefaultBranch(),
-		CloneURL:      pr.Base.Repo.GetCloneURL(),
-		FullName:      comment.Repo.GetFullName(),
-		Owner:         pr.Base.Repo.Owner.GetLogin(),
-		Name:          comment.Repo.GetName(),
-		CheckID:       pr.GetNumber(),
-		SHA:           pr.Head.GetSHA(),
-		Username:      c.username,
-		Email:         c.email,
-		Labels:        labels,
 
-		Config: c.cfg,
-	}
+	return c.buildRepo(pr, repo)
 }
 
 func toGithubCommitStatus(state pkg.CommitState) *string {
