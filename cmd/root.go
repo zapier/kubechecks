@@ -50,6 +50,7 @@ func init() {
 	)
 	boolFlag(flags, "persist-log-level", "Persists the set log level down to other module loggers.")
 	stringFlag(flags, "vcs-base-url", "VCS base url, useful if self hosting gitlab, enterprise github, etc.")
+	stringFlag(flags, "vcs-upload-url", "VCS upload url, required for enterprise github.")
 	stringFlag(flags, "vcs-type", "VCS type. One of gitlab or github. Defaults to gitlab.",
 		newStringOpts().
 			withChoices("github", "gitlab").
