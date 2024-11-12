@@ -200,6 +200,7 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.I
 	if prNumber == 0 || repoName == "" || owner == "" {
 		return nilPr, fmt.Errorf("bad data: %d/%s/%s", prNumber, repoName, owner)
 	}
+	log.Info().Str("owner", owner).Str("repo", repoName).Int("number", prNumber).Msg("getting pr")
 	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repoName, prNumber)
 	if err != nil {
 		return nilPr, errors.Wrap(err, "failed to get pull request")
