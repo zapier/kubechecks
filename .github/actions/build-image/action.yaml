@@ -44,7 +44,7 @@ runs:
 
     - name: Build and push the Docker image
       shell: bash
-      run: >-       
+      run: >-
         ./earthly.sh 
         ${{ inputs.push == 'true' && '--push' || '' }} 
         +docker-multiarch

@@ -45,7 +45,7 @@ func init() {
 				zerolog.LevelDebugValue,
 				zerolog.LevelTraceValue,
 			).
-			withDefault("info").
+			withDefault(zerolog.LevelInfoValue).
 			withShortHand("l"),
 	)
 	boolFlag(flags, "persist-log-level", "Persists the set log level down to other module loggers.")
@@ -56,6 +56,11 @@ func init() {
 			withChoices("github", "gitlab").
 			withDefault("gitlab"))
 	stringFlag(flags, "vcs-token", "VCS API token.")
+	stringFlag(flags, "vcs-username", "VCS Username.")
+	stringFlag(flags, "vcs-email", "VCS Email.")
+	stringFlag(flags, "github-private-key", "Github App Private Key.")
+	int64Flag(flags, "github-app-id", "Github App ID.")
+	int64Flag(flags, "github-installation-id", "Github Installation ID.")
 	stringFlag(flags, "argocd-api-token", "ArgoCD API token.")
 	stringFlag(flags, "argocd-api-server-addr", "ArgoCD API Server Address.",
 		newStringOpts().
@@ -121,7 +126,10 @@ func setupLogOutput() {
 
 	// Default level is info, unless debug flag is present
 	levelFlag := viper.GetString("log-level")
-	level, _ := zerolog.ParseLevel(levelFlag)
+	level, err := zerolog.ParseLevel(levelFlag)
+	if err != nil {
+		log.Error().Err(err).Msg("Invalid log level")
+	}
 
 	zerolog.SetGlobalLevel(level)
 	log.Debug().Msg("Debug level logging enabled.")
