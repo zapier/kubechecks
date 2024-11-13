@@ -30,6 +30,7 @@ func (s CommitState) BareString() string {
 
 var stateString = map[CommitState]string{
 	StateNone:    "",
+	StateSkip:    "Skipped",
 	StateSuccess: "Passed",
 	StateRunning: "Running",
 	StateWarning: "Warning",
@@ -62,6 +63,8 @@ func ParseCommitState(s string) (CommitState, error) {
 		return StateError, nil
 	case "panic":
 		return StatePanic, nil
+	case "skip", "skipped":
+		return StateSkip, nil
 	default:
 		return StateNone, fmt.Errorf("unknown commit state: %s", s)
 	}

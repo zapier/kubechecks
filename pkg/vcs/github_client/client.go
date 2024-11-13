@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bradleyfalzon/ghinstallation/v2"
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v62/github"
 	"github.com/pkg/errors"
@@ -48,36 +49,24 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		shurcoolClient *githubv4.Client
 	)
 
-	// Initialize the GitLab client with access token
-	t := cfg.VcsToken
-	if t == "" {
-		log.Fatal().Msg("github token needs to be set")
+	githubClient, err := createHttpClient(ctx, cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create github http client")
 	}
-	log.Debug().Msgf("Token Length - %d", len(t))
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: t},
-	)
-	tc := oauth2.NewClient(ctx, ts)
 
 	githubUrl := cfg.VcsBaseUrl
 	githubUploadUrl := cfg.VcsUploadUrl
 	// we need both urls to be set for github enterprise
 	if githubUrl == "" || githubUploadUrl == "" {
-		googleClient = github.NewClient(tc) // If this has failed, we'll catch it on first call
+		googleClient = github.NewClient(githubClient) // If this has failed, we'll catch it on first call
 
-		// Use the client from shurcooL's githubv4 library for queries.
-		shurcoolClient = githubv4.NewClient(tc)
+		shurcoolClient = githubv4.NewClient(githubClient)
 	} else {
-		googleClient, err = github.NewClient(tc).WithEnterpriseURLs(githubUrl, githubUploadUrl)
+		googleClient, err = github.NewClient(githubClient).WithEnterpriseURLs(githubUrl, githubUploadUrl)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create github enterprise client")
 		}
-		shurcoolClient = githubv4.NewEnterpriseClient(githubUrl, tc)
-	}
-
-	user, _, err := googleClient.Users.Get(ctx, "")
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get user")
+		shurcoolClient = githubv4.NewEnterpriseClient(githubUrl, githubClient)
 	}
 
 	client := &Client{
@@ -88,13 +77,20 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 			Issues:       IssuesService{googleClient.Issues},
 		},
 		shurcoolClient: shurcoolClient,
+		username:       cfg.VcsUsername,
+		email:          cfg.VcsEmail,
 	}
-	if user != nil {
-		if user.Login != nil {
-			client.username = *user.Login
-		}
-		if user.Email != nil {
-			client.email = *user.Email
+
+	if client.username == "" || client.email == "" {
+		user, _, err := googleClient.Users.Get(ctx, "")
+		if err == nil {
+			if user.Login != nil {
+				client.username = *user.Login
+			}
+
+			if user.Email != nil {
+				client.email = *user.Email
+			}
 		}
 	}
 
@@ -105,6 +101,32 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		client.email = vcs.DefaultVcsEmail
 	}
 	return client, nil
+}
+
+func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, error) {
+	// Initialize the GitHub client with app key if provided
+	if cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != "" {
+		appTransport, err := ghinstallation.New(
+			http.DefaultTransport, cfg.GithubAppID, cfg.GithubInstallationID, []byte(cfg.GithubPrivateKey),
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create github app transport")
+		}
+
+		return &http.Client{Transport: appTransport}, nil
+	}
+
+	// Initialize the GitHub client with access token if app key is not provided
+	vcsToken := cfg.VcsToken
+	if vcsToken != "" {
+		log.Debug().Msgf("Token Length - %d", len(vcsToken))
+		ts := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: vcsToken},
+		)
+		return oauth2.NewClient(ctx, ts), nil
+	}
+
+	return nil, errors.New("Either GitHub token or GitHub App credentials (App ID, Installation ID, Private Key) must be set")
 }
 
 func (c *Client) Username() string { return c.username }
@@ -126,7 +148,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 
 var nilPr vcs.PullRequest
 
-func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, error) {
+func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte) (vcs.PullRequest, error) {
 	payload, err := github.ParseWebHook(github.WebHookType(r), request)
 	if err != nil {
 		return nilPr, err
@@ -142,34 +164,69 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, er
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
 			return nilPr, vcs.ErrInvalidType
 		}
+	case *github.IssueCommentEvent:
+		switch p.GetAction() {
+		case "created":
+			if strings.ToLower(p.Comment.GetBody()) == c.cfg.ReplanCommentMessage {
+				log.Info().Msgf("Got %s comment, Running again", c.cfg.ReplanCommentMessage)
+				return c.buildRepoFromComment(ctx, p)
+			} else {
+				log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
+				return nilPr, vcs.ErrInvalidType
+			}
+		default:
+			log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment due to invalid action")
+			return nilPr, vcs.ErrInvalidType
+		}
 	default:
 		log.Error().Msg("invalid event provided to Github client")
 		return nilPr, vcs.ErrInvalidType
 	}
 }
 
-func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequest {
+func (c *Client) buildRepo(pullRequest *github.PullRequest) vcs.PullRequest {
+	repo := pullRequest.Head.Repo
+
 	var labels []string
-	for _, label := range event.PullRequest.Labels {
+	for _, label := range pullRequest.Labels {
 		labels = append(labels, label.GetName())
 	}
 
 	return vcs.PullRequest{
-		BaseRef:       *event.PullRequest.Base.Ref,
-		HeadRef:       *event.PullRequest.Head.Ref,
-		DefaultBranch: *event.Repo.DefaultBranch,
-		CloneURL:      *event.Repo.CloneURL,
-		FullName:      event.Repo.GetFullName(),
-		Owner:         *event.Repo.Owner.Login,
-		Name:          event.Repo.GetName(),
-		CheckID:       *event.PullRequest.Number,
-		SHA:           *event.PullRequest.Head.SHA,
+		BaseRef:       pullRequest.Base.GetRef(),
+		HeadRef:       pullRequest.Head.GetRef(),
+		DefaultBranch: repo.GetDefaultBranch(),
+		CloneURL:      repo.GetCloneURL(),
+		FullName:      repo.GetFullName(),
+		Owner:         repo.Owner.GetLogin(),
+		Name:          repo.GetName(),
+		CheckID:       pullRequest.GetNumber(),
+		SHA:           pullRequest.Head.GetSHA(),
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
 
 		Config: c.cfg,
 	}
+}
+
+func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequest {
+	return c.buildRepo(event.PullRequest)
+}
+
+// buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent.
+func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) (vcs.PullRequest, error) {
+	owner := comment.GetRepo().GetOwner().GetLogin()
+	repoName := comment.GetRepo().GetName()
+	prNumber := comment.GetIssue().GetNumber()
+
+	log.Info().Str("owner", owner).Str("repo", repoName).Int("number", prNumber).Msg("getting pr")
+	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repoName, prNumber)
+	if err != nil {
+		return nilPr, errors.Wrap(err, "failed to get pull request")
+	}
+
+	return c.buildRepo(pr), nil
 }
 
 func toGithubCommitStatus(state pkg.CommitState) *string {
@@ -180,7 +237,7 @@ func toGithubCommitStatus(state pkg.CommitState) *string {
 		return pkg.Pointer("failure")
 	case pkg.StateRunning:
 		return pkg.Pointer("pending")
-	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone:
+	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone, pkg.StateSkip:
 		return pkg.Pointer("success")
 	}
 
@@ -259,7 +316,7 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 			Secret:      pkg.Pointer(webhookSecret),
 		},
 		Events: []string{
-			"pull_request",
+			"pull_request", "issue_comment",
 		},
 		Name: pkg.Pointer("web"),
 	})

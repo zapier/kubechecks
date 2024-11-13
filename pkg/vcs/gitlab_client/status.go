@@ -69,7 +69,7 @@ func convertState(state pkg.CommitState) gitlab.BuildStateValue {
 		return gitlab.Running
 	case pkg.StateFailure, pkg.StateError, pkg.StatePanic:
 		return gitlab.Failed
-	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone:
+	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone, pkg.StateSkip:
 		return gitlab.Success
 	}
 
@@ -90,4 +90,12 @@ func configureBackOff() *backoff.ExponentialBackOff {
 	expBackOff.MaxElapsedTime = 30 * time.Second
 
 	return expBackOff
+}
+
+type CommitsServices interface {
+	SetCommitStatus(pid interface{}, sha string, opt *gitlab.SetCommitStatusOptions, options ...gitlab.RequestOptionFunc) (*gitlab.CommitStatus, *gitlab.Response, error)
+}
+
+type CommitsService struct {
+	CommitsServices
 }

@@ -200,7 +200,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, vcsClient hasUsername, cloneU
 	ce.clonedRepos[reposKey] = repo
 
 	// if we cloned 'HEAD', figure out its original branch and store a copy of the repo there
-	if branchName == "" || branchName == "HEAD" {
+	if branchName == "HEAD" {
 		remoteHeadBranchName, err := repo.GetRemoteHead()
 		if err != nil {
 			return repo, errors.Wrap(err, "failed to determine remote head")
@@ -259,12 +259,17 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	if len(ce.affectedItems.Applications) == 0 && len(ce.affectedItems.ApplicationSets) == 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "No changes")
+		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "No changes"); err != nil {
+			return errors.Wrap(err, "failed to post changes")
+		}
 		return nil
 	}
 
 	// We make one comment per run, containing output for all the apps
-	ce.vcsNote = ce.createNote(ctx)
+	ce.vcsNote, err = ce.createNote(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to create note")
+	}
 
 	for num := 0; num <= ce.ctr.Config.MaxConcurrenctChecks; num++ {
 		w := worker{
@@ -373,8 +378,8 @@ Check kubechecks application logs for more information.
 `
 )
 
-// Creates a generic Note struct that we can write into across all worker threads.
-func (ce *CheckEvent) createNote(ctx context.Context) *msg.Message {
+// createNote creates a generic Note struct that we can write into across all worker threads.
+func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 	ctx, span := otel.Tracer("check").Start(ctx, "createNote")
 	defer span.End()
 

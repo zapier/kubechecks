@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
 
@@ -16,8 +17,8 @@ import (
 
 const MaxCommentLength = 1_000_000
 
-func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) *msg.Message {
-	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
+func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
+	_, span := tracer.Start(ctx, "PostMessage")
 	defer span.End()
 
 	if len(message) > MaxCommentLength {
@@ -32,10 +33,10 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 		})
 	if err != nil {
 		telemetry.SetError(span, err, "Create Merge Request Note")
-		log.Error().Err(err).Msg("could not post message to MR")
+		return nil, errors.Wrap(err, "could not post message to MR")
 	}
 
-	return msg.NewMessage(pr.FullName, pr.CheckID, n.ID, c)
+	return msg.NewMessage(pr.FullName, pr.CheckID, n.ID, c), nil
 }
 
 func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
@@ -155,4 +156,15 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 		return c.pruneOldComments(ctx, pr.FullName, pr.CheckID, allNotes)
 	}
 	return c.hideOutdatedMessages(ctx, pr.FullName, pr.CheckID, allNotes)
+}
+
+type NotesServices interface {
+	CreateMergeRequestNote(pid interface{}, mergeRequest int, opt *gitlab.CreateMergeRequestNoteOptions, options ...gitlab.RequestOptionFunc) (*gitlab.Note, *gitlab.Response, error)
+	UpdateMergeRequestNote(pid interface{}, mergeRequest, note int, opt *gitlab.UpdateMergeRequestNoteOptions, options ...gitlab.RequestOptionFunc) (*gitlab.Note, *gitlab.Response, error)
+	DeleteMergeRequestNote(pid interface{}, mergeRequest, note int, options ...gitlab.RequestOptionFunc) (*gitlab.Response, error)
+	ListMergeRequestNotes(pid interface{}, mergeRequest int, opt *gitlab.ListMergeRequestNotesOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.Note, *gitlab.Response, error)
+}
+
+type NotesService struct {
+	NotesServices
 }
