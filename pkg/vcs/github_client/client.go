@@ -150,7 +150,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 
 var nilPr vcs.PullRequest
 
-func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, error) {
+func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte) (vcs.PullRequest, error) {
 	payload, err := github.ParseWebHook(github.WebHookType(r), request)
 	if err != nil {
 		return nilPr, err
@@ -166,34 +166,69 @@ func (c *Client) ParseHook(r *http.Request, request []byte) (vcs.PullRequest, er
 			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
 			return nilPr, vcs.ErrInvalidType
 		}
+	case *github.IssueCommentEvent:
+		switch p.GetAction() {
+		case "created":
+			if strings.ToLower(p.Comment.GetBody()) == c.cfg.ReplanCommentMessage {
+				log.Info().Msgf("Got %s comment, Running again", c.cfg.ReplanCommentMessage)
+				return c.buildRepoFromComment(ctx, p)
+			} else {
+				log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
+				return nilPr, vcs.ErrInvalidType
+			}
+		default:
+			log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment due to invalid action")
+			return nilPr, vcs.ErrInvalidType
+		}
 	default:
 		log.Error().Msg("invalid event provided to Github client")
 		return nilPr, vcs.ErrInvalidType
 	}
 }
 
-func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequest {
+func (c *Client) buildRepo(pullRequest *github.PullRequest) vcs.PullRequest {
+	repo := pullRequest.Head.Repo
+
 	var labels []string
-	for _, label := range event.PullRequest.Labels {
+	for _, label := range pullRequest.Labels {
 		labels = append(labels, label.GetName())
 	}
 
 	return vcs.PullRequest{
-		BaseRef:       *event.PullRequest.Base.Ref,
-		HeadRef:       *event.PullRequest.Head.Ref,
-		DefaultBranch: *event.Repo.DefaultBranch,
-		CloneURL:      *event.Repo.CloneURL,
-		FullName:      event.Repo.GetFullName(),
-		Owner:         *event.Repo.Owner.Login,
-		Name:          event.Repo.GetName(),
-		CheckID:       *event.PullRequest.Number,
-		SHA:           *event.PullRequest.Head.SHA,
+		BaseRef:       pullRequest.Base.GetRef(),
+		HeadRef:       pullRequest.Head.GetRef(),
+		DefaultBranch: repo.GetDefaultBranch(),
+		CloneURL:      repo.GetCloneURL(),
+		FullName:      repo.GetFullName(),
+		Owner:         repo.Owner.GetLogin(),
+		Name:          repo.GetName(),
+		CheckID:       pullRequest.GetNumber(),
+		SHA:           pullRequest.Head.GetSHA(),
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
 
 		Config: c.cfg,
 	}
+}
+
+func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequest {
+	return c.buildRepo(event.PullRequest)
+}
+
+// buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
+func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) (vcs.PullRequest, error) {
+	owner := comment.GetRepo().GetOwner().GetLogin()
+	repoName := comment.GetRepo().GetName()
+	prNumber := comment.GetIssue().GetNumber()
+
+	log.Info().Str("owner", owner).Str("repo", repoName).Int("number", prNumber).Msg("getting pr")
+	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repoName, prNumber)
+	if err != nil {
+		return nilPr, errors.Wrap(err, "failed to get pull request")
+	}
+
+	return c.buildRepo(pr), nil
 }
 
 func toGithubCommitStatus(state pkg.CommitState) *string {
@@ -283,7 +318,7 @@ func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, w
 			Secret:      pkg.Pointer(webhookSecret),
 		},
 		Events: []string{
-			"pull_request",
+			"pull_request", "issue_comment",
 		},
 		Name: pkg.Pointer("web"),
 	})

@@ -115,6 +115,9 @@ func init() {
 	stringFlag(flags, "worst-hooks-state", "The worst state that can be returned from the hooks renderer.",
 		newStringOpts().
 			withDefault("panic"))
+	stringFlag(flags, "replan-comment-msg", "comment message which re-triggers kubechecks on PR.",
+		newStringOpts().
+			withDefault("kubechecks again"))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()
