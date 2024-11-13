@@ -154,7 +154,7 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 				return nilPr, vcs.ErrInvalidType
 			}
 		default:
-			log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
+			log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment due to invalid action")
 			return nilPr, vcs.ErrInvalidType
 		}
 	default:
@@ -195,7 +195,7 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 
 // buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
 func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) (vcs.PullRequest, error) {
-	owner := comment.GetIssue().GetRepository().GetOwner().GetLogin()
+	owner := comment.GetRepo().GetOwner().GetLogin()
 	repoName := comment.GetRepo().GetName()
 	prNumber := comment.GetIssue().GetNumber()
 
