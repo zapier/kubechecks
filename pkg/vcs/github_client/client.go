@@ -195,9 +195,8 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 
 // buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
 func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) (vcs.PullRequest, error) {
-	owner := comment.GetIssue().GetRepository().GetOwner().GetName()
-	repo := comment.GetIssue().GetRepository()
-	repoName := repo.GetName()
+	owner := comment.GetIssue().GetRepository().GetOwner().GetLogin()
+	repoName := comment.GetRepo().GetName()
 	prNumber := comment.GetIssue().GetNumber()
 
 	log.Info().Str("owner", owner).Str("repo", repoName).Int("number", prNumber).Msg("getting pr")
