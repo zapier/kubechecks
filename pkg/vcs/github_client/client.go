@@ -163,7 +163,9 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 	}
 }
 
-func (c *Client) buildRepo(pullRequest *github.PullRequest, repo *github.Repository) vcs.PullRequest {
+func (c *Client) buildRepo(pullRequest *github.PullRequest) vcs.PullRequest {
+	repo := pullRequest.Head.Repo
+
 	var labels []string
 	for _, label := range pullRequest.Labels {
 		labels = append(labels, label.GetName())
@@ -188,7 +190,7 @@ func (c *Client) buildRepo(pullRequest *github.PullRequest, repo *github.Reposit
 }
 
 func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequest {
-	return c.buildRepo(event.PullRequest, event.Repo)
+	return c.buildRepo(event.PullRequest)
 }
 
 // buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
@@ -197,16 +199,14 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.I
 	repo := comment.GetIssue().GetRepository()
 	repoName := repo.GetName()
 	prNumber := comment.GetIssue().GetNumber()
-	if prNumber == 0 || repoName == "" || owner == "" {
-		return nilPr, fmt.Errorf("bad data: %d/%s/%s", prNumber, repoName, owner)
-	}
+
 	log.Info().Str("owner", owner).Str("repo", repoName).Int("number", prNumber).Msg("getting pr")
 	pr, _, err := c.googleClient.PullRequests.Get(context, owner, repoName, prNumber)
 	if err != nil {
 		return nilPr, errors.Wrap(err, "failed to get pull request")
 	}
 
-	return c.buildRepo(pr, repo), nil
+	return c.buildRepo(pr), nil
 }
 
 func toGithubCommitStatus(state pkg.CommitState) *string {

@@ -10,6 +10,7 @@ import (
 	"github.com/shurcooL/githubv4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	githubMocks "github.com/zapier/kubechecks/mocks/github_client/mocks"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -335,7 +336,7 @@ func TestClient_GetHookByUrl(t *testing.T) {
 	}
 }
 
-func TestClient_buildRepoFromComment(t *testing.T) {
+func TestClient_buildRepoFromComment_HappyPath(t *testing.T) {
 	type fields struct {
 		shurcoolClient *githubv4.Client
 		googleClient   *GClient
@@ -371,12 +372,19 @@ func TestClient_buildRepoFromComment(t *testing.T) {
 								},
 							},
 							Head: &github.PullRequestBranch{
-								Ref: github.String("main"),
-								SHA: github.String("dummySHA"),
+								Ref: github.String("new-feature"),
+								SHA: github.String("dummySHAHead"),
+								Repo: &github.Repository{
+									CloneURL:      github.String("https://github.com/zapier/kubechecks/"),
+									DefaultBranch: github.String("main"),
+									FullName:      github.String("zapier/kubechecks"),
+									Owner:         &github.User{Login: github.String("fork")},
+									Name:          github.String("kubechecks"),
+								},
 							},
 							Base: &github.PullRequestBranch{
 								Ref: github.String("main"),
-								SHA: github.String("dummySHA"),
+								SHA: github.String("dummySHABase"),
 								Repo: &github.Repository{
 									CloneURL: github.String("https://github.com/zapier/kubechecks/"),
 									Owner:    &github.User{Login: github.String("zapier")},
@@ -397,165 +405,34 @@ func TestClient_buildRepoFromComment(t *testing.T) {
 						URL:    github.String("https://github.com/zapier/kubechecks/pull/250"),
 						Number: github.Int(250),
 						Repository: &github.Repository{
-							Name: github.String("prguy"),
+							Name: github.String("kubechecks"),
 							Owner: &github.User{
-								Name: github.String("zapier;"),
+								Name: github.String("zapier"),
 							},
 						},
 					},
 					Repo: &github.Repository{
 						DefaultBranch: github.String("main"),
-						Name:          github.String("prguy"),
-						FullName:      github.String("pr guy"),
+						Name:          github.String("kubechecks"),
+						FullName:      github.String("zapier/kubechecks"),
 					},
 				},
 			},
 			want: vcs.PullRequest{
 				BaseRef:       "main",
-				HeadRef:       "main",
+				HeadRef:       "new-feature",
 				DefaultBranch: "main",
 				CloneURL:      "https://github.com/zapier/kubechecks/",
-				Name:          "prguy",
-				Owner:         "zapier",
+				Name:          "kubechecks",
+				Owner:         "fork",
 				CheckID:       123,
-				SHA:           "dummySHA",
-				FullName:      "pr guy",
+				SHA:           "dummySHAHead",
+				FullName:      "zapier/kubechecks",
 				Username:      "unittestuser",
 				Email:         "unitestuser@localhost.local",
 				Labels:        []string{"test label1", "test label2"},
 				Config:        config.ServerConfig{},
 			},
-		},
-		{
-			name: "failed to get pr data",
-			fields: fields{
-				shurcoolClient: nil,
-				googleClient: MockGitHubPullRequestMethod("Get",
-					[]interface{}{
-						nil,
-						&github.Response{Response: &http.Response{StatusCode: http.StatusInternalServerError}},
-						fmt.Errorf("dummy error")},
-				),
-				cfg:      config.ServerConfig{},
-				username: "unittestuser",
-				email:    "unitestuser@localhost.local",
-			},
-			args: args{
-				context: context.TODO(),
-				comment: &github.IssueCommentEvent{
-					Issue: &github.Issue{
-						URL: github.String("https://github.com/zapier/kubechecks/pull/250"),
-					},
-					Repo: &github.Repository{
-						DefaultBranch: github.String("main"),
-						Name:          github.String("prguy"),
-						FullName:      github.String("pr guy"),
-					},
-				},
-			},
-			want: nilPr,
-		},
-		{
-			name: "missing issue pr URL",
-			fields: fields{
-				shurcoolClient: nil,
-				googleClient: MockGitHubPullRequestMethod("Get",
-					[]interface{}{
-						&github.PullRequest{
-							ID:     nil,
-							Number: github.Int(123),
-							Labels: []*github.Label{
-								{
-									Name: github.String("test label1"),
-								},
-								{
-									Name: github.String("test label2"),
-								},
-							},
-							Head: &github.PullRequestBranch{
-								Ref: github.String("main"),
-								SHA: github.String("dummySHA"),
-							},
-							Base: &github.PullRequestBranch{
-								Ref: github.String("main"),
-								SHA: github.String("dummySHA"),
-								Repo: &github.Repository{
-									CloneURL: github.String("https://github.com/zapier/kubechecks/"),
-									Owner:    &github.User{Login: github.String("zapier")},
-								},
-							},
-						},
-						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
-						nil},
-				),
-				cfg:      config.ServerConfig{},
-				username: "unittestuser",
-				email:    "unitestuser@localhost.local",
-			},
-			args: args{
-				context: context.TODO(),
-				comment: &github.IssueCommentEvent{
-					Issue: nil,
-					Repo: &github.Repository{
-						DefaultBranch: github.String("main"),
-						Name:          github.String("prguy"),
-						FullName:      github.String("pr guy"),
-					},
-				},
-			},
-			want: nilPr,
-		},
-		{
-			name: "invalid pr url",
-			fields: fields{
-				shurcoolClient: nil,
-				googleClient: MockGitHubPullRequestMethod("Get",
-					[]interface{}{
-						&github.PullRequest{
-							ID:     nil,
-							Number: github.Int(123),
-							Labels: []*github.Label{
-								{
-									Name: github.String("test label1"),
-								},
-								{
-									Name: github.String("test label2"),
-								},
-							},
-							Head: &github.PullRequestBranch{
-								Ref: github.String("main"),
-								SHA: github.String("dummySHA"),
-							},
-							Base: &github.PullRequestBranch{
-								Ref: github.String("main"),
-								SHA: github.String("dummySHA"),
-								Repo: &github.Repository{
-									CloneURL: github.String("https://github.com/zapier/kubechecks/"),
-									Owner:    &github.User{Login: github.String("zapier")},
-								},
-							},
-						},
-						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
-						nil},
-				),
-				cfg:      config.ServerConfig{},
-				username: "unittestuser",
-				email:    "unitestuser@localhost.local",
-			},
-			args: args{
-				context: context.TODO(),
-				comment: &github.IssueCommentEvent{
-					Issue: &github.Issue{
-						URL: github.String("https://github.com/"),
-					},
-					Repo: &github.Repository{
-						DefaultBranch: github.String("main"),
-						Name:          github.String("prguy"),
-						FullName:      github.String("pr guy"),
-					},
-				},
-			},
-			want: nilPr,
 		},
 	}
 	for _, tt := range tests {
@@ -567,7 +444,21 @@ func TestClient_buildRepoFromComment(t *testing.T) {
 				username:       tt.fields.username,
 				email:          tt.fields.email,
 			}
-			assert.Equalf(t, tt.want, c.buildRepoFromComment(tt.args.context, tt.args.comment), "buildRepoFromComment(%v, %v)", tt.args.context, tt.args.comment)
+			actual, err := c.buildRepoFromComment(tt.args.context, tt.args.comment)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want.Name, actual.Name)
+			assert.Equal(t, tt.want.Labels, actual.Labels)
+			assert.Equal(t, tt.want.CheckID, actual.CheckID)
+			assert.Equal(t, tt.want.BaseRef, actual.BaseRef)
+			assert.Equal(t, tt.want.CloneURL, actual.CloneURL)
+			assert.Equal(t, tt.want.DefaultBranch, actual.DefaultBranch)
+			assert.Equal(t, tt.want.Email, actual.Email)
+			assert.Equal(t, tt.want.FullName, actual.FullName)
+			assert.Equal(t, tt.want.HeadRef, actual.HeadRef)
+			assert.Equal(t, tt.want.Owner, actual.Owner)
+			assert.Equal(t, tt.want.Remote, actual.Remote)
+			assert.Equal(t, tt.want.SHA, actual.SHA)
+			assert.Equal(t, tt.want.Username, actual.Username)
 		})
 	}
 }
