@@ -17,7 +17,7 @@ type WebHookConfig struct {
 // Client represents a VCS client
 type Client interface {
 	// PostMessage takes in project name in form "owner/repo" (ie zapier/kubechecks), the PR/MR id, and the actual message
-	PostMessage(context.Context, PullRequest, string) *msg.Message
+	PostMessage(context.Context, PullRequest, string) (*msg.Message, error)
 	// UpdateMessage update a message with new content
 	UpdateMessage(context.Context, *msg.Message, string) error
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
