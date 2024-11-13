@@ -22,10 +22,10 @@ const sepEnd = "\n```\n</details>" +
 
 const sepStart = "Continued from previous comment.\n<details><summary>Show Output</summary>\n\n"
 
-// SplitComment splits comment into a slice of comments that are under maxSize.
+// splitComment splits comment into a slice of comments that are under maxSize.
 // It appends sepEnd to all comments that have a following comment.
 // It prepends sepStart to all comments that have a preceding comment.
-func SplitComment(comment string, maxSize int, sepEnd string, sepStart string) []string {
+func splitComment(comment string, maxSize int, sepEnd string, sepStart string) []string {
 	if len(comment) <= maxSize {
 		return []string{comment}
 	}
@@ -109,7 +109,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 	_, span := tracer.Start(ctx, "UpdateMessage")
 	defer span.End()
 
-	comments := SplitComment(message, MaxCommentLength, sepEnd, sepStart)
+	comments := splitComment(message, MaxCommentLength, sepEnd, sepStart)
 	repoNameComponents := strings.Split(m.Name, "/")
 
 	pr := vcs.PullRequest{
