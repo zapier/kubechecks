@@ -51,14 +51,3 @@ runs:
         ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }}
         --GIT_TAG=${{ inputs.image_tag }}
         --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
-      if: github.repository == 'zapier/kubechecks'
-
-    - name: Build the Docker image
-      shell: bash
-      run: >-
-        ./earthly.sh 
-        +docker-multiarch
-        ${{ inputs.tag_latest != 'false' && format('--LATEST_IMAGE_NAME=ghcr.io/{0}:latest', github.repository) || '' }} 
-        --GIT_TAG=${{ inputs.image_tag }}
-        --IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
-      if: github.repository != 'zapier/kubechecks'
