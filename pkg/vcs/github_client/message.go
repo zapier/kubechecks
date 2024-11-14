@@ -86,7 +86,7 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 
 	if err := c.deleteLatestRunningComment(ctx, pr); err != nil {
 		log.Error().Err(err).Msg("failed to delete latest 'kubechecks running' comment")
-		return nil
+		return nil, err
 	}
 
 	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
