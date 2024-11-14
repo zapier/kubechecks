@@ -74,7 +74,7 @@ func min(a, b int) int {
 	return b
 }
 
-func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) *msg.Message {
+func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
 	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
