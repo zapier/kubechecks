@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/go-github/v62/github"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
 
@@ -99,10 +100,10 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 
 	if err != nil {
 		telemetry.SetError(span, err, "Create Pull Request comment")
-		log.Error().Err(err).Msg("could not post message to PR")
+		return nil, errors.Wrap(err, "could not post message to PR")
 	}
 
-	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c)
+	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c), nil
 }
 
 func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message string) error {

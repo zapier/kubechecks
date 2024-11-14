@@ -57,3 +57,11 @@ func (c *Client) GetLastPipelinesForCommit(projectName string, commitSHA string)
 
 	return nil
 }
+
+type PipelinesServices interface {
+	ListProjectPipelines(pid interface{}, opt *gitlab.ListProjectPipelinesOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.PipelineInfo, *gitlab.Response, error)
+}
+
+type PipelinesService struct {
+	PipelinesServices
+}

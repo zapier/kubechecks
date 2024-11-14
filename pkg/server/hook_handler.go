@@ -47,11 +47,11 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 
-	pr, err := h.ctr.VcsClient.ParseHook(c.Request(), payload)
+	pr, err := h.ctr.VcsClient.ParseHook(ctx, c.Request(), payload)
 	if err != nil {
 		switch err {
 		case vcs.ErrInvalidType:
-			log.Debug().Msg("Ignoring event, not a merge request")
+			log.Debug().Msg("Ignoring event, not a supported request")
 			return c.String(http.StatusOK, "Skipped")
 		default:
 			// TODO: do something ELSE with the error

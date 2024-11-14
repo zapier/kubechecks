@@ -92,3 +92,11 @@ func configureBackOff() *backoff.ExponentialBackOff {
 
 	return expBackOff
 }
+
+type CommitsServices interface {
+	SetCommitStatus(pid interface{}, sha string, opt *gitlab.SetCommitStatusOptions, options ...gitlab.RequestOptionFunc) (*gitlab.CommitStatus, *gitlab.Response, error)
+}
+
+type CommitsService struct {
+	CommitsServices
+}
