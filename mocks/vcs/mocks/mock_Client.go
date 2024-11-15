@@ -332,9 +332,9 @@ func (_c *MockClient_LoadHook_Call) RunAndReturn(run func(context.Context, strin
 	return _c
 }
 
-// ParseHook provides a mock function with given fields: _a0, _a1
-func (_m *MockClient) ParseHook(_a0 *http.Request, _a1 []byte) (vcs.PullRequest, error) {
-	ret := _m.Called(_a0, _a1)
+// ParseHook provides a mock function with given fields: _a0, _a1, _a2
+func (_m *MockClient) ParseHook(_a0 context.Context, _a1 *http.Request, _a2 []byte) (vcs.PullRequest, error) {
+	ret := _m.Called(_a0, _a1, _a2)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ParseHook")
@@ -342,17 +342,17 @@ func (_m *MockClient) ParseHook(_a0 *http.Request, _a1 []byte) (vcs.PullRequest,
 
 	var r0 vcs.PullRequest
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*http.Request, []byte) (vcs.PullRequest, error)); ok {
-		return rf(_a0, _a1)
+	if rf, ok := ret.Get(0).(func(context.Context, *http.Request, []byte) (vcs.PullRequest, error)); ok {
+		return rf(_a0, _a1, _a2)
 	}
-	if rf, ok := ret.Get(0).(func(*http.Request, []byte) vcs.PullRequest); ok {
-		r0 = rf(_a0, _a1)
+	if rf, ok := ret.Get(0).(func(context.Context, *http.Request, []byte) vcs.PullRequest); ok {
+		r0 = rf(_a0, _a1, _a2)
 	} else {
 		r0 = ret.Get(0).(vcs.PullRequest)
 	}
 
-	if rf, ok := ret.Get(1).(func(*http.Request, []byte) error); ok {
-		r1 = rf(_a0, _a1)
+	if rf, ok := ret.Get(1).(func(context.Context, *http.Request, []byte) error); ok {
+		r1 = rf(_a0, _a1, _a2)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -366,15 +366,16 @@ type MockClient_ParseHook_Call struct {
 }
 
 // ParseHook is a helper method to define mock.On call
-//   - _a0 *http.Request
-//   - _a1 []byte
-func (_e *MockClient_Expecter) ParseHook(_a0 interface{}, _a1 interface{}) *MockClient_ParseHook_Call {
-	return &MockClient_ParseHook_Call{Call: _e.mock.On("ParseHook", _a0, _a1)}
+//   - _a0 context.Context
+//   - _a1 *http.Request
+//   - _a2 []byte
+func (_e *MockClient_Expecter) ParseHook(_a0 interface{}, _a1 interface{}, _a2 interface{}) *MockClient_ParseHook_Call {
+	return &MockClient_ParseHook_Call{Call: _e.mock.On("ParseHook", _a0, _a1, _a2)}
 }
 
-func (_c *MockClient_ParseHook_Call) Run(run func(_a0 *http.Request, _a1 []byte)) *MockClient_ParseHook_Call {
+func (_c *MockClient_ParseHook_Call) Run(run func(_a0 context.Context, _a1 *http.Request, _a2 []byte)) *MockClient_ParseHook_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*http.Request), args[1].([]byte))
+		run(args[0].(context.Context), args[1].(*http.Request), args[2].([]byte))
 	})
 	return _c
 }
@@ -384,13 +385,13 @@ func (_c *MockClient_ParseHook_Call) Return(_a0 vcs.PullRequest, _a1 error) *Moc
 	return _c
 }
 
-func (_c *MockClient_ParseHook_Call) RunAndReturn(run func(*http.Request, []byte) (vcs.PullRequest, error)) *MockClient_ParseHook_Call {
+func (_c *MockClient_ParseHook_Call) RunAndReturn(run func(context.Context, *http.Request, []byte) (vcs.PullRequest, error)) *MockClient_ParseHook_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // PostMessage provides a mock function with given fields: _a0, _a1, _a2
-func (_m *MockClient) PostMessage(_a0 context.Context, _a1 vcs.PullRequest, _a2 string) *msg.Message {
+func (_m *MockClient) PostMessage(_a0 context.Context, _a1 vcs.PullRequest, _a2 string) (*msg.Message, error) {
 	ret := _m.Called(_a0, _a1, _a2)
 
 	if len(ret) == 0 {
@@ -398,6 +399,10 @@ func (_m *MockClient) PostMessage(_a0 context.Context, _a1 vcs.PullRequest, _a2 
 	}
 
 	var r0 *msg.Message
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, vcs.PullRequest, string) (*msg.Message, error)); ok {
+		return rf(_a0, _a1, _a2)
+	}
 	if rf, ok := ret.Get(0).(func(context.Context, vcs.PullRequest, string) *msg.Message); ok {
 		r0 = rf(_a0, _a1, _a2)
 	} else {
@@ -406,7 +411,13 @@ func (_m *MockClient) PostMessage(_a0 context.Context, _a1 vcs.PullRequest, _a2 
 		}
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, vcs.PullRequest, string) error); ok {
+		r1 = rf(_a0, _a1, _a2)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // MockClient_PostMessage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PostMessage'
@@ -429,12 +440,12 @@ func (_c *MockClient_PostMessage_Call) Run(run func(_a0 context.Context, _a1 vcs
 	return _c
 }
 
-func (_c *MockClient_PostMessage_Call) Return(_a0 *msg.Message) *MockClient_PostMessage_Call {
-	_c.Call.Return(_a0)
+func (_c *MockClient_PostMessage_Call) Return(_a0 *msg.Message, _a1 error) *MockClient_PostMessage_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockClient_PostMessage_Call) RunAndReturn(run func(context.Context, vcs.PullRequest, string) *msg.Message) *MockClient_PostMessage_Call {
+func (_c *MockClient_PostMessage_Call) RunAndReturn(run func(context.Context, vcs.PullRequest, string) (*msg.Message, error)) *MockClient_PostMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }
