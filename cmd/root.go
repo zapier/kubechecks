@@ -45,16 +45,22 @@ func init() {
 				zerolog.LevelDebugValue,
 				zerolog.LevelTraceValue,
 			).
-			withDefault("info").
+			withDefault(zerolog.LevelInfoValue).
 			withShortHand("l"),
 	)
 	boolFlag(flags, "persist-log-level", "Persists the set log level down to other module loggers.")
 	stringFlag(flags, "vcs-base-url", "VCS base url, useful if self hosting gitlab, enterprise github, etc.")
+	stringFlag(flags, "vcs-upload-url", "VCS upload url, required for enterprise github.")
 	stringFlag(flags, "vcs-type", "VCS type. One of gitlab or github. Defaults to gitlab.",
 		newStringOpts().
 			withChoices("github", "gitlab").
 			withDefault("gitlab"))
 	stringFlag(flags, "vcs-token", "VCS API token.")
+	stringFlag(flags, "vcs-username", "VCS Username.")
+	stringFlag(flags, "vcs-email", "VCS Email.")
+	stringFlag(flags, "github-private-key", "Github App Private Key.")
+	int64Flag(flags, "github-app-id", "Github App ID.")
+	int64Flag(flags, "github-installation-id", "Github Installation ID.")
 	stringFlag(flags, "argocd-api-token", "ArgoCD API token.")
 	stringFlag(flags, "argocd-api-server-addr", "ArgoCD API Server Address.",
 		newStringOpts().
@@ -109,6 +115,9 @@ func init() {
 	stringFlag(flags, "worst-hooks-state", "The worst state that can be returned from the hooks renderer.",
 		newStringOpts().
 			withDefault("panic"))
+	stringFlag(flags, "replan-comment-msg", "comment message which re-triggers kubechecks on PR.",
+		newStringOpts().
+			withDefault("kubechecks again"))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()
@@ -117,7 +126,10 @@ func init() {
 func setupLogOutput() {
 	// Default level is info, unless debug flag is present
 	levelFlag := viper.GetString("log-level")
-	level, _ := zerolog.ParseLevel(levelFlag)
+	level, err := zerolog.ParseLevel(levelFlag)
+	if err != nil {
+		log.Error().Err(err).Msg("Invalid log level")
+	}
 
 	zerolog.SetGlobalLevel(level)
 
