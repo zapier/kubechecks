@@ -102,6 +102,9 @@
         "securityContext": {
           "type": "object"
         },
+        "initContainers": {
+          "type": "array"
+        },
         "startupProbe": {
           "type": "object"
         },
@@ -192,6 +195,9 @@
         },
         "name": {
           "type": "string"
+        },
+        "annotations": {
+          "$ref": "#/$defs/key-value-map"
         }
       }
     },
