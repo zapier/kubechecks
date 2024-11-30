@@ -121,7 +121,7 @@ func init() {
 
 	boolFlag(flags, "server-side-diff", "Enable server-side diff.",
 		newBoolOpts().
-			withDefault(true))
+			withDefault(false))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()
