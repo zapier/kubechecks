@@ -124,19 +124,19 @@ func (argo *ArgoClient) GetManifestsServerSide(ctx context.Context, name, tempRe
 
 	client, err := appClient.GetManifestsWithFiles(ctx, grpc_retry.Disable())
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get manifest client")
 	}
 	localIncludes := []string{"*"}
 	log.Debug().Str("name", name).Str("repo_path", tempRepoDir).Msg("sending application manifest query with files")
 
 	err = manifeststream.SendApplicationManifestQueryWithFiles(ctx, client, name, app.Namespace, tempRepoDir, localIncludes)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to send manifest query")
 	}
 
 	res, err := client.CloseAndRecv()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to receive manifest response")
 	}
 
 	if res.Manifests == nil {

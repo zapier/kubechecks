@@ -119,7 +119,9 @@ func init() {
 		newStringOpts().
 			withDefault("kubechecks again"))
 
-	boolFlag(flags, "server-side-diff", "Enable server-side diff.")
+	boolFlag(flags, "server-side-diff", "Enable server-side diff.",
+		newBoolOpts().
+			withDefault(true))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()

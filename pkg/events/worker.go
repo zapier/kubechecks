@@ -110,28 +110,18 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 	if !w.ctr.Config.ServerSideDiff {
 		logger.Debug().Str("repo_path", repoPath).Msg("Getting manifests")
 		jsonManifests, err = w.ctr.ArgoClient.GetManifestsLocal(ctx, appName, repoPath, appPath, app)
-		if err != nil {
-			logger.Error().Err(err).Msg("Unable to get manifests")
-			w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
-				State:   pkg.StateError,
-				Summary: "Unable to get manifests",
-				Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo.Directory)),
-			})
-			return
-		}
 	} else {
 		logger.Debug().Str("repo_path", repoPath).Msg("Getting server-side manifests")
 		jsonManifests, err = w.ctr.ArgoClient.GetManifestsServerSide(ctx, appName, repoPath, appPath, app)
-		if err != nil {
-			logger.Error().Err(err).Msg("Unable to get manifests")
-			w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
-				State:   pkg.StateError,
-				Summary: "Unable to get manifests",
-				Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo.Directory)),
-			})
-			return
-		}
-
+	}
+	if err != nil {
+		logger.Error().Err(err).Msg("Unable to get manifests")
+		w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
+			State:   pkg.StateError,
+			Summary: "Unable to get manifests",
+			Details: fmt.Sprintf("```\n%s\n```", cleanupGetManifestsError(err, repo.Directory)),
+		})
+		return
 	}
 
 	// Argo diff logic wants unformatted manifests but everything else wants them as YAML, so we prepare both
