@@ -11,7 +11,9 @@ import (
 	repoapiclient "github.com/argoproj/argo-cd/v2/reposerver/apiclient"
 	"github.com/argoproj/argo-cd/v2/reposerver/repository"
 	"github.com/argoproj/argo-cd/v2/util/git"
+	"github.com/argoproj/argo-cd/v2/util/manifeststream"
 	"github.com/ghodss/yaml"
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -100,6 +102,48 @@ func (argo *ArgoClient) generateManifests(
 		resource.MustParse("0"),
 		nil,
 	)
+}
+
+// adapted fromm https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L894
+func (argo *ArgoClient) GetManifestsServerSide(ctx context.Context, name, tempRepoDir, changedAppFilePath string, app argoappv1.Application) ([]string, error) {
+	var err error
+
+	ctx, span := tracer.Start(ctx, "GetManifestsServerSide")
+	defer span.End()
+
+	log.Debug().Str("name", name).Msg("GetManifestsServerSide")
+
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		getManifestsDuration.WithLabelValues(name).Observe(duration.Seconds())
+	}()
+
+	appCloser, appClient := argo.GetApplicationClient()
+	defer appCloser.Close()
+
+	client, err := appClient.GetManifestsWithFiles(ctx, grpc_retry.Disable())
+	if err != nil {
+		return nil, err
+	}
+	localIncludes := []string{"*"}
+	log.Debug().Str("name", name).Str("repo_path", tempRepoDir).Msg("sending application manifest query with files")
+
+	err = manifeststream.SendApplicationManifestQueryWithFiles(ctx, client, name, app.Namespace, tempRepoDir, localIncludes)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := client.CloseAndRecv()
+	if err != nil {
+		return nil, err
+	}
+
+	if res.Manifests == nil {
+		return nil, nil
+	}
+	getManifestsSuccess.WithLabelValues(name).Inc()
+	return res.Manifests, nil
 }
 
 func ConvertJsonToYamlManifests(jsonManifests []string) []string {
