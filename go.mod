@@ -43,7 +43,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/xanzy/go-gitlab v0.107.0
 	github.com/yannh/kubeconform v0.6.4
-	github.com/ziflex/lecho/v3 v3.5.0
+	github.com/ziflex/lecho/v3 v3.7.0
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.53.0
 	go.opentelemetry.io/otel v1.32.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.32.0
