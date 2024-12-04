@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+
 	"github.com/zapier/kubechecks/pkg/app_watcher"
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/argo_client"
@@ -20,7 +21,7 @@ import (
 func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) (container.Container, error) {
 	var err error
 
-	var ctr = container.Container{
+	ctr := container.Container{
 		Config:      cfg,
 		RepoManager: git.NewRepoManager(cfg),
 	}
@@ -30,7 +31,7 @@ func newContainer(ctx context.Context, cfg config.ServerConfig, watchApps bool) 
 	case "gitlab":
 		ctr.VcsClient, err = gitlab_client.CreateGitlabClient(cfg)
 	case "github":
-		ctr.VcsClient, err = github_client.CreateGithubClient(cfg)
+		ctr.VcsClient, err = github_client.CreateGithubClient(ctx, cfg)
 	default:
 		err = fmt.Errorf("unknown vcs-type: %q", cfg.VcsType)
 	}

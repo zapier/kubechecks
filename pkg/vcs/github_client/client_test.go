@@ -11,12 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
 	githubMocks "github.com/zapier/kubechecks/mocks/github_client/mocks"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
-// MockGitHubMethod is a generic function to mock GitHub client methods
+// MockGitHubMethod is a generic function to mock GitHub client methods.
 func MockGitHubMethod(methodName string, returns []interface{}) *GClient {
 	mockClient := new(githubMocks.MockRepositoriesServices)
 	mockClient.On(methodName, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(returns...)
@@ -26,7 +27,7 @@ func MockGitHubMethod(methodName string, returns []interface{}) *GClient {
 	}
 }
 
-// MockGitHubPullRequestMethod is a generic function to mock GitHub client methods
+// MockGitHubPullRequestMethod is a generic function to mock GitHub client methods.
 func MockGitHubPullRequestMethod(methodName string, returns []interface{}) *GClient {
 	mockClient := new(githubMocks.MockPullRequestsServices)
 	mockClient.On(methodName, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(returns...)
@@ -62,7 +63,6 @@ func TestParseRepo(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			owner, repo := parseRepo(tc.input)
 			assert.Equal(t, tc.expectedOwner, owner)
@@ -80,7 +80,6 @@ func TestClient_CreateHook(t *testing.T) {
 		email          string
 	}
 	type args struct {
-		ctx              context.Context
 		ownerAndRepoName string
 		webhookUrl       string
 		webhookSecret    string
@@ -99,7 +98,8 @@ func TestClient_CreateHook(t *testing.T) {
 					[]interface{}{
 						&github.Hook{},
 						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
-						nil}),
+						nil,
+					}),
 				cfg: config.ServerConfig{
 					VcsToken: "ghp_helloworld",
 					VcsType:  "github",
@@ -108,7 +108,6 @@ func TestClient_CreateHook(t *testing.T) {
 				email:    "dummy@zapier.com",
 			},
 			args: args{
-				ctx:              context.Background(),
 				ownerAndRepoName: "https://dummy-bot:********@github.com/dummy-bot-zapier/test-repo.git",
 				webhookUrl:       "https://dummywebhooks.local",
 				webhookSecret:    "dummy-webhook-secret",
@@ -123,7 +122,8 @@ func TestClient_CreateHook(t *testing.T) {
 					[]interface{}{
 						nil,
 						&github.Response{Response: &http.Response{StatusCode: http.StatusBadRequest}},
-						fmt.Errorf("mock bad request")}),
+						fmt.Errorf("mock bad request"),
+					}),
 				cfg: config.ServerConfig{
 					VcsToken: "ghp_helloworld",
 					VcsType:  "github",
@@ -132,7 +132,6 @@ func TestClient_CreateHook(t *testing.T) {
 				email:    "dummy@zapier.com",
 			},
 			args: args{
-				ctx:              context.Background(),
 				ownerAndRepoName: "https://dummy-bot:********@github.com/dummy-bot-zapier/test-repo.git",
 				webhookUrl:       "https://dummywebhooks.local",
 				webhookSecret:    "dummy-webhook-secret",
@@ -147,7 +146,8 @@ func TestClient_CreateHook(t *testing.T) {
 					[]interface{}{
 						nil,
 						nil,
-						fmt.Errorf("mock network error")}),
+						fmt.Errorf("mock network error"),
+					}),
 				cfg: config.ServerConfig{
 					VcsToken: "ghp_helloworld",
 					VcsType:  "github",
@@ -156,7 +156,6 @@ func TestClient_CreateHook(t *testing.T) {
 				email:    "dummy@zapier.com",
 			},
 			args: args{
-				ctx:              context.Background(),
 				ownerAndRepoName: "https://dummy-bot:********@github.com/dummy-bot-zapier/test-repo.git",
 				webhookUrl:       "https://dummywebhooks.local",
 				webhookSecret:    "dummy-webhook-secret",
@@ -166,6 +165,7 @@ func TestClient_CreateHook(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
 			c := &Client{
 				shurcoolClient: tt.fields.shurcoolClient,
 				googleClient:   tt.fields.googleClient,
@@ -173,7 +173,7 @@ func TestClient_CreateHook(t *testing.T) {
 				username:       tt.fields.username,
 				email:          tt.fields.email,
 			}
-			tt.wantErr(t, c.CreateHook(tt.args.ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl, tt.args.webhookSecret), fmt.Sprintf("CreateHook(%v, %v, %v, %v)", tt.args.ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl, tt.args.webhookSecret))
+			tt.wantErr(t, c.CreateHook(ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl, tt.args.webhookSecret), fmt.Sprintf("CreateHook(%v, %v, %v, %v)", ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl, tt.args.webhookSecret))
 		})
 	}
 }
@@ -187,7 +187,6 @@ func TestClient_GetHookByUrl(t *testing.T) {
 		email          string
 	}
 	type args struct {
-		ctx              context.Context
 		ownerAndRepoName string
 		webhookUrl       string
 	}
@@ -216,7 +215,8 @@ func TestClient_GetHookByUrl(t *testing.T) {
 							},
 						},
 						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
-						nil}),
+						nil,
+					}),
 				cfg: config.ServerConfig{
 					VcsToken: "ghp_helloworld",
 					VcsType:  "github",
@@ -225,7 +225,6 @@ func TestClient_GetHookByUrl(t *testing.T) {
 				email:    "dummy@zapier.com",
 			},
 			args: args{
-				ctx:              context.Background(),
 				ownerAndRepoName: "https://dummy-bot:********@github.com/dummy-bot-zapier/test-repo.git",
 				webhookUrl:       "https://dummywebhooks.local",
 			},
@@ -253,7 +252,8 @@ func TestClient_GetHookByUrl(t *testing.T) {
 							},
 						},
 						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
-						nil}),
+						nil,
+					}),
 				cfg: config.ServerConfig{
 					VcsToken: "ghp_helloworld",
 					VcsType:  "github",
@@ -262,7 +262,6 @@ func TestClient_GetHookByUrl(t *testing.T) {
 				email:    "dummy@zapier.com",
 			},
 			args: args{
-				ctx:              context.Background(),
 				ownerAndRepoName: "https://dummy-bot:********@github.com/dummy-bot-zapier/test-repo.git",
 				webhookUrl:       "https://dummywebhooks.local",
 			},
@@ -277,7 +276,8 @@ func TestClient_GetHookByUrl(t *testing.T) {
 					[]interface{}{
 						nil,
 						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
-						nil}),
+						nil,
+					}),
 				cfg: config.ServerConfig{
 					VcsToken: "ghp_helloworld",
 					VcsType:  "github",
@@ -286,7 +286,6 @@ func TestClient_GetHookByUrl(t *testing.T) {
 				email:    "dummy@zapier.com",
 			},
 			args: args{
-				ctx:              context.Background(),
 				ownerAndRepoName: "https://dummy-bot:********@github.com/dummy-bot-zapier/test-repo.git",
 				webhookUrl:       "https://dummywebhooks.local",
 			},
@@ -301,7 +300,8 @@ func TestClient_GetHookByUrl(t *testing.T) {
 					[]interface{}{
 						nil,
 						&github.Response{Response: &http.Response{StatusCode: http.StatusBadRequest}},
-						fmt.Errorf("mock bad request")}),
+						fmt.Errorf("mock bad request"),
+					}),
 				cfg: config.ServerConfig{
 					VcsToken: "ghp_helloworld",
 					VcsType:  "github",
@@ -310,7 +310,6 @@ func TestClient_GetHookByUrl(t *testing.T) {
 				email:    "dummy@zapier.com",
 			},
 			args: args{
-				ctx:              context.Background(),
 				ownerAndRepoName: "https://dummy-bot:********@github.com/dummy-bot-zapier/test-repo.git",
 				webhookUrl:       "https://dummywebhooks.local",
 			},
@@ -320,6 +319,7 @@ func TestClient_GetHookByUrl(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
 			c := &Client{
 				shurcoolClient: tt.fields.shurcoolClient,
 				googleClient:   tt.fields.googleClient,
@@ -327,11 +327,11 @@ func TestClient_GetHookByUrl(t *testing.T) {
 				username:       tt.fields.username,
 				email:          tt.fields.email,
 			}
-			got, err := c.GetHookByUrl(tt.args.ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl)
-			if !tt.wantErr(t, err, fmt.Sprintf("GetHookByUrl(%v, %v, %v)", tt.args.ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl)) {
+			got, err := c.GetHookByUrl(ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl)
+			if !tt.wantErr(t, err, fmt.Sprintf("GetHookByUrl(%v, %v, %v)", ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl)) {
 				return
 			}
-			assert.Equalf(t, tt.want, got, "GetHookByUrl(%v, %v, %v)", tt.args.ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl)
+			assert.Equalf(t, tt.want, got, "GetHookByUrl(%v, %v, %v)", ctx, tt.args.ownerAndRepoName, tt.args.webhookUrl)
 		})
 	}
 }
@@ -345,7 +345,6 @@ func TestClient_buildRepoFromComment_HappyPath(t *testing.T) {
 		email          string
 	}
 	type args struct {
-		context context.Context
 		comment *github.IssueCommentEvent
 	}
 	tests := []struct {
@@ -392,14 +391,14 @@ func TestClient_buildRepoFromComment_HappyPath(t *testing.T) {
 							},
 						},
 						&github.Response{Response: &http.Response{StatusCode: http.StatusOK}},
-						nil},
+						nil,
+					},
 				),
 				cfg:      config.ServerConfig{},
 				username: "unittestuser",
 				email:    "unitestuser@localhost.local",
 			},
 			args: args{
-				context: context.TODO(),
 				comment: &github.IssueCommentEvent{
 					Issue: &github.Issue{
 						URL:    github.String("https://github.com/zapier/kubechecks/pull/250"),
@@ -444,7 +443,7 @@ func TestClient_buildRepoFromComment_HappyPath(t *testing.T) {
 				username:       tt.fields.username,
 				email:          tt.fields.email,
 			}
-			actual, err := c.buildRepoFromComment(tt.args.context, tt.args.comment)
+			actual, err := c.buildRepoFromComment(context.TODO(), tt.args.comment)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want.Name, actual.Name)
 			assert.Equal(t, tt.want.Labels, actual.Labels)

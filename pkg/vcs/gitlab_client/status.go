@@ -82,9 +82,8 @@ func (c *Client) setCommitStatus(projectWithNS string, commitSHA string, status 
 	return commitStatus, err
 }
 
-// configureBackOff returns a backoff configuration to use to retry requests
+// configureBackOff returns a backoff configuration to use to retry requests.
 func configureBackOff() *backoff.ExponentialBackOff {
-
 	// Lets setup backoff logic to retry this request for 30 seconds
 	expBackOff := backoff.NewExponentialBackOff()
 	expBackOff.MaxInterval = 10 * time.Second

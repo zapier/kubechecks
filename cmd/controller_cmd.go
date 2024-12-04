@@ -22,7 +22,7 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-// ControllerCmd represents the run command
+// ControllerCmd represents the run command.
 var ControllerCmd = &cobra.Command{
 	Use:   "controller",
 	Short: "Start the VCS Webhook handler.",
@@ -67,7 +67,7 @@ var ControllerCmd = &cobra.Command{
 		if err != nil {
 			log.Panic().Err(err).Msg("Failed to initialize telemetry")
 		}
-		defer t.Shutdown()
+		defer t.Shutdown(ctx)
 
 		log.Info().Msgf("starting web server")
 		startWebserver(ctx, ctr, processors)

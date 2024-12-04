@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	affectedappsmocks "github.com/zapier/kubechecks/mocks/affected_apps/mocks"
 	generatorsmocks "github.com/zapier/kubechecks/mocks/generator/mocks"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
@@ -21,7 +23,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // TestCleanupGetManifestsError tests the cleanupGetManifestsError function.
@@ -153,7 +154,6 @@ func TestCheckEvent_GenerateListOfAffectedApps(t *testing.T) {
 		matcher       affected_apps.Matcher
 	}
 	type args struct {
-		ctx           context.Context
 		repo          *git.Repo
 		targetBranch  string
 		initMatcherFn MatcherFn
@@ -195,7 +195,6 @@ func TestCheckEvent_GenerateListOfAffectedApps(t *testing.T) {
 				}),
 			},
 			args: args{
-				ctx:           context.Background(),
 				repo:          &git.Repo{Directory: "/tmp"},
 				targetBranch:  "HEAD",
 				initMatcherFn: MockInitMatcherFn(),
@@ -225,7 +224,6 @@ func TestCheckEvent_GenerateListOfAffectedApps(t *testing.T) {
 				}),
 			},
 			args: args{
-				ctx:           context.Background(),
 				repo:          &git.Repo{Directory: "/tmp"},
 				targetBranch:  "HEAD",
 				initMatcherFn: MockInitMatcherFn(),
@@ -262,7 +260,6 @@ func TestCheckEvent_GenerateListOfAffectedApps(t *testing.T) {
 				}),
 			},
 			args: args{
-				ctx:           context.Background(),
 				repo:          &git.Repo{Directory: "/tmp"},
 				targetBranch:  "HEAD",
 				initMatcherFn: MockInitMatcherFn(),
@@ -289,8 +286,7 @@ func TestCheckEvent_GenerateListOfAffectedApps(t *testing.T) {
 				generator:     tt.fields.generator,
 				matcher:       tt.fields.matcher,
 			}
-			tt.wantErr(t, ce.GenerateListOfAffectedApps(tt.args.ctx, tt.args.repo, tt.args.targetBranch, tt.args.initMatcherFn), fmt.Sprintf("GenerateListOfAffectedApps(%v, %v, %v, %v)", tt.args.ctx, tt.args.repo, tt.args.targetBranch, tt.args.initMatcherFn))
-
+			tt.wantErr(t, ce.GenerateListOfAffectedApps(context.Background(), tt.args.repo, tt.args.targetBranch, tt.args.initMatcherFn), fmt.Sprintf("GenerateListOfAffectedApps(%v, %v, %v, %v)", context.Background(), tt.args.repo, tt.args.targetBranch, tt.args.initMatcherFn))
 		})
 	}
 }
@@ -308,6 +304,7 @@ func MockGenerator(methodName string, returns []interface{}) generator.AppsGener
 
 	return mockClient
 }
+
 func MockInitMatcherFn() MatcherFn {
 	return func(ce *CheckEvent, repo *git.Repo) error {
 		return nil

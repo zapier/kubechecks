@@ -20,7 +20,7 @@ import (
 
 var tracer = otel.Tracer("pkg/checks/kubeconform")
 
-func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPath string) []string {
+func getSchemaLocations(ctr container.Container, tempRepoPath string) []string {
 	cfg := ctr.Config
 
 	locations := []string{
@@ -87,12 +87,12 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		KubernetesVersion:    targetKubernetesVersion,
 		Strict:               true,
 		IgnoreMissingSchemas: false,
-		Debug:                log.Debug().Enabled(),
+		Debug:                log.Debug().Enabled(), //nolint: zerologlint
 	}
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(ctx, ctr, tempRepoPath)
+		schemaLocations = getSchemaLocations(ctr, tempRepoPath)
 	)
 
 	log.Debug().Msgf("cache location: %s", vOpts.Cache)
@@ -101,7 +101,7 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
-		return msg.Result{}, fmt.Errorf("could not create kubeconform validator: %v", err)
+		return msg.Result{}, errors.Wrap(err, "could not create kubeconform validator")
 	}
 	result := v.Validate("-", io.NopCloser(strings.NewReader(strings.Join(appManifests, "\n"))))
 	var invalid, failedValidation bool
@@ -127,11 +127,12 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 	}
 
 	var cr msg.Result
-	if invalid {
+	switch {
+	case invalid:
 		cr.State = pkg.StateWarning
-	} else if failedValidation {
+	case failedValidation:
 		cr.State = pkg.StateFailure
-	} else {
+	default:
 		cr.State = pkg.StateSuccess
 	}
 

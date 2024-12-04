@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/imdario/mergo"
-
 	"github.com/argoproj/argo-cd/v2/applicationset/utils"
 	argoprojiov1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-
+	"github.com/imdario/mergo"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
 
@@ -77,7 +76,6 @@ func (m *MergeGenerator) GenerateParams(appSetGenerator *argoprojiov1alpha1.Appl
 
 		for mergeKeyValue, baseParamSet := range baseParamSetsByMergeKey {
 			if overrideParamSet, exists := paramSetsByMergeKey[mergeKeyValue]; exists {
-
 				if appSet.Spec.GoTemplate {
 					if err := mergo.Merge(&baseParamSet, overrideParamSet, mergo.WithOverride); err != nil {
 						return nil, fmt.Errorf("error merging base param set with override param set: %w", err)
@@ -95,7 +93,7 @@ func (m *MergeGenerator) GenerateParams(appSetGenerator *argoprojiov1alpha1.Appl
 	}
 
 	mergedParamSets := make([]map[string]interface{}, len(baseParamSetsByMergeKey))
-	var i = 0
+	i := 0
 	for _, mergedParamSet := range baseParamSetsByMergeKey {
 		mergedParamSets[i] = mergedParamSet
 		i += 1
@@ -177,9 +175,8 @@ func (m *MergeGenerator) getParams(appSetBaseGenerator argoprojiov1alpha1.Applic
 		argoprojiov1alpha1.ApplicationSetTemplate{},
 		appSet,
 		map[string]interface{}{})
-
 	if err != nil {
-		return nil, fmt.Errorf("child generator returned an error on parameter generation: %v", err)
+		return nil, errors.Wrap(err, "child generator returned an error on parameter generation")
 	}
 
 	if len(t) == 0 {
@@ -227,7 +224,6 @@ func (m *MergeGenerator) GetRequeueAfter(appSetGenerator *argoprojiov1alpha1.App
 	} else {
 		return NoRequeueAfter
 	}
-
 }
 
 func getMergeGenerator(r argoprojiov1alpha1.ApplicationSetNestedGenerator) (*argoprojiov1alpha1.MergeGenerator, error) {

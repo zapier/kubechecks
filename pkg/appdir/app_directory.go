@@ -63,7 +63,7 @@ func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
 //
 // changeList: a slice of strings representing the paths of modified files.
 // targetBranch: the branch name to compare against the target revision of the applications.
-// e.g. changeList = ["path/to/file1", "path/to/file2"]
+// e.g. changeList = ["path/to/file1", "path/to/file2"].
 func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []v1alpha1.Application {
 	log.Debug().Msgf("checking %d changes", len(changeList))
 

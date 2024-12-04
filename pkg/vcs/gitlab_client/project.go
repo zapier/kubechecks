@@ -11,7 +11,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/repo_config"
 )
 
-// GetProjectByID gets a project by the given Project Name or ID
+// GetProjectByID gets a project by the given Project Name or ID.
 func (c *Client) GetProjectByID(project int) (*gitlab.Project, error) {
 	var proj *gitlab.Project
 	err := backoff.Retry(func() error {

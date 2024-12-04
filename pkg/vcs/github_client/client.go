@@ -33,7 +33,7 @@ type Client struct {
 	username, email string
 }
 
-// GClient is a struct that holds the services for the GitHub client
+// GClient is a struct that holds the services for the GitHub client.
 type GClient struct {
 	PullRequests PullRequestsServices
 	Repositories RepositoriesServices
@@ -41,15 +41,13 @@ type GClient struct {
 }
 
 // CreateGithubClient creates a new GitHub client using the auth token provided. We
-// can't validate the token at this point, so if it exists we assume it works
-func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
+// can't validate the token at this point, so if it exists we assume it works.
+func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
 	var (
 		err            error
 		googleClient   *github.Client
 		shurcoolClient *githubv4.Client
 	)
-
-	ctx := context.Background()
 
 	githubClient, err := createHttpClient(ctx, cfg)
 	if err != nil {
@@ -216,7 +214,7 @@ func (c *Client) buildRepoFromEvent(event *github.PullRequestEvent) vcs.PullRequ
 	return c.buildRepo(event.PullRequest)
 }
 
-// buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent
+// buildRepoFromComment builds a vcs.PullRequest from a github.IssueCommentEvent.
 func (c *Client) buildRepoFromComment(context context.Context, comment *github.IssueCommentEvent) (vcs.PullRequest, error) {
 	owner := comment.GetRepo().GetOwner().GetLogin()
 	repoName := comment.GetRepo().GetName()
