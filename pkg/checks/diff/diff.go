@@ -318,7 +318,9 @@ func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.Resourc
 		}
 		if local, ok := objs[key]; ok || live != nil {
 			if local != nil && !kube.IsCRD(local) {
-				if err := resourceTracking.SetAppInstance(local, argoSettings.AppLabelKey, appName, "", argoappv1.TrackingMethod(argoSettings.GetTrackingMethod())); err != nil {
+				if err := resourceTracking.SetAppInstance(
+					local, argoSettings.AppLabelKey, appName, "", argoappv1.TrackingMethod(argoSettings.GetTrackingMethod()), "",
+				); err != nil {
 					return nil, err
 				}
 			}
