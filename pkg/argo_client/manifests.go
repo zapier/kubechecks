@@ -42,10 +42,10 @@ func (a *ArgoClient) GetManifests(ctx context.Context, name string, app v1alpha1
 		getManifestsDuration.WithLabelValues(name).Observe(duration.Seconds())
 	}()
 
-	contents, refs := a.preprocessSources(&app, pullRequest)
+	contentRefs, refs := a.preprocessSources(&app, pullRequest)
 
 	var manifests []string
-	for _, source := range contents {
+	for _, source := range contentRefs {
 		moreManifests, err := a.generateManifests(ctx, app, source, refs, pullRequest, getRepo)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to generate manifests")
@@ -57,6 +57,9 @@ func (a *ArgoClient) GetManifests(ctx context.Context, name string, app v1alpha1
 	return manifests, nil
 }
 
+// preprocessSources splits the content sources from the ref sources, and transforms source refs that point at the pull
+// request's base into refs that point at the pull request's head. This is necessary to generate manifests based on what
+// the world will look like _after_ the branch gets merged in.
 func (a *ArgoClient) preprocessSources(app *v1alpha1.Application, pullRequest vcs.PullRequest) ([]v1alpha1.ApplicationSource, []v1alpha1.ApplicationSource) {
 	if !app.Spec.HasMultipleSources() {
 		return []v1alpha1.ApplicationSource{app.Spec.GetSource()}, nil
@@ -72,8 +75,13 @@ func (a *ArgoClient) preprocessSources(app *v1alpha1.Application, pullRequest vc
 			continue
 		}
 
-		if source.TargetRevision == pullRequest.BaseRef {
-			source.TargetRevision = pullRequest.HeadRef
+		// If the source is the same as the _base_ of the pull request,
+		// then change the revision to the pull request's target.
+		// This ensures that the manifests represent the result of the request.
+		if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) {
+			if source.TargetRevision == pullRequest.BaseRef {
+				source.TargetRevision = pullRequest.HeadRef
+			}
 		}
 
 		refSources = append(refSources, source)
@@ -82,11 +90,14 @@ func (a *ArgoClient) preprocessSources(app *v1alpha1.Application, pullRequest vc
 	return contentSources, refSources
 }
 
+// generateManifests generates an Application along with all of its files, and sends it to the ArgoCD
+// Repository service to be transformed into raw kubernetes manifests. This allows us to take advantage of server
+// configuration and credentials.
 func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Application, source v1alpha1.ApplicationSource, refs []v1alpha1.ApplicationSource, pullRequest vcs.PullRequest, getRepo func(ctx context.Context, cloneURL string, branchName string) (*git.Repo, error)) ([]string, error) {
 	// multisource apps must adhere to the following rules:
 	// 1. first source must be a non-ref source
 	// 2. there must be one and only one non-ref source
-	// 3. ref sources that match the pull requests's repo and target branch need to have their target branch swapped to the head branch of the pull request
+	// 3. ref sources that match the pull requests' repo and target branch need to have their target branch swapped to the head branch of the pull request
 
 	clusterCloser, clusterClient := a.GetClusterClient()
 	defer clusterCloser.Close()
@@ -111,7 +122,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	argoDB := db.NewDB(a.namespace, settingsMgr, a.k8s)
 
 	repoTarget := source.TargetRevision
-	if areSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
+	if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
 		repoTarget = pullRequest.HeadRef
 	}
 
@@ -324,7 +335,7 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 				}
 
 				refRepo := repo
-				if !areSameRepos(ref.RepoURL, repo.CloneURL) {
+				if !pkg.AreSameRepos(ref.RepoURL, repo.CloneURL) {
 					refRepo, err = getRepo(ctx, ref.RepoURL, ref.TargetRevision)
 					if err != nil {
 						return "", errors.Wrapf(err, "failed to clone repo: %q", ref.RepoURL)
@@ -347,6 +358,11 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 					return "", errors.Wrap(err, "failed to find a relative path")
 				}
 				source.Helm.ValueFiles[index] = relPath
+				continue
+			}
+
+			if strings.Contains(valueFile, "://") {
+				// todo: is there anything to do here?
 				continue
 			}
 
@@ -416,22 +432,6 @@ func sendFile(ctx context.Context, sender sender, file *os.File) error {
 		}
 	}
 	return nil
-}
-
-func areSameRepos(url1, url2 string) bool {
-	repo1, err := pkg.Canonicalize(url1)
-	if err != nil {
-		log.Warn().Msgf("failed to canonicalize %q", url1)
-		return false
-	}
-
-	repo2, err := pkg.Canonicalize(url2)
-	if err != nil {
-		log.Warn().Msgf("failed to canonicalize %q", url2)
-		return false
-	}
-
-	return repo1 == repo2
 }
 
 func areSameTargetRef(ref1, ref2 string) bool {

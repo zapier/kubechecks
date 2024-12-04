@@ -7,6 +7,7 @@ import (
 
 	"github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 )
 
 type RepoURL struct {
@@ -50,4 +51,20 @@ func Canonicalize(cloneURL string) (RepoURL, error) {
 	}
 
 	return parsed, nil
+}
+
+func AreSameRepos(url1, url2 string) bool {
+	repo1, err := Canonicalize(url1)
+	if err != nil {
+		log.Warn().Msgf("failed to canonicalize %q", url1)
+		return false
+	}
+
+	repo2, err := Canonicalize(url2)
+	if err != nil {
+		log.Warn().Msgf("failed to canonicalize %q", url2)
+		return false
+	}
+
+	return repo1 == repo2
 }
