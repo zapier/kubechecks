@@ -206,6 +206,7 @@ func generateDiff(ctx context.Context, request checks.Request, argoSettings *set
 		WithDiffSettings(request.App.Spec.IgnoreDifferences, overrides, ignoreAggregatedRoles, ignoreNormalizerOpts).
 		WithTracking(argoSettings.AppLabelKey, argoSettings.TrackingMethod).
 		WithNoCache().
+		WithIgnoreMutationWebhook(false).
 		Build()
 	if err != nil {
 		telemetry.SetError(span, err, "Build Diff")
