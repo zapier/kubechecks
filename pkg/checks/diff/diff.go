@@ -4,10 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"strings"
-	"time"
-
 	cmdutil "github.com/argoproj/argo-cd/v2/cmd/util"
 	"github.com/argoproj/argo-cd/v2/controller"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
@@ -20,12 +16,18 @@ import (
 	"github.com/argoproj/gitops-engine/pkg/sync/hook"
 	"github.com/argoproj/gitops-engine/pkg/sync/ignore"
 	"github.com/argoproj/gitops-engine/pkg/utils/kube"
+	"github.com/argoproj/gitops-engine/pkg/utils/tracing"
 	"github.com/ghodss/yaml"
 	"github.com/go-logr/zerologr"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/rs/zerolog/log"
+	"io"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
+	"k8s.io/klog/v2/textlogger"
+	"strings"
+	"time"
 
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/msg"
@@ -201,11 +203,32 @@ func generateDiff(ctx context.Context, request checks.Request, argoSettings *set
 	ignoreNormalizerOpts := normalizers.IgnoreNormalizerOpts{
 		JQExecutionTimeout: 1 * time.Second,
 	}
+	kubeCtl := &kube.KubectlCmd{
+		Tracer: tracing.NopTracer{},
+		Log:    textlogger.NewLogger(textlogger.NewConfig()),
+	}
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return diff.DiffResult{}, err
+	}
+	apiRes, _, err := kubeCtl.LoadOpenAPISchema(config)
+	if err != nil {
+		return diff.DiffResult{}, err
+	}
+	resources, _, err := kubeCtl.ManageResources(config, apiRes)
+	if err != nil {
+		return diff.DiffResult{}, err
+	}
+	dryRunner := diff.NewK8sServerSideDryRunner(resources)
+
 	diffConfig, err := argodiff.NewDiffConfigBuilder().
 		WithLogger(zerologr.New(&log.Logger)).
 		WithDiffSettings(request.App.Spec.IgnoreDifferences, overrides, ignoreAggregatedRoles, ignoreNormalizerOpts).
 		WithTracking(argoSettings.AppLabelKey, argoSettings.TrackingMethod).
 		WithNoCache().
+		WithIgnoreMutationWebhook(false).
+		WithServerSideDiff(true).
+		WithServerSideDryRunner(dryRunner).
 		Build()
 	if err != nil {
 		telemetry.SetError(span, err, "Build Diff")
