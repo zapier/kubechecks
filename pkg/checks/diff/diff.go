@@ -229,6 +229,7 @@ func generateDiff(ctx context.Context, request checks.Request, argoSettings *set
 		WithIgnoreMutationWebhook(false).
 		WithServerSideDiff(true).
 		WithServerSideDryRunner(dryRunner).
+		WithManager("application/apply-patch").
 		Build()
 	if err != nil {
 		telemetry.SetError(span, err, "Build Diff")
