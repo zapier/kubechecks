@@ -13,8 +13,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/container"
 	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -28,16 +28,16 @@ type ApplicationSetWatcher struct {
 }
 
 // NewApplicationSetWatcher creates new instance of ApplicationWatcher.
-func NewApplicationSetWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerConfig) (*ApplicationSetWatcher, error) {
-	if kubeCfg == nil {
+func NewApplicationSetWatcher(ctr container.Container) (*ApplicationSetWatcher, error) {
+	if ctr.KubeClientSet == nil {
 		return nil, fmt.Errorf("kubeCfg cannot be nil")
 	}
 	ctrl := ApplicationSetWatcher{
-		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
-		vcsToArgoMap:         vcsToArgoMap,
+		applicationClientset: appclientset.NewForConfigOrDie(ctr.KubeClientSet.Config()),
+		vcsToArgoMap:         ctr.VcsToArgoMap,
 	}
 
-	appInformer, appLister := ctrl.newApplicationSetInformerAndLister(time.Second*30, cfg)
+	appInformer, appLister := ctrl.newApplicationSetInformerAndLister(time.Second*30, ctr.Config)
 
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister

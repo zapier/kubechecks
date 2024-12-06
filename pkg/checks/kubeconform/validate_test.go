@@ -1,7 +1,6 @@
 package kubeconform
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -16,9 +15,8 @@ import (
 )
 
 func TestDefaultGetSchemaLocations(t *testing.T) {
-	ctx := context.TODO()
 	ctr := container.Container{}
-	schemaLocations := getSchemaLocations(ctx, ctr, "/some/other/path")
+	schemaLocations := getSchemaLocations(ctr)
 
 	// default schema location is "./schemas"
 	assert.Len(t, schemaLocations, 1)
@@ -26,7 +24,6 @@ func TestDefaultGetSchemaLocations(t *testing.T) {
 }
 
 func TestGetRemoteSchemaLocations(t *testing.T) {
-	ctx := context.TODO()
 	ctr := container.Container{}
 
 	if os.Getenv("CI") == "" {
@@ -39,7 +36,7 @@ func TestGetRemoteSchemaLocations(t *testing.T) {
 
 	// t.Setenv("KUBECHECKS_SCHEMAS_LOCATION", fixture.URL)  // doesn't work because viper needs to initialize from root, which doesn't happen
 	viper.Set("schemas-location", []string{fixture.URL})
-	schemaLocations := getSchemaLocations(ctx, ctr, "/some/other/path")
+	schemaLocations := getSchemaLocations(ctr)
 	hasTmpDirPrefix := strings.HasPrefix(schemaLocations[0], "/tmp/schemas")
 	assert.Equal(t, hasTmpDirPrefix, true, "invalid schemas location. Schema location should have prefix /tmp/schemas but has %s", schemaLocations[0])
 }
