@@ -346,8 +346,9 @@ type resourceInfoProvider struct {
 	namespacedByGk map[schema.GroupKind]bool
 }
 
-// Infer if obj is namespaced or not from corresponding live objects list. If corresponding live object has namespace then target object is also namespaced.
-// If live object is missing then it does not matter if target is namespaced or not.
+// IsNamespaced infers if obj is namespaced or not from corresponding live objects list. If corresponding live object
+// has namespace then target object is also namespaced. If live object is missing then it does not matter if target is
+// namespaced or not.
 func (p *resourceInfoProvider) IsNamespaced(gk schema.GroupKind) (bool, error) {
 	return p.namespacedByGk[gk], nil
 }

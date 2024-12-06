@@ -75,9 +75,17 @@ func (a *ArgoClient) preprocessSources(app *v1alpha1.Application, pullRequest vc
 			continue
 		}
 
-		// If the source is the same as the _base_ of the pull request,
-		// then change the revision to the pull request's target.
-		// This ensures that the manifests represent the result of the request.
+		/*
+			This is to make sure that the respository server understands where to pull the values.yaml file from.
+
+			Or put differently:
+
+			| PR Repo   | PR Base     | PR Target | Ref Repo  | Ref Target |                                                                                                 |
+			| --------- | ----------- | --------- | --------- | ---------- | ----------------------------------------------------------------------------------------------- |
+			| repo1.git | new-feature | main      | repo1.git | main       | need to change main to new-feature for preview, as the base will become the target after merge. |
+			| repo1.git | new-feature | main      | repo2.git | main       | no change, ref source refers to a different repository unaffected by the pull request           |
+			| repo1.git | new-feature | main      | repo1.git | staging    | no change, ref source refers to a different branch than the pull request                        |
+		*/
 		if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) {
 			if source.TargetRevision == pullRequest.BaseRef {
 				source.TargetRevision = pullRequest.HeadRef
@@ -94,7 +102,7 @@ func (a *ArgoClient) preprocessSources(app *v1alpha1.Application, pullRequest vc
 // Repository service to be transformed into raw kubernetes manifests. This allows us to take advantage of server
 // configuration and credentials.
 func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Application, source v1alpha1.ApplicationSource, refs []v1alpha1.ApplicationSource, pullRequest vcs.PullRequest, getRepo func(ctx context.Context, cloneURL string, branchName string) (*git.Repo, error)) ([]string, error) {
-	// multisource apps must adhere to the following rules:
+	// The GenerateManifestWithFiles has some non-obvious rules due to assumptions that it makes:
 	// 1. first source must be a non-ref source
 	// 2. there must be one and only one non-ref source
 	// 3. ref sources that match the pull requests' repo and target branch need to have their target branch swapped to the head branch of the pull request
@@ -132,10 +140,16 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, errors.Wrap(err, "failed to get repo")
 	}
 
-	log.Info().Msg("packaging app")
-	packageDir, err := packageApp(ctx, source, refs, repo, getRepo)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to package application")
+	var packageDir string
+	if a.sendFullRepository {
+		log.Info().Msg("sending full repository")
+		packageDir = repo.Directory
+	} else {
+		log.Info().Msg("packaging app")
+		packageDir, err = packageApp(ctx, source, refs, repo, getRepo)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to package application")
+		}
 	}
 
 	log.Info().Msg("compressing files")
@@ -324,39 +338,11 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 
 		for index, valueFile := range source.Helm.ValueFiles {
 			if strings.HasPrefix(valueFile, "$") {
-				refName, refPath, err := splitRefFromPath(valueFile)
+				relPath, err := processValueReference(ctx, source, valueFile, refsByName, repo, getRepo, tempDir, tempAppDir)
 				if err != nil {
-					return "", errors.Wrap(err, "failed to parse value file")
+					return "", err
 				}
 
-				ref, ok := refsByName[refName]
-				if !ok {
-					return "", errors.Wrap(err, "value file points at missing ref")
-				}
-
-				refRepo := repo
-				if !pkg.AreSameRepos(ref.RepoURL, repo.CloneURL) {
-					refRepo, err = getRepo(ctx, ref.RepoURL, ref.TargetRevision)
-					if err != nil {
-						return "", errors.Wrapf(err, "failed to clone repo: %q", ref.RepoURL)
-					}
-				}
-
-				src := filepath.Join(refRepo.Directory, refPath)
-				dst := filepath.Join(tempDir, refPath)
-				if err = copyFile(src, dst); err != nil {
-					// handle source.spec.helm.ignoreMissingValues = true
-					if errors.Is(err, os.ErrNotExist) && source.Helm.IgnoreMissingValueFiles {
-						log.Debug().Str("valueFile", valueFile).Msg("ignore missing values file, because source.Helm.IgnoreMissingValueFiles is true")
-					} else {
-						return "", errors.Wrapf(err, "failed to copy referenced value file: %q", valueFile)
-					}
-				}
-
-				relPath, err := filepath.Rel(tempAppDir, dst)
-				if err != nil {
-					return "", errors.Wrap(err, "failed to find a relative path")
-				}
 				source.Helm.ValueFiles[index] = relPath
 				continue
 			}
@@ -384,6 +370,51 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 	}
 
 	return tempDir, nil
+}
+
+func processValueReference(
+	ctx context.Context,
+	source v1alpha1.ApplicationSource,
+	valueFile string,
+	refsByName map[string]v1alpha1.ApplicationSource,
+	repo *git.Repo,
+	getRepo getRepo,
+	tempDir, tempAppDir string,
+) (string, error) {
+	refName, refPath, err := splitRefFromPath(valueFile)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to parse value file")
+	}
+
+	ref, ok := refsByName[refName]
+	if !ok {
+		return "", errors.Wrap(err, "value file points at missing ref")
+	}
+
+	refRepo := repo
+	if !pkg.AreSameRepos(ref.RepoURL, repo.CloneURL) {
+		refRepo, err = getRepo(ctx, ref.RepoURL, ref.TargetRevision)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to clone repo: %q", ref.RepoURL)
+		}
+	}
+
+	src := filepath.Join(refRepo.Directory, refPath)
+	dst := filepath.Join(tempDir, refPath)
+	if err = copyFile(src, dst); err != nil {
+		// handle source.spec.helm.ignoreMissingValues = true
+		if errors.Is(err, os.ErrNotExist) && source.Helm.IgnoreMissingValueFiles {
+			log.Debug().Str("valueFile", valueFile).Msg("ignore missing values file, because source.Helm.IgnoreMissingValueFiles is true")
+		} else {
+			return "", errors.Wrapf(err, "failed to copy referenced value file: %q", valueFile)
+		}
+	}
+
+	relPath, err := filepath.Rel(tempAppDir, dst)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to find a relative path")
+	}
+	return relPath, nil
 }
 
 var valueRef = regexp.MustCompile(`^\$([^/]+)/(.*)$`)

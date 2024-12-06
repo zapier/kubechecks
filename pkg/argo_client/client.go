@@ -25,10 +25,11 @@ import (
 type ArgoClient struct {
 	client apiclient.Client
 
-	repoClient repoapiclient.RepoServerServiceClient
-	namespace  string
-	k8s        kubernetes.Interface
-	k8sConfig  *rest.Config
+	repoClient         repoapiclient.RepoServerServiceClient
+	namespace          string
+	k8s                kubernetes.Interface
+	k8sConfig          *rest.Config
+	sendFullRepository bool
 }
 
 func NewArgoClient(
@@ -67,11 +68,12 @@ func NewArgoClient(
 	}
 
 	return &ArgoClient{
-		repoClient: repoapiclient.NewRepoServerServiceClient(conn),
-		client:     argo,
-		namespace:  cfg.ArgoCDNamespace,
-		k8s:        k8s.ClientSet(),
-		k8sConfig:  k8s.Config(),
+		repoClient:         repoapiclient.NewRepoServerServiceClient(conn),
+		client:             argo,
+		namespace:          cfg.ArgoCDNamespace,
+		k8s:                k8s.ClientSet(),
+		k8sConfig:          k8s.Config(),
+		sendFullRepository: cfg.ArgoCDSendFullRepository,
 	}, nil
 }
 
