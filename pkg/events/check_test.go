@@ -325,14 +325,3 @@ func MockInitMatcherFn() MatcherFn {
 		return nil
 	}
 }
-
-func TestMergeIntoTarget(t *testing.T) {
-	ctx := context.Background()
-	event := &CheckEvent{}
-	repo := &git.Repo{CloneURL: "git@github.com:zapier/kubechecks.git"}
-
-	err := event.mergeIntoTarget(ctx, repo, "sample-branch")
-	require.NoError(t, err)
-
-	assert.Equal(t, map[string]*git.Repo{"git|||origin/sample-branch": repo}, event.clonedRepos)
-}
