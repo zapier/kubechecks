@@ -42,7 +42,7 @@ type CheckEvent struct {
 	repoManager repoManager
 	processors  []checks.ProcessorEntry
 	repoLock    sync.Mutex
-	clonedRepos map[string]*git.Repo
+	clonedRepos map[repoKey]*git.Repo
 
 	addedAppsSet     map[string]v1alpha1.Application
 	addedAppsSetLock sync.Mutex
@@ -82,7 +82,7 @@ func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoMan
 		addedAppsSet: make(map[string]v1alpha1.Application),
 		appChannel:   make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
 		ctr:          ctr,
-		clonedRepos:  make(map[string]*git.Repo),
+		clonedRepos:  make(map[repoKey]*git.Repo),
 		processors:   processors,
 		pullRequest:  pullRequest,
 		repoManager:  repoManager,
@@ -160,8 +160,11 @@ func canonicalize(cloneURL string) (pkg.RepoURL, error) {
 	return parsed, nil
 }
 
-func generateRepoKey(cloneURL pkg.RepoURL, branchName string) string {
-	return fmt.Sprintf("%s|||%s", cloneURL.CloneURL(""), branchName)
+type repoKey string
+
+func generateRepoKey(cloneURL pkg.RepoURL, branchName string) repoKey {
+	key := fmt.Sprintf("%s|||%s", cloneURL.CloneURL(""), branchName)
+	return repoKey(key)
 }
 
 func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) (*git.Repo, error) {

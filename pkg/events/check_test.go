@@ -79,7 +79,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 		vcsClient.EXPECT().Username().Return("username")
 
 		ce := CheckEvent{
-			clonedRepos: make(map[string]*git.Repo),
+			clonedRepos: make(map[repoKey]*git.Repo),
 			repoManager: git.NewRepoManager(cfg),
 			ctr:         container.Container{VcsClient: vcsClient},
 		}
@@ -97,7 +97,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 		vcsClient.EXPECT().Username().Return("username")
 
 		ce := CheckEvent{
-			clonedRepos: make(map[string]*git.Repo),
+			clonedRepos: make(map[repoKey]*git.Repo),
 			repoManager: git.NewRepoManager(cfg),
 			ctr:         container.Container{VcsClient: vcsClient},
 		}
@@ -115,7 +115,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 		vcsClient.EXPECT().Username().Return("username")
 
 		ce := CheckEvent{
-			clonedRepos: make(map[string]*git.Repo),
+			clonedRepos: make(map[repoKey]*git.Repo),
 			repoManager: git.NewRepoManager(cfg),
 			ctr:         container.Container{VcsClient: vcsClient},
 		}
@@ -133,7 +133,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 		vcsClient.EXPECT().Username().Return("username")
 
 		ce := CheckEvent{
-			clonedRepos: make(map[string]*git.Repo),
+			clonedRepos: make(map[repoKey]*git.Repo),
 			repoManager: git.NewRepoManager(cfg),
 			ctr:         container.Container{VcsClient: vcsClient},
 		}
@@ -156,7 +156,7 @@ func TestCheckEvent_GenerateListOfAffectedApps(t *testing.T) {
 		ctr           container.Container
 		repoManager   repoManager
 		processors    []checks.ProcessorEntry
-		clonedRepos   map[string]*git.Repo
+		clonedRepos   map[repoKey]*git.Repo
 		addedAppsSet  map[string]v1alpha1.Application
 		appsSent      int32
 		appChannel    chan *v1alpha1.Application
