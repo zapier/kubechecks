@@ -105,9 +105,15 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 		return
 	}
 	repoPath := repo.Directory
+	var jsonManifests []string
 
-	logger.Debug().Str("repo_path", repoPath).Msg("Getting manifests")
-	jsonManifests, err := w.ctr.ArgoClient.GetManifestsLocal(ctx, appName, repoPath, appPath, app)
+	if !w.ctr.Config.ServerSideDiff {
+		logger.Debug().Str("repo_path", repoPath).Msg("Getting manifests")
+		jsonManifests, err = w.ctr.ArgoClient.GetManifestsLocal(ctx, appName, repoPath, appPath, app)
+	} else {
+		logger.Debug().Str("repo_path", repoPath).Msg("Getting server-side manifests")
+		jsonManifests, err = w.ctr.ArgoClient.GetManifestsServerSide(ctx, appName, repoPath, appPath, app)
+	}
 	if err != nil {
 		logger.Error().Err(err).Msg("Unable to get manifests")
 		w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
