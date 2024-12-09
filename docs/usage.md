@@ -36,7 +36,7 @@ The full list of supported environment variables is described below:
 
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
-|`KUBECHECKS_ALLOWED_NAMESPACES`|Run Kubechecks in namespaced scope instead of cluster scope by specifying the namespaces to monitor.|`[]`|
+|`KUBECHECKS_ALLOWED_NAMESPACES`|Run Kubechecks in namespaced scope instead of cluster scope by specifying the namespaces of the Argo application to monitor.|`[]`|
 |`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections over TLS to the ArgoCD API server.|`false`|
 |`KUBECHECKS_ARGOCD_API_NAMESPACE`|ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.|`argocd`|
 |`KUBECHECKS_ARGOCD_API_PLAINTEXT`|Enable to use plaintext connections without TLS.|`false`|
