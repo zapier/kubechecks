@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
@@ -106,6 +107,12 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 			if in.String() == "string" && out.String() == "time.Duration" {
 				input := value.(string)
 				return time.ParseDuration(input)
+			}
+
+			if in.String() == "string" && out.String() == "[]string" {
+				input := value.(string)
+				ns := strings.Split(input, ",")
+				return ns, nil
 			}
 
 			return value, nil

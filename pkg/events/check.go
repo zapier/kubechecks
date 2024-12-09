@@ -308,16 +308,11 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	ce.logger.Info().Msgf("adding %d apps to the queue", len(ce.affectedItems.Applications))
 	// Produce apps onto channel
 	for _, app := range ce.affectedItems.Applications {
-		if len(ce.ctr.Config.AllowedNamespaces) > 0 {
-			ns := strings.Split(ce.ctr.Config.AllowedNamespaces[0], ",")
-			if slices.Contains(ns, app.Spec.Destination.Namespace) {
-				ce.queueApp(app)
-			} else {
-				ce.logger.Info().Msgf("skipping app %s, namespace %s not allowed", app.Name, app.Spec.Destination.Namespace)
-			}
-		} else {
-			ce.queueApp(app)
+		if len(ce.ctr.Config.AllowedNamespaces) > 0 && !slices.Contains(ce.ctr.Config.AllowedNamespaces, app.Spec.Destination.Namespace) {
+			ce.logger.Info().Msgf("skipping app %s, namespace %s not allowed", app.Name, app.Spec.Destination.Namespace)
+			continue
 		}
+		ce.queueApp(app)
 	}
 
 	ce.wg.Wait()

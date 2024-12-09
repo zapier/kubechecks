@@ -1,6 +1,7 @@
 configMap:
   create: true
   env:
+    GRPC_ENFORCE_ALPN_ENABLED: false
     KUBECHECKS_LOG_LEVEL: debug
     KUBECHECKS_ENABLE_WEBHOOK_CONTROLLER: "false"
     KUBECHECKS_ARGOCD_API_INSECURE: "true"
