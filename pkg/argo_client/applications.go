@@ -24,11 +24,11 @@ var ErrNoVersionFound = errors.New("no kubernetes version found")
 // GetApplicationByName takes a context and a name, then queries the Argo Application client to retrieve the Application with the specified name.
 // It returns the found Application and any error encountered during the process.
 // If successful, the Application client connection is closed before returning.
-func (argo *ArgoClient) GetApplicationByName(ctx context.Context, name string) (*v1alpha1.Application, error) {
+func (a *ArgoClient) GetApplicationByName(ctx context.Context, name string) (*v1alpha1.Application, error) {
 	ctx, span := tracer.Start(ctx, "GetApplicationByName")
 	defer span.End()
 
-	closer, appClient := argo.GetApplicationClient()
+	closer, appClient := a.GetApplicationClient()
 	defer closer.Close()
 
 	resp, err := appClient.Get(ctx, &application.ApplicationQuery{Name: &name})
@@ -43,7 +43,7 @@ func (argo *ArgoClient) GetApplicationByName(ctx context.Context, name string) (
 // GetKubernetesVersionByApplication is a method on the ArgoClient struct that takes a context and an application name as parameters,
 // and returns the Kubernetes version of the destination cluster where the specified application is running.
 // It returns an error if the application or cluster information cannot be retrieved.
-func (argo *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, app v1alpha1.Application) (string, error) {
+func (a *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, app v1alpha1.Application) (string, error) {
 	ctx, span := tracer.Start(ctx, "GetKubernetesVersionByApplicationName")
 	defer span.End()
 
@@ -58,7 +58,7 @@ func (argo *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, a
 	}
 
 	// Get cluster client
-	clusterCloser, clusterClient := argo.GetClusterClient()
+	clusterCloser, clusterClient := a.GetClusterClient()
 	defer clusterCloser.Close()
 
 	// Get cluster
@@ -85,11 +85,11 @@ func (argo *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, a
 // GetApplicationsByLabels takes a context and a labelselector, then queries the Argo Application client to retrieve the Applications with the specified label.
 // It returns the found ApplicationList and any error encountered during the process.
 // If successful, the Application client connection is closed before returning.
-func (argo *ArgoClient) GetApplicationsByLabels(ctx context.Context, labels string) (*v1alpha1.ApplicationList, error) {
+func (a *ArgoClient) GetApplicationsByLabels(ctx context.Context, labels string) (*v1alpha1.ApplicationList, error) {
 	ctx, span := tracer.Start(ctx, "GetApplicationsByLabels")
 	defer span.End()
 
-	closer, appClient := argo.GetApplicationClient()
+	closer, appClient := a.GetApplicationClient()
 	defer closer.Close()
 
 	resp, err := appClient.List(ctx, &application.ApplicationQuery{Selector: &labels})
@@ -103,31 +103,31 @@ func (argo *ArgoClient) GetApplicationsByLabels(ctx context.Context, labels stri
 
 // GetApplicationsByAppset takes a context and an appset, then queries the Argo Application client to retrieve the Applications managed by the appset
 // It returns the found ApplicationList and any error encountered during the process.
-func (argo *ArgoClient) GetApplicationsByAppset(ctx context.Context, name string) (*v1alpha1.ApplicationList, error) {
+func (a *ArgoClient) GetApplicationsByAppset(ctx context.Context, name string) (*v1alpha1.ApplicationList, error) {
 	appsetLabelSelector := "argocd.argoproj.io/application-set-name=" + name
-	return argo.GetApplicationsByLabels(ctx, appsetLabelSelector)
+	return a.GetApplicationsByLabels(ctx, appsetLabelSelector)
 }
 
-func (argo *ArgoClient) GetApplications(ctx context.Context) (*v1alpha1.ApplicationList, error) {
+func (a *ArgoClient) GetApplications(ctx context.Context) (*v1alpha1.ApplicationList, error) {
 	ctx, span := tracer.Start(ctx, "GetApplications")
 	defer span.End()
 
-	closer, appClient := argo.GetApplicationClient()
+	closer, appClient := a.GetApplicationClient()
 	defer closer.Close()
 
 	resp, err := appClient.List(ctx, new(application.ApplicationQuery))
 	if err != nil {
 		telemetry.SetError(span, err, "Argo List All Applications error")
-		return nil, errors.Wrap(err, "failed to applications")
+		return nil, errors.Wrap(err, "failed to list applications")
 	}
 	return resp, nil
 }
 
-func (argo *ArgoClient) GetApplicationSets(ctx context.Context) (*v1alpha1.ApplicationSetList, error) {
+func (a *ArgoClient) GetApplicationSets(ctx context.Context) (*v1alpha1.ApplicationSetList, error) {
 	ctx, span := tracer.Start(ctx, "GetApplications")
 	defer span.End()
 
-	closer, appClient := argo.GetApplicationSetClient()
+	closer, appClient := a.GetApplicationSetClient()
 	defer closer.Close()
 
 	resp, err := appClient.List(ctx, new(applicationset.ApplicationSetListQuery))

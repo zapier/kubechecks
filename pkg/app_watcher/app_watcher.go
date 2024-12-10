@@ -12,11 +12,11 @@ import (
 	informers "github.com/argoproj/argo-cd/v2/pkg/client/informers/externalversions/application/v1alpha1"
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
 	"github.com/rs/zerolog/log"
+	"github.com/zapier/kubechecks/pkg/appdir"
+	"github.com/zapier/kubechecks/pkg/container"
 	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/config"
 )
 
@@ -34,16 +34,16 @@ type ApplicationWatcher struct {
 //   - kubeCfg is the Kubernetes configuration.
 //   - vcsToArgoMap is the mapping between VCS and Argo applications.
 //   - cfg is the server configuration.
-func NewApplicationWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerConfig) (*ApplicationWatcher, error) {
-	if kubeCfg == nil {
+func NewApplicationWatcher(ctr container.Container) (*ApplicationWatcher, error) {
+	if ctr.KubeClientSet == nil {
 		return nil, fmt.Errorf("kubeCfg cannot be nil")
 	}
 	ctrl := ApplicationWatcher{
-		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
-		vcsToArgoMap:         vcsToArgoMap,
+		applicationClientset: appclientset.NewForConfigOrDie(ctr.KubeClientSet.Config()),
+		vcsToArgoMap:         ctr.VcsToArgoMap,
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, cfg)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, ctr.Config)
 
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
@@ -152,14 +152,14 @@ func canProcessApp(obj interface{}) (*appv1alpha1.Application, bool) {
 		return nil, false
 	}
 
-	for _, src := range app.Spec.Sources {
+	if src := app.Spec.Source; src != nil {
 		if isGitRepo(src.RepoURL) {
 			return app, true
 		}
 	}
 
-	if app.Spec.Source != nil {
-		if isGitRepo(app.Spec.Source.RepoURL) {
+	for _, src := range app.Spec.Sources {
+		if isGitRepo(src.RepoURL) {
 			return app, true
 		}
 	}
