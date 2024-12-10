@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// CommitState is an enum for represnting the state of a commit for posting via CommitStatus
+// CommitState is an enum for represnting the state of a commit for posting via CommitStatus.
 type CommitState uint8
 
-// must be in order of best to worst, in order for WorstState to work
+// must be in order of best to worst, in order for WorstState to work.
 const (
 	StateNone CommitState = iota
 	StateSkip
@@ -67,6 +67,5 @@ func ParseCommitState(s string) (CommitState, error) {
 		return StateSkip, nil
 	default:
 		return StateNone, fmt.Errorf("unknown commit state: %s", s)
-
 	}
 }

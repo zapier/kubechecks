@@ -41,7 +41,8 @@ resources:
 - ./overlays/dev
 - /common/overlays/prod
 - https://google.com/some/url
-`)},
+`),
+			},
 
 			"test/app2/kustomization.yaml": {
 				Data: toBytes(`
@@ -55,14 +56,16 @@ resources:
 - file1.yaml
 - ../overlays/base
 - /common/overlays/prod
-`)},
+`),
+			},
 			"test/overlays/base/kustomization.yaml": {
 				Data: toBytes(`
 resources:
 - some-file1.yaml
 - some-file2.yaml
 - ../common
-`)},
+`),
+			},
 
 			"test/overlays/common/kustomization.yaml":  {Data: toBytes("hello: world")},
 			"test/app/file1.yaml":                      {Data: toBytes("hello: world")},

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/xanzy/go-gitlab"
+
 	gitlabMocks "github.com/zapier/kubechecks/mocks/gitlab_client/mocks"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -57,7 +58,6 @@ func TestClient_GetHookByUrl(t *testing.T) {
 		email    string
 	}
 	type args struct {
-		ctx        context.Context
 		repoName   string
 		webhookUrl string
 	}
@@ -90,7 +90,6 @@ func TestClient_GetHookByUrl(t *testing.T) {
 				email:    "",
 			},
 			args: args{
-				ctx:        context.TODO(),
 				repoName:   "test",
 				webhookUrl: "https://dummywebhooks.local",
 			},
@@ -116,7 +115,6 @@ func TestClient_GetHookByUrl(t *testing.T) {
 				email:    "",
 			},
 			args: args{
-				ctx:        context.TODO(),
 				repoName:   "test",
 				webhookUrl: "https://dummywebhooks.local",
 			},
@@ -126,22 +124,24 @@ func TestClient_GetHookByUrl(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+
 			c := &Client{
 				c:        tt.fields.c,
 				cfg:      tt.fields.cfg,
 				username: tt.fields.username,
 				email:    tt.fields.email,
 			}
-			got, err := c.GetHookByUrl(tt.args.ctx, tt.args.repoName, tt.args.webhookUrl)
-			if !tt.wantErr(t, err, fmt.Sprintf("GetHookByUrl(%v, %v, %v)", tt.args.ctx, tt.args.repoName, tt.args.webhookUrl)) {
+			got, err := c.GetHookByUrl(ctx, tt.args.repoName, tt.args.webhookUrl)
+			if !tt.wantErr(t, err, fmt.Sprintf("GetHookByUrl(%v, %v)", tt.args.repoName, tt.args.webhookUrl)) {
 				return
 			}
-			assert.Equalf(t, tt.want, got, "GetHookByUrl(%v, %v, %v)", tt.args.ctx, tt.args.repoName, tt.args.webhookUrl)
+			assert.Equalf(t, tt.want, got, "GetHookByUrl(%v, %v)", tt.args.repoName, tt.args.webhookUrl)
 		})
 	}
 }
 
-// MockGitLabProjects is a generic function to mock Gitlab MergeRequest client methods
+// MockGitLabProjects is a generic function to mock Gitlab MergeRequest client methods.
 func MockGitLabProjects(methodName string, returns []interface{}) *GLClient {
 	mockClient := new(gitlabMocks.MockProjectsServices)
 	mockClient.On(methodName, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(returns...)
@@ -159,7 +159,6 @@ func TestClient_CreateHook(t *testing.T) {
 		email    string
 	}
 	type args struct {
-		ctx           context.Context
 		repoName      string
 		webhookUrl    string
 		webhookSecret string
@@ -188,7 +187,6 @@ func TestClient_CreateHook(t *testing.T) {
 				email:    "",
 			},
 			args: args{
-				ctx:           context.TODO(),
 				repoName:      "main",
 				webhookUrl:    "https://dummywebhooks.local",
 				webhookSecret: "",
@@ -209,7 +207,6 @@ func TestClient_CreateHook(t *testing.T) {
 				email:    "",
 			},
 			args: args{
-				ctx:           context.TODO(),
 				repoName:      "main",
 				webhookUrl:    "https://dummywebhooks.local",
 				webhookSecret: "",
@@ -225,7 +222,7 @@ func TestClient_CreateHook(t *testing.T) {
 				username: tt.fields.username,
 				email:    tt.fields.email,
 			}
-			tt.wantErr(t, c.CreateHook(tt.args.ctx, tt.args.repoName, tt.args.webhookUrl, tt.args.webhookSecret), fmt.Sprintf("CreateHook(%v, %v, %v, %v)", tt.args.ctx, tt.args.repoName, tt.args.webhookUrl, tt.args.webhookSecret))
+			tt.wantErr(t, c.CreateHook(context.Background(), tt.args.repoName, tt.args.webhookUrl, tt.args.webhookSecret), fmt.Sprintf("CreateHook(%v, %v, %v)", tt.args.repoName, tt.args.webhookUrl, tt.args.webhookSecret))
 		})
 	}
 }

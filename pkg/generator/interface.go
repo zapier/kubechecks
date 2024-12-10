@@ -23,5 +23,7 @@ type Generator interface {
 	GetTemplate(appSetGenerator *argoprojiov1alpha1.ApplicationSetGenerator) *argoprojiov1alpha1.ApplicationSetTemplate
 }
 
-var EmptyAppSetGeneratorError = errors.New("ApplicationSet is empty")
-var NoRequeueAfter time.Duration
+var (
+	EmptyAppSetGeneratorError = errors.New("ApplicationSet is empty")
+	NoRequeueAfter            time.Duration
+)

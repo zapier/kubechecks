@@ -9,12 +9,15 @@ import (
 	appclientsetfake "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/config"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func initTestObjectsForAppSets(t *testing.T) *ApplicationSetWatcher {
+	t.Helper()
+
 	cfg, err := config.New()
 	// Handle the error appropriately, e.g., log it or fail the test
 	require.NoError(t, err, "failed to create config")
@@ -70,7 +73,7 @@ func TestApplicationSetWatcher_OnApplicationAdded(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, 2, len(appWatcher.vcsToArgoMap.GetAppSetMap()))
+	assert.Len(t, appWatcher.vcsToArgoMap.GetAppSetMap(), 2)
 
 	_, err := appWatcher.applicationClientset.ArgoprojV1alpha1().ApplicationSets("default").Create(ctx, &v1alpha1.ApplicationSet{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-3", Namespace: "default"},
@@ -90,7 +93,7 @@ func TestApplicationSetWatcher_OnApplicationAdded(t *testing.T) {
 	}
 
 	time.Sleep(time.Second * 1)
-	assert.Equal(t, 3, len(appWatcher.vcsToArgoMap.GetAppSetMap()))
+	assert.Len(t, appWatcher.vcsToArgoMap.GetAppSetMap(), 3)
 }
 
 func TestApplicationSetWatcher_OnApplicationUpdated(t *testing.T) {
@@ -103,7 +106,7 @@ func TestApplicationSetWatcher_OnApplicationUpdated(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(ctrl.vcsToArgoMap.GetAppSetMap()), 2)
+	assert.Len(t, ctrl.vcsToArgoMap.GetAppSetMap(), 2)
 
 	oldAppDirectory := ctrl.vcsToArgoMap.GetAppSetsInRepo("https://gitlab.com/test/repo.git")
 	newAppDirectory := ctrl.vcsToArgoMap.GetAppSetsInRepo("https://gitlab.com/test/repo-3.git")
@@ -129,8 +132,8 @@ func TestApplicationSetWatcher_OnApplicationUpdated(t *testing.T) {
 	time.Sleep(time.Second * 1)
 	oldAppDirectory = ctrl.vcsToArgoMap.GetAppSetsInRepo("https://gitlab.com/test/repo.git")
 	newAppDirectory = ctrl.vcsToArgoMap.GetAppSetsInRepo("https://gitlab.com/test/repo-3.git")
-	assert.Equal(t, oldAppDirectory.Count(), 0)
-	assert.Equal(t, newAppDirectory.Count(), 1)
+	assert.Equal(t, 0, oldAppDirectory.Count())
+	assert.Equal(t, 1, newAppDirectory.Count())
 }
 
 func TestApplicationSetWatcher_OnApplicationDEleted(t *testing.T) {
@@ -143,7 +146,7 @@ func TestApplicationSetWatcher_OnApplicationDEleted(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, 2, len(ctrl.vcsToArgoMap.GetAppSetMap()))
+	assert.Len(t, ctrl.vcsToArgoMap.GetAppSetMap(), 2)
 
 	appDirectory := ctrl.vcsToArgoMap.GetAppSetsInRepo("https://gitlab.com/test/repo.git")
 	assert.Equal(t, 1, appDirectory.Count())
@@ -257,7 +260,6 @@ func Test_CanProcessAppSet(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			app, canProcess := canProcessAppSet(tc.resource)
 

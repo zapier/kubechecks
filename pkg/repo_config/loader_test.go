@@ -101,7 +101,7 @@ func Test_loadProjectConfigFile(t *testing.T) {
 				return
 			}
 
-			assert.Equal(t, got, tt.want, "Configs are not the same.")
+			assert.Equal(t, tt.want, got, "Configs are not the same.")
 		})
 	}
 }
@@ -163,7 +163,6 @@ func TestLoadRepoConfig(t *testing.T) {
 		want    *Config
 		wantErr bool
 	}{
-
 		{
 			name: "yaml",
 			args: args{
@@ -251,7 +250,7 @@ func TestLoadRepoConfig(t *testing.T) {
 				t.Errorf("LoadRepoConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			assert.Equal(t, got, tt.want, "Configs are not the same.")
+			assert.Equal(t, tt.want, got, "Configs are not the same.")
 		})
 	}
 }

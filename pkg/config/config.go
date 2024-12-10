@@ -40,7 +40,7 @@ type ServerConfig struct {
 	VcsToken     string `mapstructure:"vcs-token"`
 	VcsType      string `mapstructure:"vcs-type"`
 
-	//github
+	// github
 	GithubPrivateKey     string `mapstructure:"github-private-key"`
 	GithubAppID          int64  `mapstructure:"github-app-id"`
 	GithubInstallationID int64  `mapstructure:"github-installation-id"`

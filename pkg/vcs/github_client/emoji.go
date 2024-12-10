@@ -14,7 +14,7 @@ var stateEmoji = map[pkg.CommitState]string{
 
 const defaultEmoji = ":interrobang:"
 
-// ToEmoji returns a string representation of this state for use in the request
+// ToEmoji returns a string representation of this state for use in the request.
 func (c *Client) ToEmoji(s pkg.CommitState) string {
 	if emoji, ok := stateEmoji[s]; ok {
 		return emoji

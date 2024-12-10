@@ -8,8 +8,9 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/git"
 	"sigs.k8s.io/yaml"
+
+	"github.com/zapier/kubechecks/pkg/git"
 )
 
 type AppSetDirectory struct {
@@ -172,7 +173,7 @@ func (d *AppSetDirectory) RemoveApp(app v1alpha1.ApplicationSet) {
 	}
 }
 
-// containsKindApplicationSet checks if the file contains kind: ApplicationSet
+// containsKindApplicationSet checks if the file contains kind: ApplicationSet.
 func containsKindApplicationSet(path string) bool {
 	file, err := os.Open(path)
 	if err != nil {

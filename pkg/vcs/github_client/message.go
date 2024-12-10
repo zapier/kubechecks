@@ -35,7 +35,6 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 		pr.CheckID,
 		&github.IssueComment{Body: &message},
 	)
-
 	if err != nil {
 		telemetry.SetError(span, err, "Create Pull Request comment")
 		return nil, errors.Wrap(err, "could not post message to PR")
@@ -63,7 +62,6 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) 
 		int64(m.NoteID),
 		&github.IssueComment{Body: &msg},
 	)
-
 	if err != nil {
 		telemetry.SetError(span, err, "Update Pull Request comment")
 		log.Error().Err(err).Msgf("could not update message to PR, msg: %s, response: %+v", msg, resp)
@@ -78,7 +76,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) 
 
 // Pull all comments for the specified PR, and delete any comments that already exist from the bot
 // This is different from updating an existing message, as this will delete comments from previous runs of the bot
-// Whereas updates occur mid-execution
+// Whereas updates occur mid-execution.
 func (c *Client) pruneOldComments(ctx context.Context, pr vcs.PullRequest, comments []*github.IssueComment) error {
 	_, span := tracer.Start(ctx, "pruneOldComments")
 	defer span.End()
@@ -127,7 +125,6 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, pr vcs.PullRequest, c
 	}
 
 	return nil
-
 }
 
 func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) error {
