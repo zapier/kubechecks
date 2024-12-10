@@ -118,7 +118,7 @@ func init() {
 	stringFlag(flags, "replan-comment-msg", "comment message which re-triggers kubechecks on PR.",
 		newStringOpts().
 			withDefault("kubechecks again"))
-	stringSliceFlag(flags, "allowed-namespaces", "Run Kubechecks in namespaced scope instead of cluster scope by specifying the namespaces of the Argo application to monitor.")
+	stringSliceFlag(flags, "additional-namespaces", "Additional namespaces other than the ArgoCDNamespace to monitor for applications.")
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()

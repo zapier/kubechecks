@@ -44,9 +44,13 @@ func NewApplicationWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMa
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, cfg)
-
-	ctrl.appInformer = appInformer
-	ctrl.appLister = appLister
+	for _, informer := range appInformer {
+		ctrl.appInformer = informer
+	}
+	for _, lister := range appLister {
+		ctrl.appLister = lister
+	}
+	log.Debug().Msgf("ApplicationWatcher created with %d informers", len(appInformer))
 
 	return &ctrl, nil
 }
@@ -127,23 +131,32 @@ that need to observe the object.
 newApplicationInformerAndLister use the data from the informer's cache to provide a read-optimized view of the cache which reduces
 the load on the API Server and hides some complexity.
 */
-func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (cache.SharedIndexInformer, applisters.ApplicationLister) {
-	log.Debug().Msgf("Creating Application informer with namespace: %s", cfg.ArgoCDNamespace)
-	informer := informers.NewApplicationInformer(ctrl.applicationClientset, cfg.ArgoCDNamespace, refreshTimeout,
-		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
-	)
+func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (map[string]cache.SharedIndexInformer, map[string]applisters.ApplicationLister) {
+	totalNamespaces := append(cfg.AdditionalNamespaces, cfg.ArgoCDNamespace)
 
-	lister := applisters.NewApplicationLister(informer.GetIndexer())
-	if _, err := informer.AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    ctrl.onApplicationAdded,
-			UpdateFunc: ctrl.onApplicationUpdated,
-			DeleteFunc: ctrl.onApplicationDeleted,
-		},
-	); err != nil {
-		log.Error().Err(err).Msg("failed to add event handler")
+	totalInformers := make(map[string]cache.SharedIndexInformer)
+	totalListers := make(map[string]applisters.ApplicationLister)
+
+	for _, ns := range totalNamespaces {
+		log.Debug().Msgf("Creating Application informer with namespace: %s", ns)
+		informer := informers.NewApplicationInformer(ctrl.applicationClientset, ns, refreshTimeout,
+			cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+		)
+
+		lister := applisters.NewApplicationLister(informer.GetIndexer())
+		if _, err := informer.AddEventHandler(
+			cache.ResourceEventHandlerFuncs{
+				AddFunc:    ctrl.onApplicationAdded,
+				UpdateFunc: ctrl.onApplicationUpdated,
+				DeleteFunc: ctrl.onApplicationDeleted,
+			},
+		); err != nil {
+			log.Error().Err(err).Msg("failed to add event handler")
+		}
+		totalInformers[ns] = informer
+		totalListers[ns] = lister
 	}
-	return informer, lister
+	return totalInformers, totalListers
 }
 
 func canProcessApp(obj interface{}) (*appv1alpha1.Application, bool) {
