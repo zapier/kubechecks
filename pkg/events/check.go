@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -292,10 +291,6 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	ce.logger.Info().Msgf("adding %d apps to the queue", len(ce.affectedItems.Applications))
 	// Produce apps onto channel
 	for _, app := range ce.affectedItems.Applications {
-		if len(ce.ctr.Config.AdditionalNamespaces) > 0 && !slices.Contains(ce.ctr.Config.AdditionalNamespaces, app.ObjectMeta.Namespace) {
-			ce.logger.Info().Msgf("skipping app %s, namespace %s not allowed", app.Name, app.ObjectMeta.Namespace)
-			continue
-		}
 		ce.queueApp(app)
 	}
 

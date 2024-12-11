@@ -41,8 +41,6 @@ func NewApplicationWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMa
 	ctrl := ApplicationWatcher{
 		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
 		vcsToArgoMap:         vcsToArgoMap,
-		appInformer:          []cache.SharedIndexInformer{},
-		appLister:            []applisters.ApplicationLister{},
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, cfg)
