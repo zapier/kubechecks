@@ -39,8 +39,8 @@ func NewApplicationWatcher(ctr container.Container) (*ApplicationWatcher, error)
 		return nil, fmt.Errorf("kubeCfg cannot be nil")
 	}
 	ctrl := ApplicationWatcher{
-		applicationClientset: appclientset.NewForConfigOrDie(ctr.KubeClientSet.Config()),
-		vcsToArgoMap:         ctr.VcsToArgoMap,
+		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
+		vcsToArgoMap:         vcsToArgoMap,
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, ctr.Config)
