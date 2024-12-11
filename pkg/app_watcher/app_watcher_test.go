@@ -42,12 +42,11 @@ func initTestObjects(t *testing.T) *ApplicationWatcher {
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*1, cfg)
 	for _, informer := range appInformer {
-		ctrl.appInformer = informer
+		ctrl.appInformer = append(ctrl.appInformer, informer)
 	}
 	for _, lister := range appLister {
-		ctrl.appLister = lister
+		ctrl.appLister = append(ctrl.appLister, lister)
 	}
-
 	return ctrl
 }
 
