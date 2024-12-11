@@ -142,7 +142,8 @@ func init() {
 	stringFlag(flags, "webhook-url-base", "The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.")
 	stringFlag(flags, "webhook-url-prefix", "If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.")
 	stringFlag(flags, "webhook-secret", "Optional secret key for validating the source of incoming webhooks.")
-	boolFlag(flags, "monitor-all-applications", "Monitor all applications in argocd automatically.")
+	boolFlag(flags, "monitor-all-applications", "Monitor all applications in argocd automatically.",
+		newBoolOpts().withDefault(true))
 	boolFlag(flags, "ensure-webhooks", "Ensure that webhooks are created in repositories referenced by argo.")
 	stringFlag(flags, "repo-refresh-interval", "Interval between static repo refreshes (for schemas and policies).",
 		newStringOpts().withDefault("5m"))
