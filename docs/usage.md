@@ -58,6 +58,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_MAX_CONCURRENCT_CHECKS`|Number of concurrent checks to run.|`32`|
 |`KUBECHECKS_MAX_QUEUE_SIZE`|Size of app diff check queue.|`1024`|
 |`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`true`|
+|`KUBECHECKS_MONITOR_APPS_NAMESPACES`|Additional namespaces other than the ArgoCDNamespace to monitor for applications.|`[]`|
 |`KUBECHECKS_OPENAI_API_TOKEN`|OpenAI API Token.||
 |`KUBECHECKS_OTEL_COLLECTOR_HOST`|The OpenTelemetry collector host.||
 |`KUBECHECKS_OTEL_COLLECTOR_PORT`|The OpenTelemetry collector port.||
