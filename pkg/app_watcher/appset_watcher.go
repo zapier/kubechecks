@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -51,20 +52,24 @@ func (ctrl *ApplicationSetWatcher) Run(ctx context.Context) {
 
 	defer runtime.HandleCrash()
 
+	var wg sync.WaitGroup
+	wg.Add(len(ctrl.appInformer))
+
 	for _, informer := range ctrl.appInformer {
-		go informer.Run(ctx.Done())
-
-		if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
-			log.Error().Msg("Timed out waiting for caches to sync")
-			return
-		}
+		go func(inf cache.SharedIndexInformer) {
+			defer wg.Done()
+			inf.Run(ctx.Done())
+			if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+				log.Warn().Msg("Timed out waiting for caches to sync")
+				return
+			}
+		}(informer)
 	}
-
-	<-ctx.Done()
+	wg.Wait()
 }
 
 func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (map[string]cache.SharedIndexInformer, map[string]applisters.ApplicationSetLister) {
-	totalNamespaces := append(cfg.AdditionalNamespaces, cfg.ArgoCDNamespace)
+	totalNamespaces := append(cfg.MonitorAppsNamespaces, cfg.ArgoCDNamespace)
 	totalInformers := make(map[string]cache.SharedIndexInformer)
 	totalAppSetListers := make(map[string]applisters.ApplicationSetLister)
 	for _, ns := range totalNamespaces {

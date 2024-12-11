@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -57,17 +58,19 @@ func (ctrl *ApplicationWatcher) Run(ctx context.Context, processors int) {
 
 	defer runtime.HandleCrash()
 
+	var wg sync.WaitGroup
+	wg.Add(len(ctrl.appInformer))
+
 	for _, informer := range ctrl.appInformer {
-
-		go informer.Run(ctx.Done())
-
-		if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
-			log.Error().Msg("Timed out waiting for caches to sync")
-			return
-		}
+		go func(inf cache.SharedIndexInformer) {
+			defer wg.Done()
+			inf.Run(ctx.Done())
+			if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+				log.Warn().Msg("Timed out waiting for caches to sync")
+			}
+		}(informer)
 	}
-
-	<-ctx.Done()
+	wg.Wait()
 }
 
 // onAdd is the function executed when the informer notifies the
@@ -131,7 +134,7 @@ newApplicationInformerAndLister use the data from the informer's cache to provid
 the load on the API Server and hides some complexity.
 */
 func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (map[string]cache.SharedIndexInformer, map[string]applisters.ApplicationLister) {
-	totalNamespaces := append(cfg.AdditionalNamespaces, cfg.ArgoCDNamespace)
+	totalNamespaces := append(cfg.MonitorAppsNamespaces, cfg.ArgoCDNamespace)
 
 	totalInformers := make(map[string]cache.SharedIndexInformer)
 	totalListers := make(map[string]applisters.ApplicationLister)
