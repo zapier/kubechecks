@@ -26,8 +26,8 @@ func TestAddApp(t *testing.T) {
 	v2a.AddApp(app1)
 	appDir := v2a.GetAppsInRepo("https://github.com/argoproj/argo-cd.git")
 
-	assert.Equal(t, appDir.Count(), 1)
-	assert.Equal(t, len(appDir.appDirs["test-app-1"]), 1)
+	assert.Equal(t, 1, appDir.Count())
+	assert.Len(t, appDir.appDirs["test-app-1"], 1)
 
 	// Assertions to verify the behavior here.
 	app2 := &v1alpha1.Application{
@@ -41,8 +41,8 @@ func TestAddApp(t *testing.T) {
 	}
 
 	v2a.AddApp(app2)
-	assert.Equal(t, appDir.Count(), 2)
-	assert.Equal(t, len(appDir.appDirs["test-app-2"]), 1)
+	assert.Equal(t, 2, appDir.Count())
+	assert.Len(t, appDir.appDirs["test-app-2"], 1)
 }
 
 func TestDeleteApp(t *testing.T) {
@@ -73,13 +73,13 @@ func TestDeleteApp(t *testing.T) {
 	v2a.AddApp(app2)
 	appDir := v2a.GetAppsInRepo("https://github.com/argoproj/argo-cd.git")
 
-	assert.Equal(t, appDir.Count(), 2)
-	assert.Equal(t, len(appDir.appDirs["test-app-1"]), 1)
-	assert.Equal(t, len(appDir.appDirs["test-app-2"]), 1)
+	assert.Equal(t, 2, appDir.Count())
+	assert.Len(t, appDir.appDirs["test-app-1"], 1)
+	assert.Len(t, appDir.appDirs["test-app-2"], 1)
 
 	v2a.DeleteApp(app2)
-	assert.Equal(t, appDir.Count(), 1)
-	assert.Equal(t, len(appDir.appDirs["test-app-2"]), 0)
+	assert.Equal(t, 1, appDir.Count())
+	assert.Empty(t, appDir.appDirs["test-app-2"])
 }
 
 func TestVcsToArgoMap_AddAppSet(t *testing.T) {
@@ -137,7 +137,7 @@ func TestVcsToArgoMap_AddAppSet(t *testing.T) {
 				appSetDirByRepo: tt.fields.appSetDirByRepo,
 			}
 			v2a.AddAppSet(tt.args.app)
-			assert.Equal(t, tt.expectedCount, len(v2a.appSetDirByRepo))
+			assert.Len(t, v2a.appSetDirByRepo, tt.expectedCount)
 		})
 	}
 }
@@ -178,11 +178,11 @@ func TestVcsToArgoMap_DeleteAppSet(t *testing.T) {
 	v2a.AddAppSet(app2)
 	appDir := v2a.GetAppSetsInRepo("https://github.com/argoproj/argo-cd.git")
 
-	assert.Equal(t, appDir.Count(), 2)
-	assert.Equal(t, len(appDir.appSetDirs["test-app-1"]), 1)
-	assert.Equal(t, len(appDir.appSetDirs["test-app-2"]), 1)
+	assert.Equal(t, 2, appDir.Count())
+	assert.Len(t, appDir.appSetDirs["test-app-1"], 1)
+	assert.Len(t, appDir.appSetDirs["test-app-2"], 1)
 
 	v2a.DeleteAppSet(app2)
-	assert.Equal(t, appDir.Count(), 1)
-	assert.Equal(t, len(appDir.appSetDirs["test-app-2"]), 0)
+	assert.Equal(t, 1, appDir.Count())
+	assert.Empty(t, appDir.appSetDirs["test-app-2"])
 }

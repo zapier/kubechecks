@@ -2,8 +2,8 @@ package aisummary
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/rs/zerolog/log"
 	"github.com/sashabaranov/go-openai"
 	"go.opentelemetry.io/otel"
 
@@ -34,12 +34,11 @@ func (c *OpenAiClient) SummarizeDiff(ctx context.Context, appName, diff string) 
 		resp, err := c.makeCompletionRequestWithBackoff(ctx, req)
 		if err != nil {
 			telemetry.SetError(span, err, "ChatCompletionStream error")
-			fmt.Printf("ChatCompletionStream error: %v\n", err)
+			log.Debug().Err(err).Msg("ChatCompletionStream")
 			return "", err
 		}
 
 		return resp.Choices[0].Message.Content, nil
-
 	}
 	return "", nil
 }

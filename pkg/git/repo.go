@@ -68,14 +68,14 @@ func (r *Repo) Clone(ctx context.Context) error {
 		args = append(args, "--branch", r.BranchName)
 	}
 
-	cmd := r.execCommand("git", args...)
+	cmd := r.execGit(args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to clone repository, %s", out)
 		return err
 	}
 
-	if log.Trace().Enabled() {
+	if log.Trace().Enabled() { //nolint: zerologlint
 		if err = filepath.WalkDir(r.Directory, printFile); err != nil {
 			log.Warn().Err(err).Msg("failed to walk directory")
 		}
@@ -89,13 +89,13 @@ func printFile(s string, d fs.DirEntry, err error) error {
 		return err
 	}
 	if !d.IsDir() {
-		println(s)
+		log.Debug().Msg(s)
 	}
 	return nil
 }
 
 func (r *Repo) GetRemoteHead() (string, error) {
-	cmd := r.execCommand("git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
+	cmd := r.execGit("symbolic-ref", "refs/remotes/origin/HEAD", "--short")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", errors.Wrap(err, "failed to determine which branch HEAD points to")
@@ -118,7 +118,7 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, sha string) error {
 		))
 	defer span.End()
 
-	cmd := r.execCommand("git", "merge", sha)
+	cmd := r.execGit("merge", sha)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		telemetry.SetError(span, err, "merge commit into branch")
@@ -129,18 +129,18 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, sha string) error {
 	return nil
 }
 
-func (r *Repo) Update(ctx context.Context) error {
-	cmd := r.execCommand("git", "pull")
+func (r *Repo) Update() error {
+	cmd := r.execGit("pull")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stdout
 	return cmd.Run()
 }
 
-func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
+func (r *Repo) execGit(args ...string) *exec.Cmd {
 	argsToLog := r.censorVcsToken(args)
 
 	log.Debug().Strs("args", argsToLog).Msg("building command")
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command("git", args...)
 	if r.Directory != "" {
 		cmd.Dir = r.Directory
 	}
@@ -176,7 +176,7 @@ func censorVcsToken(cfg config.ServerConfig, args []string) []string {
 	return argsToLog
 }
 
-// SetCredentials ensures Git auth is set up for cloning
+// SetCredentials ensures Git auth is set up for cloning.
 func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 	email := vcsClient.Email()
 	username := vcsClient.Username()
@@ -200,9 +200,7 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 
 	homedir, err := os.UserHomeDir()
 	if err != nil {
-		if err != nil {
-			return errors.Wrap(err, "unable to get home directory")
-		}
+		return errors.Wrap(err, "unable to get home directory")
 	}
 	outfile, err := os.Create(fmt.Sprintf("%s/.git-credentials", homedir))
 	if err != nil {
@@ -250,14 +248,14 @@ func getCloneUrl(user string, cfg config.ServerConfig) (string, error) {
 	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, vcsToken, hostname), nil
 }
 
-// GetListOfChangedFiles returns a list of files that have changed between the current branch and the target branch
+// GetListOfChangedFiles returns a list of files that have changed between the current branch and the target branch.
 func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 	_, span := tracer.Start(ctx, "RepoGetListOfChangedFiles")
 	defer span.End()
 
 	var fileList []string
 
-	cmd := r.execCommand("git", "diff", "--name-only", fmt.Sprintf("%s/%s", "origin", r.BranchName))
+	cmd := r.execGit("diff", "--name-only", fmt.Sprintf("%s/%s", "origin", r.BranchName))
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
 	scanner := bufio.NewScanner(pipe)

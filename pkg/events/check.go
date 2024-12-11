@@ -13,8 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/generator"
-	"github.com/zapier/kubechecks/pkg/repo_config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -22,8 +20,10 @@ import (
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/generator"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
+	"github.com/zapier/kubechecks/pkg/repo_config"
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -77,7 +77,6 @@ func GenerateMatcher(ce *CheckEvent, repo *git.Repo) error {
 }
 
 func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry) *CheckEvent {
-
 	ce := &CheckEvent{
 		addedAppsSet: make(map[string]v1alpha1.Application),
 		appChannel:   make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
@@ -258,7 +257,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		ce.logger.Error().Err(err).Msg("Failed to tidy outdated comments")
 	}
 
-	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
+	if len(ce.affectedItems.Applications) == 0 && len(ce.affectedItems.ApplicationSets) == 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
 		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "No changes"); err != nil {
 			return errors.Wrap(err, "failed to post changes")
@@ -273,7 +272,6 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	for num := 0; num <= ce.ctr.Config.MaxConcurrenctChecks; num++ {
-
 		w := worker{
 			appChannel: ce.appChannel,
 			ctr:        ce.ctr,
@@ -359,7 +357,7 @@ func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
 }
 
 // CommitStatus sets the commit status on the MR
-// To set the PR/MR status
+// To set the PR/MR status.
 func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) {
 	_, span := tracer.Start(ctx, "CommitStatus")
 	defer span.End()
@@ -380,7 +378,7 @@ Check kubechecks application logs for more information.
 `
 )
 
-// createNote creates a generic Note struct that we can write into across all worker threads
+// createNote creates a generic Note struct that we can write into across all worker threads.
 func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 	ctx, span := otel.Tracer("check").Start(ctx, "createNote")
 	defer span.End()

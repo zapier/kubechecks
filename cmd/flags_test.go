@@ -45,7 +45,6 @@ func TestStringUsages(t *testing.T) {
 
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {
-
 			actual := generateUsage(test.opt, test.usage, test.name)
 			assert.Equal(t, test.expected, actual)
 		})

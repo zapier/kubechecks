@@ -38,6 +38,6 @@ func TestFindAffectedAppsWithNilAppsDirectory(t *testing.T) {
 
 	// verify results
 	require.NoError(t, err)
-	require.Len(t, items.Applications, 0)
-	require.Len(t, items.ApplicationSets, 0)
+	require.Empty(t, items.Applications)
+	require.Empty(t, items.ApplicationSets)
 }

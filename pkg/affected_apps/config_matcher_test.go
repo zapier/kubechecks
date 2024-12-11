@@ -39,7 +39,6 @@ func Test_dirMatchForApp(t *testing.T) {
 }
 
 func TestConfigMatcher_triggeredApps(t *testing.T) {
-
 	type args struct {
 		modifiedFiles []string
 	}
@@ -95,8 +94,6 @@ func TestConfigMatcher_triggeredApps(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
-
 		t.Run(tt.name, func(t *testing.T) {
 			mockArgoClient := newMockArgoClient()
 
@@ -116,8 +113,7 @@ func newMockArgoClient() argoClient {
 	return new(mockArgoClient)
 }
 
-type mockArgoClient struct {
-}
+type mockArgoClient struct{}
 
 func (m mockArgoClient) GetApplications(ctx context.Context) (*v1alpha1.ApplicationList, error) {
 	return new(v1alpha1.ApplicationList), nil
@@ -130,10 +126,11 @@ func (m mockArgoClient) GetApplicationsByAppset(ctx context.Context, appsetName 
 var _ argoClient = new(mockArgoClient)
 
 func testLoadConfig(t *testing.T, configDir string) *repo_config.Config {
+	t.Helper()
+
 	cfg, err := repo_config.LoadRepoConfig(configDir)
-	if err != nil {
-		t.Errorf("could not load test config from dir (%s): %v", configDir, err)
-	}
+	assert.NoErrorf(t, err, "could not load test config from dir (%s)", configDir)
+
 	return cfg
 }
 
