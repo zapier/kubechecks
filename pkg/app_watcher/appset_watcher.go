@@ -21,8 +21,8 @@ import (
 // ApplicationSetWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API
 type ApplicationSetWatcher struct {
 	applicationClientset appclientset.Interface
-	appInformer          cache.SharedIndexInformer
-	appLister            applisters.ApplicationSetLister
+	appInformer          []cache.SharedIndexInformer
+	appLister            []applisters.ApplicationSetLister
 
 	vcsToArgoMap appdir.VcsToArgoMap
 }
@@ -51,33 +51,42 @@ func (ctrl *ApplicationSetWatcher) Run(ctx context.Context) {
 
 	defer runtime.HandleCrash()
 
-	go ctrl.appInformer.Run(ctx.Done())
+	for _, informer := range ctrl.appInformer {
+		go informer.Run(ctx.Done())
 
-	if !cache.WaitForCacheSync(ctx.Done(), ctrl.appInformer.HasSynced) {
-		log.Error().Msg("Timed out waiting for caches to sync")
-		return
+		if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+			log.Error().Msg("Timed out waiting for caches to sync")
+			return
+		}
 	}
 
 	<-ctx.Done()
 }
 
-func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (cache.SharedIndexInformer, applisters.ApplicationSetLister) {
-	log.Debug().Msgf("Creating ApplicationSet informer with namespace: %s", cfg.ArgoCDNamespace)
-	informer := informers.NewApplicationSetInformer(ctrl.applicationClientset, cfg.ArgoCDNamespace, refreshTimeout,
-		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
-	)
+func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (map[string]cache.SharedIndexInformer, map[string]applisters.ApplicationSetLister) {
+	totalNamespaces := append(cfg.AdditionalNamespaces, cfg.ArgoCDNamespace)
+	totalInformers := make(map[string]cache.SharedIndexInformer)
+	totalAppSetListers := make(map[string]applisters.ApplicationSetLister)
+	for _, ns := range totalNamespaces {
+		log.Debug().Msgf("Creating ApplicationSet informer with namespace: %s", ns)
+		informer := informers.NewApplicationSetInformer(ctrl.applicationClientset, ns, refreshTimeout,
+			cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+		)
 
-	AppSetLister := applisters.NewApplicationSetLister(informer.GetIndexer())
-	if _, err := informer.AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    ctrl.onApplicationSetAdded,
-			UpdateFunc: ctrl.onApplicationSetUpdated,
-			DeleteFunc: ctrl.onApplicationSetDeleted,
-		},
-	); err != nil {
-		log.Error().Err(err).Msg("failed to add event handler for Application Set")
+		AppSetLister := applisters.NewApplicationSetLister(informer.GetIndexer())
+		if _, err := informer.AddEventHandler(
+			cache.ResourceEventHandlerFuncs{
+				AddFunc:    ctrl.onApplicationSetAdded,
+				UpdateFunc: ctrl.onApplicationSetUpdated,
+				DeleteFunc: ctrl.onApplicationSetDeleted,
+			},
+		); err != nil {
+			log.Error().Err(err).Msg("failed to add event handler for Application Set")
+		}
+		totalInformers[ns] = informer
+		totalAppSetListers[ns] = AppSetLister
 	}
-	return informer, AppSetLister
+	return totalInformers, totalAppSetListers
 }
 
 // onAdd is the function executed when the informer notifies the

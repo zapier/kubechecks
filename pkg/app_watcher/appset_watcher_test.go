@@ -54,8 +54,12 @@ func initTestObjectsForAppSets(t *testing.T) *ApplicationSetWatcher {
 	}
 
 	appInformer, appLister := ctrl.newApplicationSetInformerAndLister(time.Second*1, cfg)
-	ctrl.appInformer = appInformer
-	ctrl.appLister = appLister
+	for _, informer := range appInformer {
+		ctrl.appInformer = append(ctrl.appInformer, informer)
+	}
+	for _, lister := range appLister {
+		ctrl.appLister = append(ctrl.appLister, lister)
+	}
 
 	return ctrl
 }
