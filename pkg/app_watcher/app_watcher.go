@@ -23,8 +23,8 @@ import (
 // ApplicationWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API
 type ApplicationWatcher struct {
 	applicationClientset appclientset.Interface
-	appInformer          cache.SharedIndexInformer
-	appLister            applisters.ApplicationLister
+	appInformer          []cache.SharedIndexInformer
+	appLister            []applisters.ApplicationLister
 
 	vcsToArgoMap appdir.VcsToArgoMap
 }
@@ -41,17 +41,17 @@ func NewApplicationWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMa
 	ctrl := ApplicationWatcher{
 		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
 		vcsToArgoMap:         vcsToArgoMap,
+		appInformer:          []cache.SharedIndexInformer{},
+		appLister:            []applisters.ApplicationLister{},
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, cfg)
 	for _, informer := range appInformer {
-		ctrl.appInformer = informer
+		ctrl.appInformer = append(ctrl.appInformer, informer)
 	}
 	for _, lister := range appLister {
-		ctrl.appLister = lister
+		ctrl.appLister = append(ctrl.appLister, lister)
 	}
-	log.Debug().Msgf("ApplicationWatcher created with %d informers", len(appInformer))
-
 	return &ctrl, nil
 }
 
@@ -61,11 +61,14 @@ func (ctrl *ApplicationWatcher) Run(ctx context.Context, processors int) {
 
 	defer runtime.HandleCrash()
 
-	go ctrl.appInformer.Run(ctx.Done())
+	for _, informer := range ctrl.appInformer {
 
-	if !cache.WaitForCacheSync(ctx.Done(), ctrl.appInformer.HasSynced) {
-		log.Error().Msg("Timed out waiting for caches to sync")
-		return
+		go informer.Run(ctx.Done())
+
+		if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+			log.Error().Msg("Timed out waiting for caches to sync")
+			return
+		}
 	}
 
 	<-ctx.Done()
