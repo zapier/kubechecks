@@ -79,6 +79,7 @@ type ServerConfig struct {
 	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
 	MaxConcurrenctChecks     int           `mapstructure:"max-concurrenct-checks"`
 	ReplanCommentMessage     string        `mapstructure:"replan-comment-msg"`
+	ServerSideDiff           bool          `mapstructure:"server-side-diff"`
 }
 
 func New() (ServerConfig, error) {
@@ -115,6 +116,7 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	log.Info().Msgf("Webhook URL Prefix: %s", cfg.UrlPrefix)
 	log.Info().Msgf("VCS Type: %s", cfg.VcsType)
 	log.Info().Msgf("ArgoCD Namespace: %s", cfg.ArgoCDNamespace)
+	log.Info().Msgf("Server-Side Diff: %v", cfg.ServerSideDiff)
 
 	return cfg, nil
 }
