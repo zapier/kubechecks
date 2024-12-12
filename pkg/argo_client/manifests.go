@@ -42,7 +42,7 @@ func (a *ArgoClient) GetManifests(ctx context.Context, name string, app v1alpha1
 		getManifestsDuration.WithLabelValues(name).Observe(duration.Seconds())
 	}()
 
-	contentRefs, refs := a.preprocessSources(&app, pullRequest)
+	contentRefs, refs := preprocessSources(&app, pullRequest)
 
 	var manifests []string
 	for _, source := range contentRefs {
@@ -60,7 +60,7 @@ func (a *ArgoClient) GetManifests(ctx context.Context, name string, app v1alpha1
 // preprocessSources splits the content sources from the ref sources, and transforms source refs that point at the pull
 // request's base into refs that point at the pull request's head. This is necessary to generate manifests based on what
 // the world will look like _after_ the branch gets merged in.
-func (a *ArgoClient) preprocessSources(app *v1alpha1.Application, pullRequest vcs.PullRequest) ([]v1alpha1.ApplicationSource, []v1alpha1.ApplicationSource) {
+func preprocessSources(app *v1alpha1.Application, pullRequest vcs.PullRequest) ([]v1alpha1.ApplicationSource, []v1alpha1.ApplicationSource) {
 	if !app.Spec.HasMultipleSources() {
 		return []v1alpha1.ApplicationSource{app.Spec.GetSource()}, nil
 	}
@@ -348,7 +348,6 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 			}
 
 			if strings.Contains(valueFile, "://") {
-				// todo: is there anything to do here?
 				continue
 			}
 
