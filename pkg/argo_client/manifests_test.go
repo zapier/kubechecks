@@ -314,6 +314,8 @@ func TestPackageApp(t *testing.T) {
 			// verify that only the correct files were copied
 			files := make(map[string]struct{})
 			err = filepath.Walk(path, func(fullPath string, info fs.FileInfo, err error) error {
+				require.NoError(t, err)
+
 				if info.IsDir() {
 					return nil
 				}
