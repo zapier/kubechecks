@@ -60,7 +60,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of error, warn, info, debug, trace.|`info`|
 |`KUBECHECKS_MAX_CONCURRENCT_CHECKS`|Number of concurrent checks to run.|`32`|
 |`KUBECHECKS_MAX_QUEUE_SIZE`|Size of app diff check queue.|`1024`|
-|`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`false`|
+|`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`true`|
 |`KUBECHECKS_OPENAI_API_TOKEN`|OpenAI API Token.||
 |`KUBECHECKS_OTEL_COLLECTOR_HOST`|The OpenTelemetry collector host.||
 |`KUBECHECKS_OTEL_COLLECTOR_PORT`|The OpenTelemetry collector port.||
