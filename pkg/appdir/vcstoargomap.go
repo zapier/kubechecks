@@ -79,37 +79,39 @@ func (v2a VcsToArgoMap) WalkKustomizeApps(cloneURL string, fs fs.FS) *AppDirecto
 	return result
 }
 
-func (v2a VcsToArgoMap) AddApp(app *v1alpha1.Application) {
-	if app.Spec.Source == nil {
-		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
-		return
+func (v2a VcsToArgoMap) processApp(app v1alpha1.Application, fn func(*AppDirectory)) {
+
+	if src := app.Spec.Source; src != nil {
+		appDirectory := v2a.GetAppsInRepo(src.RepoURL)
+		fn(appDirectory)
 	}
 
-	appDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
-	appDirectory.ProcessApp(*app)
+	for _, src := range app.Spec.Sources {
+		appDirectory := v2a.GetAppsInRepo(src.RepoURL)
+		fn(appDirectory)
+	}
+}
+
+func (v2a VcsToArgoMap) AddApp(app *v1alpha1.Application) {
+	v2a.processApp(*app, func(directory *AppDirectory) {
+		directory.AddApp(*app)
+	})
 }
 
 func (v2a VcsToArgoMap) UpdateApp(old *v1alpha1.Application, new *v1alpha1.Application) {
-	if new.Spec.Source == nil {
-		log.Warn().Msgf("%s/%s: no source, skipping", new.Namespace, new.Name)
-		return
-	}
+	v2a.processApp(*old, func(directory *AppDirectory) {
+		directory.RemoveApp(*old)
+	})
 
-	oldAppDirectory := v2a.GetAppsInRepo(old.Spec.Source.RepoURL)
-	oldAppDirectory.RemoveApp(*old)
-
-	newAppDirectory := v2a.GetAppsInRepo(new.Spec.Source.RepoURL)
-	newAppDirectory.ProcessApp(*new)
+	v2a.processApp(*new, func(directory *AppDirectory) {
+		directory.AddApp(*new)
+	})
 }
 
 func (v2a VcsToArgoMap) DeleteApp(app *v1alpha1.Application) {
-	if app.Spec.Source == nil {
-		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)
-		return
-	}
-
-	oldAppDirectory := v2a.GetAppsInRepo(app.Spec.Source.RepoURL)
-	oldAppDirectory.RemoveApp(*app)
+	v2a.processApp(*app, func(directory *AppDirectory) {
+		directory.RemoveApp(*app)
+	})
 }
 
 func (v2a VcsToArgoMap) GetVcsRepos() []string {

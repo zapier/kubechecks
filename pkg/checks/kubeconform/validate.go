@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -20,7 +19,7 @@ import (
 
 var tracer = otel.Tracer("pkg/checks/kubeconform")
 
-func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPath string) []string {
+func getSchemaLocations(ctr container.Container) []string {
 	cfg := ctr.Config
 
 	locations := []string{
@@ -29,28 +28,13 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 	}
 
 	// schemas configured globally
-	for _, schemasLocation := range cfg.SchemasLocations {
-		if strings.HasPrefix(schemasLocation, "http://") || strings.HasPrefix(schemasLocation, "https://") {
-			locations = append(locations, schemasLocation)
-		} else {
-			if !filepath.IsAbs(schemasLocation) {
-				schemasLocation = filepath.Join(tempRepoPath, schemasLocation)
-			}
-
-			if _, err := os.Stat(schemasLocation); err != nil {
-				log.Warn().
-					Err(err).
-					Str("path", schemasLocation).
-					Msg("schemas location is invalid, skipping")
-			} else {
-				locations = append(locations, schemasLocation)
-			}
-		}
-	}
+	locations = append(locations, cfg.SchemasLocations...)
 
 	for index := range locations {
 		location := locations[index]
+		oldLocation := location
 		if location == "default" || strings.Contains(location, "{{") {
+			log.Debug().Str("location", location).Msg("location requires no processing to be valid")
 			continue
 		}
 
@@ -60,12 +44,14 @@ func getSchemaLocations(ctx context.Context, ctr container.Container, tempRepoPa
 
 		location += "{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
 		locations[index] = location
+
+		log.Debug().Str("old", oldLocation).Str("new", location).Msg("processed schema location")
 	}
 
 	return locations
 }
 
-func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, tempRepoPath string, appManifests []string) (msg.Result, error) {
+func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -92,7 +78,7 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(ctx, ctr, tempRepoPath)
+		schemaLocations = getSchemaLocations(ctr)
 	)
 
 	log.Debug().Msgf("cache location: %s", vOpts.Cache)

@@ -6,7 +6,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/appdir"
-	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
 )
 
@@ -15,7 +14,7 @@ type ArgocdMatcher struct {
 	appSetsDirectory *appdir.AppSetDirectory
 }
 
-func NewArgocdMatcher(vcsToArgoMap container.VcsToArgoMap, repo *git.Repo) (*ArgocdMatcher, error) {
+func NewArgocdMatcher(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo) (*ArgocdMatcher, error) {
 	repoApps := getArgocdApps(vcsToArgoMap, repo)
 	kustomizeAppFiles := getKustomizeApps(vcsToArgoMap, repo, repo.Directory)
 
@@ -41,7 +40,7 @@ func logCounts(repoApps *appdir.AppDirectory) {
 	}
 }
 
-func getKustomizeApps(vcsToArgoMap container.VcsToArgoMap, repo *git.Repo, repoPath string) *appdir.AppDirectory {
+func getKustomizeApps(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo, repoPath string) *appdir.AppDirectory {
 	log.Debug().Msgf("creating fs for %s", repoPath)
 	fs := os.DirFS(repoPath)
 	log.Debug().Msg("following kustomize apps")
@@ -51,7 +50,7 @@ func getKustomizeApps(vcsToArgoMap container.VcsToArgoMap, repo *git.Repo, repoP
 	return kustomizeAppFiles
 }
 
-func getArgocdApps(vcsToArgoMap container.VcsToArgoMap, repo *git.Repo) *appdir.AppDirectory {
+func getArgocdApps(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo) *appdir.AppDirectory {
 	log.Debug().Msgf("looking for %s repos", repo.CloneURL)
 	repoApps := vcsToArgoMap.GetAppsInRepo(repo.CloneURL)
 
@@ -59,7 +58,7 @@ func getArgocdApps(vcsToArgoMap container.VcsToArgoMap, repo *git.Repo) *appdir.
 	return repoApps
 }
 
-func getArgocdAppSets(vcsToArgoMap container.VcsToArgoMap, repo *git.Repo) *appdir.AppSetDirectory {
+func getArgocdAppSets(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo) *appdir.AppSetDirectory {
 	log.Debug().Msgf("looking for %s repos", repo.CloneURL)
 	repoApps := vcsToArgoMap.GetAppSetsInRepo(repo.CloneURL)
 

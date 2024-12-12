@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubechecks
+  namespace: {{ .Values.argocd.namespace }}
+roleRef:
+  kind: Role
+  name: kubechecks
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kubechecks.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
