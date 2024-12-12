@@ -363,7 +363,9 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 			src := filepath.Join(appPath, valueFile)
 			dst := filepath.Join(tempAppDir, valueFile)
 			if err = copyFile(src, dst); err != nil {
-				return "", errors.Wrapf(err, "failed to copy file: %q", valueFile)
+				if !ignoreValuesFileCopyError(source, valueFile, err) {
+					return "", errors.Wrapf(err, "failed to copy file: %q", valueFile)
+				}
 			}
 		}
 	}
@@ -401,10 +403,7 @@ func processValueReference(
 	src := filepath.Join(refRepo.Directory, refPath)
 	dst := filepath.Join(tempDir, refPath)
 	if err = copyFile(src, dst); err != nil {
-		// handle source.spec.helm.ignoreMissingValues = true
-		if errors.Is(err, os.ErrNotExist) && source.Helm.IgnoreMissingValueFiles {
-			log.Debug().Str("valueFile", valueFile).Msg("ignore missing values file, because source.Helm.IgnoreMissingValueFiles is true")
-		} else {
+		if !ignoreValuesFileCopyError(source, valueFile, err) {
 			return "", errors.Wrapf(err, "failed to copy referenced value file: %q", valueFile)
 		}
 	}
@@ -414,6 +413,15 @@ func processValueReference(
 		return "", errors.Wrap(err, "failed to find a relative path")
 	}
 	return relPath, nil
+}
+
+func ignoreValuesFileCopyError(source v1alpha1.ApplicationSource, valueFile string, err error) bool {
+	if errors.Is(err, os.ErrNotExist) && source.Helm.IgnoreMissingValueFiles {
+		log.Debug().Str("valueFile", valueFile).Msg("ignore missing values file, because source.Helm.IgnoreMissingValueFiles is true")
+		return true
+	}
+
+	return false
 }
 
 var valueRef = regexp.MustCompile(`^\$([^/]+)/(.*)$`)

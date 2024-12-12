@@ -205,6 +205,59 @@ func TestPackageApp(t *testing.T) {
 			),
 		},
 
+		"missing-values-can-be-accpetable": {
+			pullRequest: vcs.PullRequest{
+				CloneURL: "git@github.com:testuser/testrepo.git",
+				BaseRef:  "main",
+				HeadRef:  "update-code",
+			},
+
+			app: v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Sources: []v1alpha1.ApplicationSource{
+						{
+							RepoURL:        "git@github.com:testuser/testrepo.git",
+							Path:           "app1/",
+							TargetRevision: "main",
+							Helm: &v1alpha1.ApplicationSourceHelm{
+								IgnoreMissingValueFiles: true,
+								ValueFiles: []string{
+									"./values.yaml",
+									"missing.yaml",
+									"$staging/base.yaml",
+									"$staging/missing.yaml",
+								},
+							},
+						},
+						{
+							Ref:            "staging",
+							RepoURL:        "git@github.com:testuser/otherrepo.git",
+							TargetRevision: "main",
+						},
+					},
+				},
+			},
+
+			filesByRepo: map[repoAndTarget][]string{
+				repoAndTarget{"git@github.com:testuser/testrepo.git", "main"}: {
+					"app1/Chart.yaml",
+					"app1/values.yaml",
+					"app2/Chart.yaml",
+					"app2/values.yaml",
+				},
+
+				repoAndTarget{"git@github.com:testuser/otherrepo.git", "main"}: {
+					"base.yaml",
+				},
+			},
+
+			expectedFiles: newSet[string](
+				"app1/Chart.yaml",
+				"app1/values.yaml",
+				"base.yaml",
+			),
+		},
+
 		"refs-are-copied": {
 			pullRequest: vcs.PullRequest{
 				CloneURL: "git@github.com:testuser/testrepo.git",
