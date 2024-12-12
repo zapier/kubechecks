@@ -179,7 +179,7 @@ func TestPackageApp(t *testing.T) {
 		app           v1alpha1.Application
 		pullRequest   vcs.PullRequest
 		filesByRepo   map[repoAndTarget][]string
-		expectedFiles []string
+		expectedFiles set[string]
 	}{
 		"unused-paths-are-ignored": {
 			app: v1alpha1.Application{
@@ -199,10 +199,10 @@ func TestPackageApp(t *testing.T) {
 					"app2/values.yaml",
 				},
 			},
-			expectedFiles: []string{
+			expectedFiles: newSet[string](
 				"app1/Chart.yaml",
 				"app1/values.yaml",
-			},
+			),
 		},
 
 		"refs-are-copied": {
@@ -244,12 +244,12 @@ func TestPackageApp(t *testing.T) {
 					"base.yaml",
 				},
 			},
-			expectedFiles: []string{
+			expectedFiles: newSet[string](
 				"app1/Chart.yaml",
 				"app1/values.yaml",
 				"app1/staging.yaml",
 				"base.yaml",
-			},
+			),
 		},
 	}
 
@@ -259,7 +259,7 @@ func TestPackageApp(t *testing.T) {
 			ctx := context.Background()
 
 			// write garbage content for files in fake repos, and
-			// track the tempdirs
+			// store the tempdirs as repos
 			repoDirs := make(map[string]*git.Repo)
 			for cloneURL, files := range tc.filesByRepo {
 				repoHash := hash(t, cloneURL)
@@ -295,48 +295,49 @@ func TestPackageApp(t *testing.T) {
 				return repo, nil
 			}
 
-			// create a fake repo
+			// get the source repo, which was created above
 			repo, err := getRepo(ctx, source.RepoURL, source.TargetRevision)
 			require.NoError(t, err)
 
-			// package the app
+			// FUNCTION UNDER TEST: package the app
 			path, err := packageApp(ctx, source, refs, repo, getRepo)
 			require.NoError(t, err)
 
+			// ensure that only the expected files were copied
+			actualFiles := makeRelPathFilesSet(t, path)
+			extraCopiedFiles := actualFiles.Minus(tc.expectedFiles)
+			assert.Empty(t, extraCopiedFiles, "extra files have been copied")
+			missingCopiedFiles := tc.expectedFiles.Minus(actualFiles)
+			assert.Empty(t, missingCopiedFiles, "files that should have been packaged are missing")
+
 			// verify that the correct files were written
-			for _, file := range tc.expectedFiles {
+			for file := range tc.expectedFiles {
 				fullfile := filepath.Join(path, file)
 				data, err := os.ReadFile(fullfile)
 				require.NoError(t, err)
 				assert.Equal(t, []byte(file), data)
 			}
-
-			// verify that only the correct files were copied
-			files := make(map[string]struct{})
-			err = filepath.Walk(path, func(fullPath string, info fs.FileInfo, err error) error {
-				require.NoError(t, err)
-
-				if info.IsDir() {
-					return nil
-				}
-
-				relPath, err := filepath.Rel(path, fullPath)
-				require.NoError(t, err)
-
-				files[relPath] = struct{}{}
-				return nil
-			})
-			require.NoError(t, err)
-
-			for _, file := range tc.expectedFiles {
-				_, ok := files[file]
-				require.Truef(t, ok, "expected file %s to exist", file)
-				delete(files, file)
-			}
-
-			assert.Len(t, files, 0, "extra files were found in the output")
 		})
 	}
+}
+
+func makeRelPathFilesSet(t *testing.T, path string) set[string] {
+	files := newSet[string]()
+	err := filepath.Walk(path, func(fullPath string, info fs.FileInfo, err error) error {
+		require.NoError(t, err)
+
+		if info.IsDir() {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(path, fullPath)
+		require.NoError(t, err)
+
+		files.Add(relPath)
+		return nil
+	})
+	require.NoError(t, err)
+	return files
 }
 
 func hash(t *testing.T, repo repoAndTarget) string {
@@ -347,4 +348,33 @@ func hash(t *testing.T, repo repoAndTarget) string {
 
 	data := md5.Sum([]byte(url.Host + url.Path + repo.target))
 	return hex.EncodeToString(data[:])
+}
+
+type set[T comparable] map[T]struct{}
+
+func newSet[T comparable](items ...T) set[T] {
+	result := make(set[T])
+	for _, item := range items {
+		result.Add(item)
+	}
+	return result
+}
+
+func (s set[T]) Add(value T) {
+	s[value] = struct{}{}
+}
+
+func (s set[T]) Remove(value T) {
+	delete(s, value)
+}
+
+func (s set[T]) Minus(other set[T]) set[T] {
+	result := newSet[T]()
+	for k := range s {
+		result.Add(k)
+	}
+	for k := range other {
+		result.Remove(k)
+	}
+	return result
 }
