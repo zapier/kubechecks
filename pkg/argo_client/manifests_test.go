@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -170,16 +171,20 @@ func TestCopyFile(t *testing.T) {
 	})
 }
 
-type repoAndTarget struct {
+type repoTarget struct {
 	repo, target string
+}
+
+type repoTargetPath struct {
+	repo, target, path string
 }
 
 func TestPackageApp(t *testing.T) {
 	testCases := map[string]struct {
 		app           v1alpha1.Application
 		pullRequest   vcs.PullRequest
-		filesByRepo   map[repoAndTarget][]string
-		expectedFiles set[string]
+		filesByRepo   map[repoTarget]set[string]
+		expectedFiles map[string]repoTargetPath
 	}{
 		"unused-paths-are-ignored": {
 			app: v1alpha1.Application{
@@ -191,18 +196,18 @@ func TestPackageApp(t *testing.T) {
 					},
 				},
 			},
-			filesByRepo: map[repoAndTarget][]string{
-				repoAndTarget{"git@github.com:testuser/testrepo.git", "main"}: {
+			filesByRepo: map[repoTarget]set[string]{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
 					"app1/Chart.yaml",
 					"app1/values.yaml",
 					"app2/Chart.yaml",
 					"app2/values.yaml",
-				},
+				),
 			},
-			expectedFiles: newSet[string](
-				"app1/Chart.yaml",
-				"app1/values.yaml",
-			),
+			expectedFiles: map[string]repoTargetPath{
+				"app1/Chart.yaml":  {"git@github.com:testuser/testrepo.git", "main", "app1/Chart.yaml"},
+				"app1/values.yaml": {"git@github.com:testuser/testrepo.git", "main", "app1/values.yaml"},
+			},
 		},
 
 		"missing-values-can-be-accpetable": {
@@ -238,24 +243,24 @@ func TestPackageApp(t *testing.T) {
 				},
 			},
 
-			filesByRepo: map[repoAndTarget][]string{
-				repoAndTarget{"git@github.com:testuser/testrepo.git", "main"}: {
+			filesByRepo: map[repoTarget]set[string]{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
 					"app1/Chart.yaml",
 					"app1/values.yaml",
 					"app2/Chart.yaml",
 					"app2/values.yaml",
-				},
+				),
 
-				repoAndTarget{"git@github.com:testuser/otherrepo.git", "main"}: {
+				repoTarget{"git@github.com:testuser/otherrepo.git", "main"}: newSet[string](
 					"base.yaml",
-				},
+				),
 			},
 
-			expectedFiles: newSet[string](
-				"app1/Chart.yaml",
-				"app1/values.yaml",
-				"base.yaml",
-			),
+			expectedFiles: map[string]repoTargetPath{
+				"app1/Chart.yaml":         {"git@github.com:testuser/testrepo.git", "main", "app1/Chart.yaml"},
+				"app1/values.yaml":        {"git@github.com:testuser/testrepo.git", "main", "app1/values.yaml"},
+				".refs/staging/base.yaml": {"git@github.com:testuser/otherrepo.git", "main", "base.yaml"},
+			},
 		},
 
 		"refs-are-copied": {
@@ -287,22 +292,22 @@ func TestPackageApp(t *testing.T) {
 					},
 				},
 			},
-			filesByRepo: map[repoAndTarget][]string{
-				repoAndTarget{"git@github.com:testuser/testrepo.git", "main"}: {
+			filesByRepo: map[repoTarget]set[string]{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
 					"app1/Chart.yaml",
 					"app1/values.yaml",
 					"app1/staging.yaml",
-				},
-				repoAndTarget{"git@github.com:testuser/otherrepo.git", "main"}: {
+				),
+				repoTarget{"git@github.com:testuser/otherrepo.git", "main"}: newSet[string](
 					"base.yaml",
-				},
+				),
 			},
-			expectedFiles: newSet[string](
-				"app1/Chart.yaml",
-				"app1/values.yaml",
-				"app1/staging.yaml",
-				"base.yaml",
-			),
+			expectedFiles: map[string]repoTargetPath{
+				"app1/Chart.yaml":         {"git@github.com:testuser/testrepo.git", "main", "app1/Chart.yaml"},
+				"app1/values.yaml":        {"git@github.com:testuser/testrepo.git", "main", "app1/values.yaml"},
+				"app1/staging.yaml":       {"git@github.com:testuser/testrepo.git", "main", "app1/staging.yaml"},
+				".refs/staging/base.yaml": {"git@github.com:testuser/otherrepo.git", "main", "base.yaml"},
+			},
 		},
 	}
 
@@ -313,25 +318,7 @@ func TestPackageApp(t *testing.T) {
 
 			// write garbage content for files in fake repos, and
 			// store the tempdirs as repos
-			repoDirs := make(map[string]*git.Repo)
-			for cloneURL, files := range tc.filesByRepo {
-				repoHash := hash(t, cloneURL)
-				tempDir := filepath.Join(t.TempDir(), repoHash)
-				repoDirs[repoHash] = &git.Repo{
-					BranchName: cloneURL.target,
-					CloneURL:   cloneURL.repo,
-					Directory:  tempDir,
-				}
-
-				for _, file := range files {
-					fullfilepath := filepath.Join(tempDir, file)
-					filedir := filepath.Dir(fullfilepath)
-					err = os.MkdirAll(filedir, 0o755)
-					require.NoError(t, err)
-					err = os.WriteFile(fullfilepath, []byte(file), 0o600)
-					require.NoError(t, err)
-				}
-			}
+			repoDirs, fileContentByRepo := createTestRepos(t, tc.filesByRepo)
 
 			// split sources from refs
 			sources, refs := preprocessSources(&tc.app, tc.pullRequest)
@@ -340,7 +327,7 @@ func TestPackageApp(t *testing.T) {
 
 			// get repos from the map, but nowhere else
 			getRepo := func(ctx context.Context, cloneURL, branchName string) (*git.Repo, error) {
-				repoHash := hash(t, repoAndTarget{cloneURL, branchName})
+				repoHash := hash(t, repoTarget{cloneURL, branchName})
 				repo, ok := repoDirs[repoHash]
 				if !ok {
 					return nil, errors.New("repo not found")
@@ -358,20 +345,71 @@ func TestPackageApp(t *testing.T) {
 
 			// ensure that only the expected files were copied
 			actualFiles := makeRelPathFilesSet(t, path)
-			extraCopiedFiles := actualFiles.Minus(tc.expectedFiles)
+			expectedFilesSet := makeExpectedFilesSet(t, tc.expectedFiles)
+			extraCopiedFiles := actualFiles.Minus(expectedFilesSet)
 			assert.Empty(t, extraCopiedFiles, "extra files have been copied")
-			missingCopiedFiles := tc.expectedFiles.Minus(actualFiles)
+			missingCopiedFiles := expectedFilesSet.Minus(actualFiles)
 			assert.Empty(t, missingCopiedFiles, "files that should have been packaged are missing")
 
 			// verify that the correct files were written
-			for file := range tc.expectedFiles {
+			for file, config := range tc.expectedFiles {
 				fullfile := filepath.Join(path, file)
-				data, err := os.ReadFile(fullfile)
-				require.NoError(t, err)
-				assert.Equal(t, []byte(file), data)
+				actual, err := os.ReadFile(fullfile)
+				expected := fileContentByRepo[config]
+				if assert.NoError(t, err) {
+					assert.Equal(t, expected, string(actual))
+				}
 			}
 		})
 	}
+}
+
+func makeExpectedFilesSet(t *testing.T, files map[string]repoTargetPath) set[string] {
+	t.Helper()
+
+	result := newSet[string]()
+
+	for path := range files {
+		result.Add(path)
+	}
+
+	return result
+}
+
+func createTestRepos(t *testing.T, filesByRepo map[repoTarget]set[string]) (map[string]*git.Repo, map[repoTargetPath]string) {
+	repoDirs := make(map[string]*git.Repo)
+	fileContents := make(map[repoTargetPath]string)
+
+	var err error
+
+	for cloneURL, files := range filesByRepo {
+		repoHash := hash(t, cloneURL)
+		tempDir := filepath.Join(t.TempDir(), repoHash)
+		repoDirs[repoHash] = &git.Repo{
+			BranchName: cloneURL.target,
+			CloneURL:   cloneURL.repo,
+			Directory:  tempDir,
+		}
+
+		for file := range files {
+			fullfilepath := filepath.Join(tempDir, file)
+
+			// ensure the directories exist
+			filedir := filepath.Dir(fullfilepath)
+			err = os.MkdirAll(filedir, 0o755)
+			require.NoError(t, err)
+
+			// generate and store content
+			fileContent := uuid.NewString()
+			fileContents[repoTargetPath{cloneURL.repo, cloneURL.target, file}] = fileContent
+
+			// write the file to disk
+			err = os.WriteFile(fullfilepath, []byte(fileContent), 0o600)
+			require.NoError(t, err)
+		}
+	}
+
+	return repoDirs, fileContents
 }
 
 func makeRelPathFilesSet(t *testing.T, path string) set[string] {
@@ -393,7 +431,7 @@ func makeRelPathFilesSet(t *testing.T, path string) set[string] {
 	return files
 }
 
-func hash(t *testing.T, repo repoAndTarget) string {
+func hash(t *testing.T, repo repoTarget) string {
 	t.Helper()
 
 	url, err := pkg.Canonicalize(repo.repo)

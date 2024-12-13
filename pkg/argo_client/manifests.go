@@ -401,7 +401,7 @@ func processValueReference(
 	}
 
 	src := filepath.Join(refRepo.Directory, refPath)
-	dst := filepath.Join(tempDir, refPath)
+	dst := filepath.Join(tempDir, ".refs", refName, refPath)
 	if err = copyFile(src, dst); err != nil {
 		if !ignoreValuesFileCopyError(source, valueFile, err) {
 			return "", errors.Wrapf(err, "failed to copy referenced value file: %q", valueFile)
