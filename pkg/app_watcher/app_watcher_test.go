@@ -17,6 +17,7 @@ import (
 
 func initTestObjects(t *testing.T) *ApplicationWatcher {
 	cfg, err := config.New()
+	cfg.MonitorAppsNamespaces = []string{"*"}
 	// Handle the error appropriately, e.g., log it or fail the test
 	require.NoError(t, err, "failed to create config")
 
@@ -41,12 +42,9 @@ func initTestObjects(t *testing.T) *ApplicationWatcher {
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*1, cfg)
-	for _, informer := range appInformer {
-		ctrl.appInformer = append(ctrl.appInformer, informer)
-	}
-	for _, lister := range appLister {
-		ctrl.appLister = append(ctrl.appLister, lister)
-	}
+	ctrl.appInformer = appInformer
+	ctrl.appLister = appLister
+
 	return ctrl
 }
 
