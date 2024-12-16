@@ -14,6 +14,8 @@ import (
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
@@ -38,13 +40,10 @@ func NewApplicationSetWatcher(ctr container.Container) (*ApplicationSetWatcher, 
 		vcsToArgoMap:         ctr.VcsToArgoMap,
 	}
 
-	appInformer, appLister := ctrl.newApplicationSetInformerAndLister(time.Second*30, cfg)
-	for _, informer := range appInformer {
-		ctrl.appInformer = append(ctrl.appInformer, informer)
-	}
-	for _, lister := range appLister {
-		ctrl.appLister = append(ctrl.appLister, lister)
-	}
+	appInformer, appLister := ctrl.newApplicationSetInformerAndLister(time.Second*30, ctr.Config)
+
+	ctrl.appInformer = appInformer
+	ctrl.appLister = appLister
 
 	return &ctrl, nil
 }

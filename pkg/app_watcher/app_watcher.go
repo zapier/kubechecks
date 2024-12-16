@@ -12,6 +12,8 @@ import (
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/util/glob"
 	"github.com/rs/zerolog/log"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
@@ -40,8 +42,8 @@ func NewApplicationWatcher(ctr container.Container) (*ApplicationWatcher, error)
 		return nil, fmt.Errorf("kubeCfg cannot be nil")
 	}
 	ctrl := ApplicationWatcher{
-		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
-		vcsToArgoMap:         vcsToArgoMap,
+		applicationClientset: appclientset.NewForConfigOrDie((ctr.KubeClientSet.Config())),
+		vcsToArgoMap:         ctr.VcsToArgoMap,
 	}
 
 	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, ctr.Config)
