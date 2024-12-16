@@ -70,3 +70,23 @@ func TestNormalizeStrings(t *testing.T) {
 		})
 	}
 }
+
+func TestAreSameRepos(t *testing.T) {
+	testcases := map[string]struct {
+		input1, input2 string
+		expected       bool
+	}{
+		"empty":                {"", "", true},
+		"empty1":               {"", "blah", false},
+		"empty2":               {"blah", "", false},
+		"git-to-git":           {"git@github.com:zapier/kubechecks.git", "git@github.com:zapier/kubechecks.git", true},
+		"no-git-suffix-to-git": {"git@github.com:zapier/kubechecks", "git@github.com:zapier/kubechecks.git", true},
+		"https-to-git":         {"https://github.com/zapier/kubechecks", "git@github.com:zapier/kubechecks.git", true},
+	}
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			actual := AreSameRepos(tc.input1, tc.input2)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+}

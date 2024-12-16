@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/zapier/kubechecks/pkg/app_watcher"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
@@ -41,9 +42,26 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to parse configuration")
 		}
 
-		ctr, err := newContainer(ctx, cfg, true)
+		ctr, err := container.New(ctx, cfg)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create container")
+		}
+
+		// watch app modifications, if necessary
+		if cfg.MonitorAllApplications {
+			appWatcher, err := app_watcher.NewApplicationWatcher(ctr)
+			if err != nil {
+				log.Fatal().Err(err).Msg("failed to create watch applications")
+			}
+			go appWatcher.Run(ctx, 1)
+
+			appSetWatcher, err := app_watcher.NewApplicationSetWatcher(ctr)
+			if err != nil {
+				log.Fatal().Err(err).Msg("failed to create watch application sets")
+			}
+			go appSetWatcher.Run(ctx)
+		} else {
+			log.Info().Msgf("not monitoring applications, MonitorAllApplications: %+v", cfg.MonitorAllApplications)
 		}
 
 		log.Info().Msg("initializing git settings")
@@ -51,9 +69,12 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to initialize git settings")
 		}
 
+		log.Info().Strs("locations", cfg.PoliciesLocation).Msg("processing policies locations")
 		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
 			log.Fatal().Err(err).Msg("failed to process policy locations")
 		}
+
+		log.Info().Strs("locations", cfg.SchemasLocations).Msg("processing schemas locations")
 		if err = processLocations(ctx, ctr, cfg.SchemasLocations); err != nil {
 			log.Fatal().Err(err).Msg("failed to process schema locations")
 		}
@@ -137,6 +158,11 @@ func init() {
 		newStringOpts().withDefault("1.23.0"))
 	boolFlag(flags, "show-debug-info", "Set to true to print debug info to the footer of MR comments (KUBECHECKS_SHOW_DEBUG_INFO).")
 
+	stringFlag(flags, "argocd-repository-endpoint", `Location of the argocd repository service endpoint.`,
+		newStringOpts().withDefault("argocd-repo-server.argocd:8081"))
+	boolFlag(flags, "argocd-repository-insecure", `True if you need to skip validating the grpc tls certificate.`,
+		newBoolOpts().withDefault(true))
+	boolFlag(flags, "argocd-send-full-repository", `Set to true if you want to try to send the full repository to ArgoCD when generating manifests.`)
 	stringFlag(flags, "label-filter", `(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook (KUBECHECKS_LABEL_FILTER).`)
 	stringFlag(flags, "openai-api-token", "OpenAI API Token.")
 	stringFlag(flags, "webhook-url-base", "The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.")

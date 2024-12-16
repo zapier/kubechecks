@@ -81,6 +81,7 @@ func (r *Repo) Clone(ctx context.Context) error {
 		}
 	}
 
+	log.Info().Msg("repo has been cloned")
 	return nil
 }
 
@@ -107,22 +108,22 @@ func (r *Repo) GetRemoteHead() (string, error) {
 	return branchName, nil
 }
 
-func (r *Repo) MergeIntoTarget(ctx context.Context, sha string) error {
+func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 	// Merge the last commit into a tmp branch off of the target branch
 	_, span := tracer.Start(ctx, "Repo - RepoMergeIntoTarget",
 		trace.WithAttributes(
 			attribute.String("branch_name", r.BranchName),
 			attribute.String("clone_url", r.CloneURL),
 			attribute.String("directory", r.Directory),
-			attribute.String("sha", sha),
+			attribute.String("sha", ref),
 		))
 	defer span.End()
 
-	cmd := r.execCommand("git", "merge", sha)
+	cmd := r.execCommand("git", "merge", ref)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		telemetry.SetError(span, err, "merge commit into branch")
-		log.Error().Err(err).Msgf("unable to merge %s, %s", sha, out)
+		log.Error().Err(err).Msgf("unable to merge %s, %s", ref, out)
 		return err
 	}
 

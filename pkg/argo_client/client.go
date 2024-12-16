@@ -1,14 +1,21 @@
 package argo_client
 
 import (
+	"crypto/tls"
 	"io"
-	"sync"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
+	repoapiclient "github.com/argoproj/argo-cd/v2/reposerver/apiclient"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	client "github.com/zapier/kubechecks/pkg/kubernetes"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 
@@ -18,10 +25,17 @@ import (
 type ArgoClient struct {
 	client apiclient.Client
 
-	manifestsLock sync.Mutex
+	repoClient         repoapiclient.RepoServerServiceClient
+	namespace          string
+	k8s                kubernetes.Interface
+	k8sConfig          *rest.Config
+	sendFullRepository bool
 }
 
-func NewArgoClient(cfg config.ServerConfig) (*ArgoClient, error) {
+func NewArgoClient(
+	cfg config.ServerConfig,
+	k8s client.Interface,
+) (*ArgoClient, error) {
 	opts := &apiclient.ClientOptions{
 		ServerAddr:      cfg.ArgoCDServerAddr,
 		AuthToken:       cfg.ArgoCDToken,
@@ -42,38 +56,54 @@ func NewArgoClient(cfg config.ServerConfig) (*ArgoClient, error) {
 		return nil, err
 	}
 
+	log.Info().Msg("creating client")
+	tlsConfig := tls.Config{InsecureSkipVerify: cfg.ArgoCDRepositoryInsecure}
+	conn, err := grpc.NewClient(cfg.ArgoCDRepositoryEndpoint,
+		grpc.WithTransportCredentials(
+			credentials.NewTLS(&tlsConfig),
+		),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create client")
+	}
+
 	return &ArgoClient{
-		client: argo,
+		repoClient:         repoapiclient.NewRepoServerServiceClient(conn),
+		client:             argo,
+		namespace:          cfg.ArgoCDNamespace,
+		k8s:                k8s.ClientSet(),
+		k8sConfig:          k8s.Config(),
+		sendFullRepository: cfg.ArgoCDSendFullRepository,
 	}, nil
 }
 
 // GetApplicationClient has related argocd diff code https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L899
-func (argo *ArgoClient) GetApplicationClient() (io.Closer, application.ApplicationServiceClient) {
-	closer, appClient, err := argo.client.NewApplicationClient()
+func (a *ArgoClient) GetApplicationClient() (io.Closer, application.ApplicationServiceClient) {
+	closer, appClient, err := a.client.NewApplicationClient()
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not create ArgoCD Application Client")
 	}
 	return closer, appClient
 }
 
-func (argo *ArgoClient) GetApplicationSetClient() (io.Closer, applicationset.ApplicationSetServiceClient) {
-	closer, appClient, err := argo.client.NewApplicationSetClient()
+func (a *ArgoClient) GetApplicationSetClient() (io.Closer, applicationset.ApplicationSetServiceClient) {
+	closer, appClient, err := a.client.NewApplicationSetClient()
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not create ArgoCD Application Set Client")
 	}
 	return closer, appClient
 }
 
-func (argo *ArgoClient) GetSettingsClient() (io.Closer, settings.SettingsServiceClient) {
-	closer, appClient, err := argo.client.NewSettingsClient()
+func (a *ArgoClient) GetSettingsClient() (io.Closer, settings.SettingsServiceClient) {
+	closer, appClient, err := a.client.NewSettingsClient()
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not create ArgoCD Settings Client")
 	}
 	return closer, appClient
 }
 
-func (argo *ArgoClient) GetClusterClient() (io.Closer, cluster.ClusterServiceClient) {
-	closer, clusterClient, err := argo.client.NewClusterClient()
+func (a *ArgoClient) GetClusterClient() (io.Closer, cluster.ClusterServiceClient) {
+	closer, clusterClient, err := a.client.NewClusterClient()
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not create ArgoCD Cluster Client")
 	}
