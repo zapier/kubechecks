@@ -118,7 +118,7 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 }
 
 func (ctrl *ApplicationWatcher) isAppNamespaceAllowed(app *appv1alpha1.Application, cfg config.ServerConfig) bool {
-	return app.Namespace == cfg.ArgoCDNamespace || glob.MatchStringInList(cfg.MonitorAppsNamespaces, app.Namespace, glob.REGEXP)
+	return app.Namespace == cfg.ArgoCDNamespace || glob.MatchStringInList(cfg.AdditionalAppsNamespaces, app.Namespace, glob.REGEXP)
 }
 
 /*
@@ -137,7 +137,7 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout t
 	watchNamespace := cfg.ArgoCDNamespace
 	// If we have at least one additional namespace configured, we need to
 	// watch on them all.
-	if len(cfg.MonitorAppsNamespaces) > 0 {
+	if len(cfg.AdditionalAppsNamespaces) > 0 {
 		watchNamespace = ""
 	}
 

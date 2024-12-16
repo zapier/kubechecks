@@ -17,7 +17,7 @@ import (
 
 func initTestObjects(t *testing.T) *ApplicationWatcher {
 	cfg, err := config.New()
-	cfg.MonitorAppsNamespaces = []string{"*"}
+	cfg.AdditionalAppsNamespaces = []string{"*"}
 	// Handle the error appropriately, e.g., log it or fail the test
 	require.NoError(t, err, "failed to create config")
 

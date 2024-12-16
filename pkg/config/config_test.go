@@ -19,7 +19,7 @@ func TestNew(t *testing.T) {
 	v.Set("argocd-api-plaintext", "true")
 	v.Set("worst-conftest-state", "warning")
 	v.Set("repo-refresh-interval", "10m")
-	v.Set("monitor-apps-namespaces", "default,kube-system")
+	v.Set("additional-apps-namespaces", "default,kube-system")
 
 	cfg, err := NewWithViper(v)
 	require.NoError(t, err)
@@ -28,5 +28,5 @@ func TestNew(t *testing.T) {
 	assert.Equal(t, true, cfg.ArgoCDPlainText)
 	assert.Equal(t, pkg.StateWarning, cfg.WorstConfTestState, "worst states can be overridden")
 	assert.Equal(t, time.Minute*10, cfg.RepoRefreshInterval)
-	assert.Equal(t, []string{"default", "kube-system"}, cfg.MonitorAppsNamespaces)
+	assert.Equal(t, []string{"default", "kube-system"}, cfg.AdditionalAppsNamespaces)
 }

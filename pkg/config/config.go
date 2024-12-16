@@ -71,7 +71,7 @@ type ServerConfig struct {
 	WorstPreupgradeState pkg.CommitState `mapstructure:"worst-preupgrade-state"`
 
 	// misc
-	MonitorAppsNamespaces    []string      `mapstructure:"monitor-apps-namespaces"`
+	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`
 	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`
 	LabelFilter              string        `mapstructure:"label-filter"`
 	LogLevel                 zerolog.Level `mapstructure:"log-level"`
