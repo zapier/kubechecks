@@ -119,8 +119,9 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 	ctrl.vcsToArgoMap.DeleteApp(app)
 }
 
-func (ctrl *ApplicationWatcher) isAppNamespaceAllowed(app *appv1alpha1.Application, cfg config.ServerConfig) bool {
-	return app.Namespace == cfg.ArgoCDNamespace || glob.MatchStringInList(cfg.AdditionalAppsNamespaces, app.Namespace, glob.REGEXP)
+// IsAppNamespaceAllowed is used by both the ApplicationWatcher and the ApplicationSetWatcher
+func IsAppNamespaceAllowed(meta *metav1.ObjectMeta, cfg config.ServerConfig) bool {
+	return meta.Namespace == cfg.ArgoCDNamespace || glob.MatchStringInList(cfg.AdditionalAppsNamespaces, meta.Namespace, glob.REGEXP)
 }
 
 /*
@@ -154,7 +155,7 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout t
 				}
 				newItems := []appv1alpha1.Application{}
 				for _, app := range appList.Items {
-					if ctrl.isAppNamespaceAllowed(&app, cfg) {
+					if IsAppNamespaceAllowed(&app.ObjectMeta, cfg) {
 						newItems = append(newItems, app)
 					}
 				}

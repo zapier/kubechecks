@@ -255,3 +255,47 @@ func TestCanProcessApp(t *testing.T) {
 		})
 	}
 }
+
+func TestIsAppNamespaceAllowed(t *testing.T) {
+
+	cfg, err := config.New()
+	// Handle the error appropriately, e.g., log it or fail the test
+	require.NoError(t, err, "failed to create config")
+	// set up the fake Application client set and informer.
+	testApp1 := &v1alpha1.Application{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{RepoURL: "https://gitlab.com/test/repo.git"},
+		},
+	}
+
+	testAppSet1 := &v1alpha1.ApplicationSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-appset-1", Namespace: "kube-system"},
+		Spec:       v1alpha1.ApplicationSetSpec{},
+	}
+
+	cfg.AdditionalAppsNamespaces = []string{"*"}
+	if !IsAppNamespaceAllowed(&testApp1.ObjectMeta, cfg) {
+		t.Error("default-ns namespace should be allowed")
+	}
+
+	cfg.AdditionalAppsNamespaces = []string{"default", "kube-system"}
+	if IsAppNamespaceAllowed(&testApp1.ObjectMeta, cfg) == true {
+		t.Error("default-ns namespace should not be allowed")
+	}
+
+	cfg.AdditionalAppsNamespaces = []string{"default-*"}
+	if IsAppNamespaceAllowed(&testApp1.ObjectMeta, cfg) == false {
+		t.Error("default-ns namespace should be allowed")
+	}
+
+	cfg.AdditionalAppsNamespaces = []string{"<default-*>", "kube-system"}
+	if IsAppNamespaceAllowed(&testApp1.ObjectMeta, cfg) {
+		t.Error("default-ns namespace should not be allowed")
+	}
+
+	cfg.AdditionalAppsNamespaces = []string{"<default-*>", "kube-system"}
+	if !IsAppNamespaceAllowed(&testAppSet1.ObjectMeta, cfg) {
+		t.Error("default-ns namespace should not be allowed")
+	}
+}

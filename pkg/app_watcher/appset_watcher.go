@@ -9,7 +9,6 @@ import (
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	appclientset "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
-	"github.com/argoproj/argo-cd/v2/util/glob"
 	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/config"
@@ -64,10 +63,6 @@ func (ctrl *ApplicationSetWatcher) Run(ctx context.Context) {
 	<-ctx.Done()
 }
 
-func (ctrl *ApplicationSetWatcher) isAppNamespaceAllowed(appSet *appv1alpha1.ApplicationSet, cfg config.ServerConfig) bool {
-	return appSet.Namespace == cfg.ArgoCDNamespace || glob.MatchStringInList(cfg.AdditionalAppsNamespaces, appSet.Namespace, glob.REGEXP)
-}
-
 func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (cache.SharedIndexInformer, applisters.ApplicationSetLister) {
 	watchNamespace := cfg.ArgoCDNamespace
 	// If we have at least one additional namespace configured, we need to
@@ -87,7 +82,7 @@ func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTim
 				}
 				newItems := []appv1alpha1.ApplicationSet{}
 				for _, appSet := range appList.Items {
-					if ctrl.isAppNamespaceAllowed(&appSet, cfg) {
+					if IsAppNamespaceAllowed(&appSet.ObjectMeta, cfg) {
 						newItems = append(newItems, appSet)
 					}
 				}
