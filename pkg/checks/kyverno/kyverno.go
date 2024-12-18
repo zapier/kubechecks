@@ -22,19 +22,25 @@ func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targ
 	_, span := tracer.Start(ctx, "KyvernoValidate")
 	defer span.End()
 
+	log.Debug().Msg("Creating temporary file for app manifests")
 	tempFile, err := os.CreateTemp("/tmp", "appManifests-*.yaml")
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to create temporary file")
 		return msg.Result{}, err
 	}
 	defer os.Remove(tempFile.Name())
 
+	log.Debug().Str("tempFile", tempFile.Name()).Msg("Temporary file created")
+
 	for _, manifest := range appManifests {
 		if _, err := tempFile.WriteString(manifest + "\n"); err != nil {
+			log.Error().Err(err).Msg("Failed to write manifest to temporary file")
 			return msg.Result{}, err
 		}
 	}
 
 	if err := tempFile.Close(); err != nil {
+		log.Error().Err(err).Msg("Failed to close temporary file")
 		return msg.Result{}, err
 	}
 
@@ -47,6 +53,7 @@ func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targ
 	var output strings.Builder
 	applyCommand.SetOutput(&output)
 	if err := applyCommand.Execute(); err != nil {
+		log.Error().Err(err).Msg("Failed to execute kyverno apply command")
 		return msg.Result{}, err
 	}
 	log.Info().Msg(output.String())
@@ -58,8 +65,11 @@ func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targ
 		cr.State = pkg.StateSuccess
 	}
 
+	log.Debug().Str("report", output.String()).Msg("Kyverno validation completed")
 	cr.Summary = "<b>Show kyverno report:</b>"
 	cr.Details = fmt.Sprintf(">Kyverno Policy Report \n\n%s", output.String())
+
+	log.Debug().Msg("Kyverno validation completed")
 
 	return cr, nil
 }

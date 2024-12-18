@@ -7,6 +7,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/checks/diff"
 	"github.com/zapier/kubechecks/pkg/checks/hooks"
 	"github.com/zapier/kubechecks/pkg/checks/kubeconform"
+	"github.com/zapier/kubechecks/pkg/checks/kyverno"
 	"github.com/zapier/kubechecks/pkg/checks/preupgrade"
 	"github.com/zapier/kubechecks/pkg/checks/rego"
 	"github.com/zapier/kubechecks/pkg/container"
@@ -54,6 +55,14 @@ func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
 			Name:       "validation policy",
 			Processor:  checker.Check,
 			WorstState: ctr.Config.WorstConfTestState,
+		})
+	}
+
+	if ctr.Config.EnableKyvernoChecks {
+		procs = append(procs, checks.ProcessorEntry{
+			Name:       "running kyverno check",
+			Processor:  kyverno.Check,
+			WorstState: ctr.Config.WorstPreupgradeState,
 		})
 	}
 
