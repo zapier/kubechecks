@@ -5,7 +5,7 @@ metadata:
   namespace: {{ .Values.argocd.namespace }}
 roleRef:
   kind: Role
-  name: kubechecks
+  name: {{ include "kubechecks.fullname" . }}
   apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
