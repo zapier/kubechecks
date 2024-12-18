@@ -49,13 +49,13 @@ var ControllerCmd = &cobra.Command{
 
 		// watch app modifications, if necessary
 		if cfg.MonitorAllApplications {
-			appWatcher, err := app_watcher.NewApplicationWatcher(ctr)
+			appWatcher, err := app_watcher.NewApplicationWatcher(ctr, ctx)
 			if err != nil {
 				log.Fatal().Err(err).Msg("failed to create watch applications")
 			}
 			go appWatcher.Run(ctx, 1)
 
-			appSetWatcher, err := app_watcher.NewApplicationSetWatcher(ctr)
+			appSetWatcher, err := app_watcher.NewApplicationSetWatcher(ctr, ctx)
 			if err != nil {
 				log.Fatal().Err(err).Msg("failed to create watch application sets")
 			}
