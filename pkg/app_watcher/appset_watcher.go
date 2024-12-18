@@ -30,7 +30,7 @@ type ApplicationSetWatcher struct {
 }
 
 // NewApplicationSetWatcher creates new instance of ApplicationWatcher.
-func NewApplicationSetWatcher(ctr container.Container) (*ApplicationSetWatcher, error) {
+func NewApplicationSetWatcher(ctr container.Container, ctx context.Context) (*ApplicationSetWatcher, error) {
 	if ctr.KubeClientSet == nil {
 		return nil, fmt.Errorf("kubeCfg cannot be nil")
 	}
@@ -39,7 +39,7 @@ func NewApplicationSetWatcher(ctr container.Container) (*ApplicationSetWatcher, 
 		vcsToArgoMap:         ctr.VcsToArgoMap,
 	}
 
-	appInformer, appLister := ctrl.newApplicationSetInformerAndLister(time.Second*30, ctr.Config)
+	appInformer, appLister := ctrl.newApplicationSetInformerAndLister(time.Second*30, ctr.Config, ctx)
 
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
@@ -63,7 +63,7 @@ func (ctrl *ApplicationSetWatcher) Run(ctx context.Context) {
 	<-ctx.Done()
 }
 
-func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (cache.SharedIndexInformer, applisters.ApplicationSetLister) {
+func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig, ctx context.Context) (cache.SharedIndexInformer, applisters.ApplicationSetLister) {
 	watchNamespace := cfg.ArgoCDNamespace
 	// If we have at least one additional namespace configured, we need to
 	// watch on them all.
@@ -76,13 +76,13 @@ func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTim
 			ListFunc: func(options metav1.ListOptions) (apiruntime.Object, error) {
 				// We are only interested in apps that exist in namespaces the
 				// user wants to be enabled.
-				appList, err := ctrl.applicationClientset.ArgoprojV1alpha1().ApplicationSets(watchNamespace).List(context.TODO(), options)
+				appList, err := ctrl.applicationClientset.ArgoprojV1alpha1().ApplicationSets(watchNamespace).List(ctx, options)
 				if err != nil {
 					return nil, err
 				}
 				newItems := []appv1alpha1.ApplicationSet{}
 				for _, appSet := range appList.Items {
-					if IsAppNamespaceAllowed(&appSet.ObjectMeta, cfg) {
+					if isAppNamespaceAllowed(&appSet.ObjectMeta, cfg) {
 						newItems = append(newItems, appSet)
 					}
 				}
@@ -90,7 +90,7 @@ func (ctrl *ApplicationSetWatcher) newApplicationSetInformerAndLister(refreshTim
 				return appList, nil
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return ctrl.applicationClientset.ArgoprojV1alpha1().ApplicationSets(watchNamespace).Watch(context.TODO(), options)
+				return ctrl.applicationClientset.ArgoprojV1alpha1().ApplicationSets(watchNamespace).Watch(ctx, options)
 			},
 		},
 		&appv1alpha1.ApplicationSet{},

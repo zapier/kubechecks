@@ -37,7 +37,7 @@ type ApplicationWatcher struct {
 //   - kubeCfg is the Kubernetes configuration.
 //   - vcsToArgoMap is the mapping between VCS and Argo applications.
 //   - cfg is the server configuration.
-func NewApplicationWatcher(ctr container.Container) (*ApplicationWatcher, error) {
+func NewApplicationWatcher(ctr container.Container, ctx context.Context) (*ApplicationWatcher, error) {
 	if ctr.KubeClientSet == nil {
 		return nil, fmt.Errorf("kubeCfg cannot be nil")
 	}
@@ -46,7 +46,7 @@ func NewApplicationWatcher(ctr container.Container) (*ApplicationWatcher, error)
 		vcsToArgoMap:         ctr.VcsToArgoMap,
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, ctr.Config)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, ctr.Config, ctx)
 
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
@@ -119,8 +119,8 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 	ctrl.vcsToArgoMap.DeleteApp(app)
 }
 
-// IsAppNamespaceAllowed is used by both the ApplicationWatcher and the ApplicationSetWatcher
-func IsAppNamespaceAllowed(meta *metav1.ObjectMeta, cfg config.ServerConfig) bool {
+// isAppNamespaceAllowed is used by both the ApplicationWatcher and the ApplicationSetWatcher
+func isAppNamespaceAllowed(meta *metav1.ObjectMeta, cfg config.ServerConfig) bool {
 	return meta.Namespace == cfg.ArgoCDNamespace || glob.MatchStringInList(cfg.AdditionalAppsNamespaces, meta.Namespace, glob.REGEXP)
 }
 
@@ -135,7 +135,7 @@ that need to observe the object.
 newApplicationInformerAndLister use the data from the informer's cache to provide a read-optimized view of the cache which reduces
 the load on the API Server and hides some complexity.
 */
-func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (cache.SharedIndexInformer, applisters.ApplicationLister) {
+func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig, ctx context.Context) (cache.SharedIndexInformer, applisters.ApplicationLister) {
 
 	watchNamespace := cfg.ArgoCDNamespace
 	// If we have at least one additional namespace configured, we need to
@@ -149,13 +149,13 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout t
 			ListFunc: func(options metav1.ListOptions) (apiruntime.Object, error) {
 				// We are only interested in apps that exist in namespaces the
 				// user wants to be enabled.
-				appList, err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications(watchNamespace).List(context.TODO(), options)
+				appList, err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications(watchNamespace).List(ctx, options)
 				if err != nil {
 					return nil, err
 				}
 				newItems := []appv1alpha1.Application{}
 				for _, app := range appList.Items {
-					if IsAppNamespaceAllowed(&app.ObjectMeta, cfg) {
+					if isAppNamespaceAllowed(&app.ObjectMeta, cfg) {
 						newItems = append(newItems, app)
 					}
 				}
@@ -163,7 +163,7 @@ func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout t
 				return appList, nil
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications(watchNamespace).Watch(context.TODO(), options)
+				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications(watchNamespace).Watch(ctx, options)
 			},
 		},
 		&appv1alpha1.Application{},
