@@ -290,6 +290,11 @@ func TestIsAppNamespaceAllowed(t *testing.T) {
 			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"<default-*>", "kube-system"}},
 			meta:     &metav1.ObjectMeta{Name: "test-appset-1", Namespace: "kube-system"},
 		},
+		"Regex in namespace for application set is allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"/^((?!kube-system).)*$/"}},
+			meta:     &metav1.ObjectMeta{Name: "test-appset-1", Namespace: "kube-namespace"},
+		},
 	}
 
 	for testName, test := range tests {
