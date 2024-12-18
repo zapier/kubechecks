@@ -79,6 +79,12 @@ var ControllerCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to process schema locations")
 		}
 
+		log.Info().Strs("locations", cfg.KyvernoPoliciesLocation).Msg("processing kyverno policies locations")
+		if err = processLocations(ctx, ctr, cfg.KyvernoPoliciesLocation); err != nil {
+			log.Fatal().Err(err).Msg("failed to process kyverno policies locations")
+		}
+		log.Debug().Strs("locations", cfg.KyvernoPoliciesLocation).Msg("kyverno policies locations after processing")
+
 		processors, err := getProcessors(ctr)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create processors")

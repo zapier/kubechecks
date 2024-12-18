@@ -24,6 +24,10 @@ configMap:
     # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
     KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
     KUBECHECKS_ENABLE_CONFTEST: "false"
+    KUBECHECKS_ENABLE_KYVERNO_CHECKS: "true"
+    KUBECHECKS_KYVERNO_POLICIES_LOCATION: "https://gitlab.com/zapier/team-sre/service-kyverno.git"
+    KUBECHECKS_KYVERNO_POLICIES_PATHS: "argocd/production/templates/checks"
+    GRPC_ENFORCE_ALPN_ENABLED: false
 
 
 deployment:
@@ -31,7 +35,7 @@ deployment:
     reloader.stakater.com/auto: "true" 
   
   image:
-    pullPolicy: Never
+    pullPolicy: IfNotPresent
     name: "kubechecks"
     tag: ""
 

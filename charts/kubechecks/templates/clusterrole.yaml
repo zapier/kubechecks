@@ -7,5 +7,5 @@ rules:
     resources: ['applications', 'appprojects', 'applicationsets', 'services']
     verbs: ['get', 'list', 'watch']
   - apiGroups: [''] # The core API group, which is indicated by an empty string
-    resources: ['secrets']
+    resources: ['secrets', 'configmaps']
     verbs: ['get', 'list', 'watch']

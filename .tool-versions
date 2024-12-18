@@ -1,5 +1,5 @@
 earthly 0.8.15
-golang 1.22.7
+golang 1.23.4
 golangci-lint 1.62.2
 helm 3.16.3
 helm-cr 1.6.1
