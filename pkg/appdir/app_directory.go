@@ -23,8 +23,16 @@ func NewAppDirectory() *AppDirectory {
 	}
 }
 
-func (d *AppDirectory) Count() int {
+func (d *AppDirectory) AppsCount() int {
 	return len(d.appsMap)
+}
+
+func (d *AppDirectory) AppFilesCount() int {
+	return len(d.appFiles)
+}
+
+func (d *AppDirectory) AppDirsCount() int {
+	return len(d.appDirs)
 }
 
 func (d *AppDirectory) Union(other *AppDirectory) *AppDirectory {

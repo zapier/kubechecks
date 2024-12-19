@@ -36,7 +36,10 @@ func logCounts(repoApps *appdir.AppDirectory) {
 	if repoApps == nil {
 		log.Debug().Msg("found no apps")
 	} else {
-		log.Debug().Msgf("found %d apps", repoApps.Count())
+		log.Debug().Int("apps", repoApps.AppsCount()).
+			Int("app files", repoApps.AppFilesCount()).
+			Int("app dirs", repoApps.AppDirsCount()).
+			Msg("mapped apps")
 	}
 }
 
