@@ -58,7 +58,7 @@ type repoManager interface {
 	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 }
 
-func GenerateMatcher(ce *CheckEvent, repo *git.Repo) error {
+func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
 	log.Debug().Msg("using the argocd matcher")
 	m, err := affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
 	if err != nil {
@@ -265,7 +265,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
-	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef, GenerateMatcher); err != nil {
+	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef, generateMatcher); err != nil {
 		return errors.Wrap(err, "failed to generate a list of affected apps")
 	}
 

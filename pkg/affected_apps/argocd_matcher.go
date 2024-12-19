@@ -37,8 +37,8 @@ func logCounts(repoApps *appdir.AppDirectory) {
 		log.Debug().Msg("found no apps")
 	} else {
 		log.Debug().Int("apps", repoApps.AppsCount()).
-			Int("app files", repoApps.AppFilesCount()).
-			Int("app dirs", repoApps.AppDirsCount()).
+			Int("app_files", repoApps.AppFilesCount()).
+			Int("app_dirs", repoApps.AppDirsCount()).
 			Msg("mapped apps")
 	}
 }
@@ -46,6 +46,7 @@ func logCounts(repoApps *appdir.AppDirectory) {
 func getKustomizeApps(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo, repoPath string) *appdir.AppDirectory {
 	log.Debug().Msgf("creating fs for %s", repoPath)
 	fs := os.DirFS(repoPath)
+
 	log.Debug().Msg("following kustomize apps")
 	kustomizeAppFiles := vcsToArgoMap.WalkKustomizeApps(repo.CloneURL, fs)
 

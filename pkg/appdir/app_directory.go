@@ -163,14 +163,24 @@ func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 		log.Debug().Msgf("app %s already exists", app.Name)
 		return
 	}
+
+	sourcePath := getSourcePath(app)
 	log.Debug().
 		Str("appName", app.Name).
 		Str("cluster-name", app.Spec.Destination.Name).
 		Str("cluster-server", app.Spec.Destination.Server).
-		Str("source", getSourcePath(app)).
+		Str("source", sourcePath).
 		Msg("add app")
+
 	d.appsMap[app.Name] = app
-	d.AddDir(app.Name, getSourcePath(app))
+	d.AddDir(app.Name, sourcePath)
+
+	if helm := app.Spec.GetSource().Helm; helm != nil {
+		for _, path := range helm.ValueFiles {
+			relPath := filepath.Join(sourcePath, path)
+			d.AddFile(app.Name, relPath)
+		}
+	}
 }
 
 func (d *AppDirectory) AddDir(appName, path string) {
