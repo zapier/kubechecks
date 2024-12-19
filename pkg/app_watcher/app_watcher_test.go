@@ -86,9 +86,10 @@ func TestApplicationUpdated(t *testing.T) {
 	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
 
 	oldAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
+	assert.Equal(t, oldAppDirectory.AppsCount(), 1)
+
 	newAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
-	assert.Equal(t, oldAppDirectory.Count(), 1)
-	assert.Equal(t, newAppDirectory.Count(), 0)
+	assert.Equal(t, newAppDirectory.AppsCount(), 0)
 	//
 	_, err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications("default").Update(ctx, &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},
@@ -102,8 +103,8 @@ func TestApplicationUpdated(t *testing.T) {
 	time.Sleep(time.Second * 1)
 	oldAppDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	newAppDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
-	assert.Equal(t, oldAppDirectory.Count(), 0)
-	assert.Equal(t, newAppDirectory.Count(), 1)
+	assert.Equal(t, oldAppDirectory.AppsCount(), 0)
+	assert.Equal(t, newAppDirectory.AppsCount(), 1)
 }
 
 func TestApplicationDeleted(t *testing.T) {
@@ -119,7 +120,7 @@ func TestApplicationDeleted(t *testing.T) {
 	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
 
 	appDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
-	assert.Equal(t, appDirectory.Count(), 1)
+	assert.Equal(t, appDirectory.AppsCount(), 1)
 	//
 	err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications("default").Delete(ctx, "test-app-1", metav1.DeleteOptions{})
 	if err != nil {
@@ -128,7 +129,7 @@ func TestApplicationDeleted(t *testing.T) {
 	time.Sleep(time.Second * 1)
 
 	appDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
-	assert.Equal(t, appDirectory.Count(), 0)
+	assert.Equal(t, appDirectory.AppsCount(), 0)
 }
 
 // TestIsGitRepo will test various URLs against the isGitRepo function.
