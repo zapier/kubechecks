@@ -141,10 +141,8 @@ func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 		return
 	}
 
-	appName := app.Name
-
 	for _, src := range getSources(app) {
-		sourcePath := getSourcePath(app)
+		sourcePath := src.Path
 		log.Debug().
 			Str("appName", app.Name).
 			Str("cluster-name", app.Spec.Destination.Name).
@@ -153,18 +151,18 @@ func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 			Msg("add app")
 
 		d.appsMap[app.Name] = app
-		d.AddDir(app.Name, sourcePath)
+		d.addDir(app.Name, sourcePath)
 
 		// handle extra helm paths
 		if helm := src.Helm; helm != nil {
 			for _, param := range helm.FileParameters {
 				path := filepath.Join(sourcePath, param.Path)
-				d.AddFile(appName, path)
+				d.addFile(app.Name, path)
 			}
 
 			for _, valueFilePath := range helm.ValueFiles {
 				path := filepath.Join(sourcePath, valueFilePath)
-				d.AddFile(appName, path)
+				d.addFile(app.Name, path)
 			}
 		}
 	}
@@ -178,11 +176,11 @@ func getSources(app v1alpha1.Application) []v1alpha1.ApplicationSource {
 	return app.Spec.Sources
 }
 
-func (d *AppDirectory) AddDir(appName, path string) {
+func (d *AppDirectory) addDir(appName, path string) {
 	d.appDirs[path] = append(d.appDirs[path], appName)
 }
 
-func (d *AppDirectory) AddFile(appName, path string) {
+func (d *AppDirectory) addFile(appName, path string) {
 	d.appFiles[path] = append(d.appFiles[path], appName)
 }
 
