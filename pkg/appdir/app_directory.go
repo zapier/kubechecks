@@ -43,29 +43,6 @@ func (d *AppDirectory) Union(other *AppDirectory) *AppDirectory {
 	return &join
 }
 
-func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
-	appName := app.Name
-
-	src := app.Spec.GetSource()
-
-	// common data
-	srcPath := src.Path
-	d.AddApp(app)
-
-	// handle extra helm paths
-	if helm := src.Helm; helm != nil {
-		for _, param := range helm.FileParameters {
-			path := filepath.Join(srcPath, param.Path)
-			d.AddFile(appName, path)
-		}
-
-		for _, valueFilePath := range helm.ValueFiles {
-			path := filepath.Join(srcPath, valueFilePath)
-			d.AddFile(appName, path)
-		}
-	}
-}
-
 // FindAppsBasedOnChangeList receives a list of modified file paths and
 // returns the list of applications that are affected by the changes.
 //
@@ -164,23 +141,41 @@ func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 		return
 	}
 
-	sourcePath := getSourcePath(app)
-	log.Debug().
-		Str("appName", app.Name).
-		Str("cluster-name", app.Spec.Destination.Name).
-		Str("cluster-server", app.Spec.Destination.Server).
-		Str("source", sourcePath).
-		Msg("add app")
+	appName := app.Name
 
-	d.appsMap[app.Name] = app
-	d.AddDir(app.Name, sourcePath)
+	for _, src := range getSources(app) {
+		sourcePath := getSourcePath(app)
+		log.Debug().
+			Str("appName", app.Name).
+			Str("cluster-name", app.Spec.Destination.Name).
+			Str("cluster-server", app.Spec.Destination.Server).
+			Str("source", sourcePath).
+			Msg("add app")
 
-	if helm := app.Spec.GetSource().Helm; helm != nil {
-		for _, path := range helm.ValueFiles {
-			relPath := filepath.Join(sourcePath, path)
-			d.AddFile(app.Name, relPath)
+		d.appsMap[app.Name] = app
+		d.AddDir(app.Name, sourcePath)
+
+		// handle extra helm paths
+		if helm := src.Helm; helm != nil {
+			for _, param := range helm.FileParameters {
+				path := filepath.Join(sourcePath, param.Path)
+				d.AddFile(appName, path)
+			}
+
+			for _, valueFilePath := range helm.ValueFiles {
+				path := filepath.Join(sourcePath, valueFilePath)
+				d.AddFile(appName, path)
+			}
 		}
 	}
+}
+
+func getSources(app v1alpha1.Application) []v1alpha1.ApplicationSource {
+	if !app.Spec.HasMultipleSources() {
+		return []v1alpha1.ApplicationSource{*app.Spec.Source}
+	}
+
+	return app.Spec.Sources
 }
 
 func (d *AppDirectory) AddDir(appName, path string) {

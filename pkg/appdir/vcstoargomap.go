@@ -132,8 +132,8 @@ func (v2a VcsToArgoMap) AddAppSet(app *v1alpha1.ApplicationSet) {
 		return
 	}
 
-	appDirectory := v2a.GetAppSetsInRepo(app.Spec.Template.Spec.GetSource().RepoURL)
-	appDirectory.ProcessApp(*app)
+	appSetDirectory := v2a.GetAppSetsInRepo(app.Spec.Template.Spec.GetSource().RepoURL)
+	appSetDirectory.ProcessAppSet(*app)
 }
 
 func (v2a VcsToArgoMap) UpdateAppSet(old *v1alpha1.ApplicationSet, new *v1alpha1.ApplicationSet) {
@@ -143,10 +143,10 @@ func (v2a VcsToArgoMap) UpdateAppSet(old *v1alpha1.ApplicationSet, new *v1alpha1
 	}
 
 	oldAppDirectory := v2a.GetAppSetsInRepo(old.Spec.Template.Spec.GetSource().RepoURL)
-	oldAppDirectory.RemoveApp(*old)
+	oldAppDirectory.RemoveAppSet(*old)
 
-	newAppDirectory := v2a.GetAppSetsInRepo(new.Spec.Template.Spec.GetSource().RepoURL)
-	newAppDirectory.ProcessApp(*new)
+	appSetDirectory := v2a.GetAppSetsInRepo(new.Spec.Template.Spec.GetSource().RepoURL)
+	appSetDirectory.ProcessAppSet(*new)
 }
 
 func (v2a VcsToArgoMap) DeleteAppSet(app *v1alpha1.ApplicationSet) {
@@ -155,6 +155,6 @@ func (v2a VcsToArgoMap) DeleteAppSet(app *v1alpha1.ApplicationSet) {
 		return
 	}
 
-	oldAppDirectory := v2a.GetAppSetsInRepo(app.Spec.Template.Spec.GetSource().RepoURL)
-	oldAppDirectory.RemoveApp(*app)
+	appSetDirectory := v2a.GetAppSetsInRepo(app.Spec.Template.Spec.GetSource().RepoURL)
+	appSetDirectory.RemoveAppSet(*app)
 }

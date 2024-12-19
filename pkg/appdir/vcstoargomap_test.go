@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TestAddApp tests the AddApp method from the VcsToArgoMap type.
+// TestAddApp tests the AddAppSet method from the VcsToArgoMap type.
 func TestAddApp(t *testing.T) {
 	// Setup your mocks and expected calls here.
 
