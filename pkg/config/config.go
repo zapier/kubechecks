@@ -68,6 +68,10 @@ type ServerConfig struct {
 	// -- preupgrade
 	EnablePreupgrade     bool            `mapstructure:"enable-preupgrade"`
 	WorstPreupgradeState pkg.CommitState `mapstructure:"worst-preupgrade-state"`
+	// -- kyverno
+	EnableKyvernoChecks     bool     `mapstructure:"enable-kyverno-checks"`
+	KyvernoPoliciesLocation []string `mapstructure:"kyverno-policies-location"`
+	KyvernoPoliciesPaths    []string `mapstructure:"kyverno-policies-paths"`
 
 	// misc
 	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`
