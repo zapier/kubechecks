@@ -7,22 +7,12 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 )
 
-func (c *Client) GetPipelinesForCommit(projectName string, commitSHA string) ([]*gitlab.PipelineInfo, error) {
+func (c *Client) GetLastPipelinesForCommit(projectName string, commitSHA string) *gitlab.PipelineInfo {
 	pipelines, _, err := c.c.Pipelines.ListProjectPipelines(projectName, &gitlab.ListProjectPipelinesOptions{
 		SHA: pkg.Pointer(commitSHA),
 	})
 	if err != nil {
-		log.Error().Err(err).Msg("gitlab client: could not get pipelines for commit")
-		return pipelines, err
-	}
-
-	return pipelines, nil
-
-}
-
-func (c *Client) GetLastPipelinesForCommit(projectName string, commitSHA string) *gitlab.PipelineInfo {
-	pipelines, err := c.GetPipelinesForCommit(projectName, commitSHA)
-	if err != nil {
+		log.Error().Err(err).Msg("gitlab client: could not get last pipeline for commit")
 		return nil
 	}
 
