@@ -31,7 +31,7 @@ func TestPathsAreJoinedProperly(t *testing.T) {
 		},
 	}
 
-	rad.ProcessApp(app1)
+	rad.AddApp(app1)
 
 	assert.Equal(t, map[string]v1alpha1.Application{
 		"test-app": app1,

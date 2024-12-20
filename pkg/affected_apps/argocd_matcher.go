@@ -36,13 +36,17 @@ func logCounts(repoApps *appdir.AppDirectory) {
 	if repoApps == nil {
 		log.Debug().Msg("found no apps")
 	} else {
-		log.Debug().Msgf("found %d apps", repoApps.Count())
+		log.Debug().Int("apps", repoApps.AppsCount()).
+			Int("app_files", repoApps.AppFilesCount()).
+			Int("app_dirs", repoApps.AppDirsCount()).
+			Msg("mapped apps")
 	}
 }
 
 func getKustomizeApps(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo, repoPath string) *appdir.AppDirectory {
 	log.Debug().Msgf("creating fs for %s", repoPath)
 	fs := os.DirFS(repoPath)
+
 	log.Debug().Msg("following kustomize apps")
 	kustomizeAppFiles := vcsToArgoMap.WalkKustomizeApps(repo.CloneURL, fs)
 
@@ -76,7 +80,7 @@ func (a *ArgocdMatcher) AffectedApps(_ context.Context, changeList []string, tar
 	}
 
 	appsSlice := a.appsDirectory.FindAppsBasedOnChangeList(changeList, targetBranch)
-	appSetsSlice := a.appSetsDirectory.FindAppsBasedOnChangeList(changeList, repo)
+	appSetsSlice := a.appSetsDirectory.FindAppSetsBasedOnChangeList(changeList, repo)
 
 	// and return both apps and appSets
 	return AffectedItems{

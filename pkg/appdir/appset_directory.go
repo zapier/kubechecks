@@ -39,14 +39,14 @@ func (d *AppSetDirectory) Union(other *AppSetDirectory) *AppSetDirectory {
 	return &join
 }
 
-func (d *AppSetDirectory) ProcessApp(app v1alpha1.ApplicationSet) {
+func (d *AppSetDirectory) ProcessAppSet(app v1alpha1.ApplicationSet) {
 	appName := app.GetName()
 
 	src := app.Spec.Template.Spec.GetSource()
 
 	// common data
 	srcPath := src.Path
-	d.AddApp(&app)
+	d.AddAppSet(&app)
 
 	// handle extra helm paths
 	if helm := src.Helm; helm != nil {
@@ -62,13 +62,13 @@ func (d *AppSetDirectory) ProcessApp(app v1alpha1.ApplicationSet) {
 	}
 }
 
-// FindAppsBasedOnChangeList receives the modified file path and
+// FindAppSetsBasedOnChangeList receives the modified file path and
 // returns the list of applications that are affected by the changes.
 //
 //	e.g. changeList = ["/appset/httpdump/httpdump.yaml", "/app/testapp/values.yaml"]
 //  if the changed file is application set file, return it.
 
-func (d *AppSetDirectory) FindAppsBasedOnChangeList(changeList []string, repo *git.Repo) []v1alpha1.ApplicationSet {
+func (d *AppSetDirectory) FindAppSetsBasedOnChangeList(changeList []string, repo *git.Repo) []v1alpha1.ApplicationSet {
 	log.Debug().Str("type", "applicationsets").Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})
@@ -123,7 +123,7 @@ func (d *AppSetDirectory) GetAppSets(filter func(stub v1alpha1.ApplicationSet) b
 	return result
 }
 
-func (d *AppSetDirectory) AddApp(appSet *v1alpha1.ApplicationSet) {
+func (d *AppSetDirectory) AddAppSet(appSet *v1alpha1.ApplicationSet) {
 	if _, exists := d.appSetsMap[appSet.GetName()]; exists {
 		log.Info().Msgf("appset %s already exists", appSet.Name)
 		return
@@ -144,7 +144,7 @@ func (d *AppSetDirectory) AddFile(appName, path string) {
 	d.appSetFiles[path] = append(d.appSetFiles[path], appName)
 }
 
-func (d *AppSetDirectory) RemoveApp(app v1alpha1.ApplicationSet) {
+func (d *AppSetDirectory) RemoveAppSet(app v1alpha1.ApplicationSet) {
 	log.Debug().
 		Str("appName", app.Name).
 		Msg("delete app")

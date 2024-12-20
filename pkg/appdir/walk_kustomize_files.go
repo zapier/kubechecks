@@ -87,11 +87,11 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 		}
 
 		if !stat.IsDir() {
-			result.AddFile(appName, relPath)
+			result.addFile(appName, relPath)
 			continue
 		}
 
-		result.AddDir(appName, relPath)
+		result.addDir(appName, relPath)
 		if err = walkKustomizeFiles(result, fs, appName, relPath); err != nil {
 			log.Warn().Err(err).Msgf("failed to read kustomize.yaml from resources in %s", relPath)
 		}
@@ -104,7 +104,7 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 		}
 
 		relPath := filepath.Join(dirpath, basePath)
-		result.AddDir(appName, relPath)
+		result.addDir(appName, relPath)
 		if err = walkKustomizeFiles(result, fs, appName, relPath); err != nil {
 			log.Warn().Err(err).Msgf("failed to read kustomize.yaml from bases in %s", relPath)
 		}
@@ -112,12 +112,12 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 
 	for _, patchFile := range kustomize.PatchesStrategicMerge {
 		relPath := filepath.Join(dirpath, patchFile)
-		result.AddFile(appName, relPath)
+		result.addFile(appName, relPath)
 	}
 
 	for _, patch := range kustomize.PatchesJson6902 {
 		relPath := filepath.Join(dirpath, patch.Path)
-		result.AddFile(appName, relPath)
+		result.addFile(appName, relPath)
 	}
 
 	return nil
