@@ -16,7 +16,11 @@ import (
 )
 
 func initTestObjects(t *testing.T) *ApplicationWatcher {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	cfg, err := config.New()
+	cfg.AdditionalAppsNamespaces = []string{"*"}
 	// Handle the error appropriately, e.g., log it or fail the test
 	require.NoError(t, err, "failed to create config")
 
@@ -40,7 +44,7 @@ func initTestObjects(t *testing.T) *ApplicationWatcher {
 		vcsToArgoMap:         appdir.NewVcsToArgoMap("vcs-username"),
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*1, cfg)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*1, cfg, ctx)
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
 
@@ -252,6 +256,52 @@ func TestCanProcessApp(t *testing.T) {
 			} else {
 				assert.Nil(t, app)
 			}
+		})
+	}
+}
+
+func TestIsAppNamespaceAllowed(t *testing.T) {
+	tests := map[string]struct {
+		expected bool
+		cfg      config.ServerConfig
+		meta     *metav1.ObjectMeta
+	}{
+		"All namespaces for application are allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"*"}},
+			meta:     &metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		},
+		"Specific namespaces for application are allowed": {
+			expected: false,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"default", "kube-system"}},
+			meta:     &metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		},
+		"Wildcard namespace for application is allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"default-*"}},
+			meta:     &metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		},
+		"Invalid characters in namespace for application are not allowed": {
+			expected: false,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"<default-*", "kube-system"}},
+			meta:     &metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		},
+		"Specific namespace for application set is allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"<default-*>", "kube-system"}},
+			meta:     &metav1.ObjectMeta{Name: "test-appset-1", Namespace: "kube-system"},
+		},
+		"Regex in namespace for application set is allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"/^((?!kube-system).)*$/"}},
+			meta:     &metav1.ObjectMeta{Name: "test-appset-1", Namespace: "kube-namespace"},
+		},
+	}
+
+	for testName, test := range tests {
+		t.Run(testName, func(t *testing.T) {
+			actual := isAppNamespaceAllowed(test.meta, test.cfg)
+			assert.Equal(t, test.expected, actual)
 		})
 	}
 }

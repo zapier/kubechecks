@@ -7,6 +7,7 @@ commonLabels: {}
 configMap:
   create: false
   env: {}
+  # KUBECHECKS_ADDITIONAL_APPS_NAMESPACES: "*"
   # KUBECHECKS_ARGOCD_API_INSECURE: "false"
   # KUBECHECKS_ARGOCD_API_PATH_PREFIX: /
   # KUBECHECKS_ARGOCD_API_NAMESPACE: argocd
