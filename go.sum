@@ -1065,8 +1065,8 @@ github.com/xeipuuv/gojsonschema v1.2.0/go.mod h1:anYRn/JVcOK2ZgGU+IjEV4nwlhoK5sQ
 github.com/xlab/treeprint v1.2.0 h1:HzHnuAF1plUN2zGlAFHbSQP2qJ0ZAD3XF5XD7OesXRQ=
 github.com/xlab/treeprint v1.2.0/go.mod h1:gj5Gd3gPdKtR1ikdDK6fnFLdmIS0X30kTTuNd/WEJu0=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
-github.com/yannh/kubeconform v0.6.4 h1:P8cQpK+K35qv8JOcjHQcTvD80SwwSDgHfMXyXrZ4rRY=
-github.com/yannh/kubeconform v0.6.4/go.mod h1:vl5ZLUE6h0xRd2qB0Drv9cc9sjZnjDYjSaexbfNE9WM=
+github.com/yannh/kubeconform v0.6.7 h1:kIvjeiMSU0+/GY48+U9GmJZdGmoej4dArYvv3BfvlyA=
+github.com/yannh/kubeconform v0.6.7/go.mod h1:lcx9py+svwYnKXiy146zVstEToiTuTu4rMzdXXfsyVc=
 github.com/yashtewari/glob-intersection v0.2.0 h1:8iuHdN88yYuCzCdjt0gDe+6bAhUwBeEWqThExu54RFg=
 github.com/yashtewari/glob-intersection v0.2.0/go.mod h1:LK7pIC3piUjovexikBbJ26Yml7g8xa5bsjfx2v1fwok=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
