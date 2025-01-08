@@ -24,11 +24,9 @@ configMap:
     # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
     KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
     KUBECHECKS_ENABLE_CONFTEST: "false"
-    KUBECHECKS_ENABLE_KYVERNO_CHECKS: "true"
-    KUBECHECKS_KYVERNO_POLICIES_LOCATION: "https://github.com/zapier/kyverno-policies.git?subdir=/argocd/development/templates/checks"
+    # KUBECHECKS_ENABLE_KYVERNO_CHECKS: "false"
+    # KUBECHECKS_KYVERNO_POLICIES_LOCATION: "https://githum.com/zapier/kyverno-policies.git?subdir=/checks&branch=master"
     KUBECHECKS_ARGOCD_SEND_FULL_REPOSITORY: "true"
-    KUBECHECKS_ARGOCD_REPOSITORY_ENDPOINT: argocd-repo-server.kubechecks:8081
-    GRPC_ENFORCE_ALPN_ENABLED: false
 
 
 deployment:

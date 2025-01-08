@@ -48,6 +48,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
 |`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
+|`KUBECHECKS_ENABLE_KYVERNO_CHECKS`|Enable kyverno policy checks.|`false`|
 |`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|
 |`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
 |`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks.|`1.23.0`|
@@ -57,6 +58,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_KUBERNETES_CLUSTERID`|Kubernetes Cluster ID, must be specified if kubernetes-type is eks.||
 |`KUBECHECKS_KUBERNETES_CONFIG`|Path to your kubernetes config file, used to monitor applications.||
 |`KUBECHECKS_KUBERNETES_TYPE`|Kubernetes Type One of eks, or local.|`local`|
+|`KUBECHECKS_KYVERNO_POLICIES_LOCATION`|Sets kyverno policy locations to be used for every check request. This is a git url in either git or http(s) format.||
 |`KUBECHECKS_LABEL_FILTER`|(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook.||
 |`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of error, warn, info, debug, trace.|`info`|
 |`KUBECHECKS_MAX_CONCURRENCT_CHECKS`|Number of concurrent checks to run.|`32`|
@@ -85,4 +87,5 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_WORST_CONFTEST_STATE`|The worst state that can be returned from conftest.|`panic`|
 |`KUBECHECKS_WORST_HOOKS_STATE`|The worst state that can be returned from the hooks renderer.|`panic`|
 |`KUBECHECKS_WORST_KUBECONFORM_STATE`|The worst state that can be returned from kubeconform.|`panic`|
+|`KUBECHECKS_WORST_KYVERNO_STATE`|The worst state that can be returned from the kyverno checks.|`panic`|
 |`KUBECHECKS_WORST_PREUPGRADE_STATE`|The worst state that can be returned from preupgrade checks.|`panic`|
