@@ -70,9 +70,9 @@ type ServerConfig struct {
 	EnablePreupgrade     bool            `mapstructure:"enable-preupgrade"`
 	WorstPreupgradeState pkg.CommitState `mapstructure:"worst-preupgrade-state"`
 	// -- kyverno
-	EnableKyvernoChecks     bool     `mapstructure:"enable-kyverno-checks"`
-	KyvernoPoliciesLocation []string `mapstructure:"kyverno-policies-location"`
-	KyvernoPoliciesPaths    []string `mapstructure:"kyverno-policies-paths"`
+	EnableKyvernoChecks     bool            `mapstructure:"enable-kyverno-checks"`
+	KyvernoPoliciesLocation []string        `mapstructure:"kyverno-policies-location"`
+	WorstKyvernoState       pkg.CommitState `mapstructure:"worst-kyverno-state"`
 
 	// misc
 	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`

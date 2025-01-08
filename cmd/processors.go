@@ -62,7 +62,7 @@ func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
 		procs = append(procs, checks.ProcessorEntry{
 			Name:       "running kyverno check",
 			Processor:  kyverno.Check,
-			WorstState: ctr.Config.WorstPreupgradeState,
+			WorstState: ctr.Config.WorstKyvernoState,
 		})
 	}
 

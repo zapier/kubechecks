@@ -119,7 +119,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	settingsCloser, settingsClient := a.GetSettingsClient()
 	defer settingsCloser.Close()
 
-	log.Info().Msg("get settings")
+	log.Debug().Msg("get settings")
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
 		getManifestsFailed.WithLabelValues(app.Name).Inc()
@@ -134,7 +134,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		repoTarget = pullRequest.HeadRef
 	}
 
-	log.Info().Msg("get repo")
+	log.Debug().Msg("get repo")
 	repo, err := getRepo(ctx, source.RepoURL, repoTarget)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get repo")
@@ -152,12 +152,12 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		}
 	}
 
-	log.Info().Msg("compressing files")
+	log.Debug().Msg("compressing files")
 	f, filesWritten, checksum, err := tgzstream.CompressFiles(packageDir, []string{"*"}, []string{".git"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to compress files: %w", err)
 	}
-	log.Info().Msgf("%d files compressed", filesWritten)
+	log.Debug().Msgf("%d files compressed", filesWritten)
 	//if filesWritten == 0 {
 	//	return nil, fmt.Errorf("no files to send")
 	//}
@@ -226,13 +226,13 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		RefSources:         refSources,
 	}
 
-	log.Info().Msg("generating manifest with files")
+	log.Debug().Msg("generating manifest with files")
 	stream, err := a.repoClient.GenerateManifestWithFiles(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get manifests with files")
 	}
 
-	log.Info().Msg("sending request")
+	log.Debug().Msg("sending request")
 	if err := stream.Send(&repoapiclient.ManifestRequestWithFiles{
 		Part: &repoapiclient.ManifestRequestWithFiles_Request{
 			Request: &q,
@@ -241,7 +241,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, errors.Wrap(err, "failed to send request")
 	}
 
-	log.Info().Msg("sending metadata")
+	log.Debug().Msg("sending metadata")
 	if err := stream.Send(&repoapiclient.ManifestRequestWithFiles{
 		Part: &repoapiclient.ManifestRequestWithFiles_Metadata{
 			Metadata: &repoapiclient.ManifestFileMetadata{
@@ -252,19 +252,19 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, errors.Wrap(err, "failed to send metadata")
 	}
 
-	log.Info().Msg("sending file")
+	log.Debug().Msg("sending file")
 	err = sendFile(ctx, stream, f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send manifest stream file: %w", err)
 	}
 
-	log.Info().Msg("receiving repsonse")
+	log.Debug().Msg("receiving repsonse")
 	response, err := stream.CloseAndRecv()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get response")
 	}
 
-	log.Info().Msg("done!")
+	log.Debug().Msg("done!")
 	return response.Manifests, nil
 }
 

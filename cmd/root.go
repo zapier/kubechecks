@@ -121,9 +121,9 @@ func init() {
 	stringSliceFlag(flags, "additional-apps-namespaces", "Additional namespaces other than the ArgoCDNamespace to monitor for applications.")
 	boolFlag(flags, "enable-kyverno-checks", "Enable kyverno policy checks.")
 	stringFlag(flags, "kyverno-policies-location", "Sets kyverno policy locations to be used for every check request. This is a git url in either git or http(s) format.")
-	stringSliceFlag(flags, "kyverno-policies-paths", "Sets the paths inside the kyverno-policies-location that contains the policies. Default to root of the repository.",
-		newStringSliceOpts().
-			withDefault([]string{"."}))
+	stringFlag(flags, "worst-kyverno-state", "The worst state that can be returned from the kyverno checks.",
+		newStringOpts().
+			withDefault("panic"))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()

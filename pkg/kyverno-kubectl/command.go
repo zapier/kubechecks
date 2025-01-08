@@ -28,6 +28,7 @@ import (
 	"github.com/kyverno/kyverno/pkg/clients/dclient"
 	"github.com/kyverno/kyverno/pkg/config"
 	engineapi "github.com/kyverno/kyverno/pkg/engine/api"
+	"github.com/kyverno/kyverno/pkg/logging"
 	gitutils "github.com/kyverno/kyverno/pkg/utils/git"
 	policyvalidation "github.com/kyverno/kyverno/pkg/validation/policy"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
@@ -39,8 +40,8 @@ import (
 const divider = "----------------------------------------------------------------------"
 
 type SkippedInvalidPolicies struct {
-	skipped []string
-	invalid []string
+	Skipped []string
+	Invalid []string
 }
 
 type ApplyCommandConfig struct {
@@ -69,69 +70,79 @@ type ApplyCommandConfig struct {
 }
 
 type Result struct {
-	RC        *processor.ResultCounts
-	Responses []engineapi.EngineResponse
-	Error     error
+	RC                     *processor.ResultCounts
+	Responses              []engineapi.EngineResponse
+	PolicyRuleCount        int
+	Resources              []*unstructured.Unstructured
+	Error                  error
+	SkippedInvalidPolicies SkippedInvalidPolicies
 }
 
-func RunKyvernoApply(args []string, resourcePaths []string) Result {
+func RunKyvernoApply(policyPaths []string, resourcePaths []string) Result {
+	logging.InitFlags(nil)
+	logging.Setup(logging.TextFormat, logging.DefaultTime, 4)
 	applyCommandConfig := &ApplyCommandConfig{}
 	applyCommandConfig.ResourcePaths = resourcePaths
 	result := Result{}
 	out := os.Stdout
-	applyCommandConfig.PolicyPaths = args
-	rc, _, skipInvalidPolicies, responses, err := applyCommandConfig.ApplyCommandHelper(out)
+	applyCommandConfig.PolicyPaths = policyPaths
+	applyCommandConfig.ContinueOnFail = true
+	rc, resources, policyRulesCount, skipInvalidPolicies, responses, err := applyCommandConfig.ApplyCommandHelper(out)
 	if err != nil {
 		return Result{
 			Error: err,
 		}
 	}
-	printSkippedAndInvalidPolicies(out, skipInvalidPolicies)
+	// printSkippedAndInvalidPolicies(out, skipInvalidPolicies)
 
-	printViolations(out, rc)
+	// printViolations(out, rc)
 	result.RC = rc
 	result.Responses = responses
+	result.PolicyRuleCount = policyRulesCount
+	result.Resources = resources
+	result.SkippedInvalidPolicies = skipInvalidPolicies
 	return result
 }
 
-func (c *ApplyCommandConfig) ApplyCommandHelper(out io.Writer) (*processor.ResultCounts, []*unstructured.Unstructured, SkippedInvalidPolicies, []engineapi.EngineResponse, error) {
+func (c *ApplyCommandConfig) ApplyCommandHelper(out io.Writer) (*processor.ResultCounts, []*unstructured.Unstructured, int, SkippedInvalidPolicies, []engineapi.EngineResponse, error) {
+	var policyRulesCount int
 	rc, resources1, skipInvalidPolicies, responses1, err := c.checkArguments()
 	if err != nil {
-		return rc, resources1, skipInvalidPolicies, responses1, err
+		return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, err
 	}
 	rc, resources1, skipInvalidPolicies, responses1, err, mutateLogPathIsDir := c.getMutateLogPathIsDir(skipInvalidPolicies)
 	if err != nil {
-		return rc, resources1, skipInvalidPolicies, responses1, err
+		return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, err
 	}
 	rc, resources1, skipInvalidPolicies, responses1, err = c.cleanPreviousContent(mutateLogPathIsDir, skipInvalidPolicies)
 	if err != nil {
-		return rc, resources1, skipInvalidPolicies, responses1, err
+		return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, err
 	}
 	var userInfo *kyvernov2.RequestInfo
 	if c.UserInfoPath != "" {
 		info, err := userinfo.Load(nil, c.UserInfoPath, "")
 		if err != nil {
-			return nil, nil, skipInvalidPolicies, nil, fmt.Errorf("failed to load request info (%w)", err)
+			return nil, nil, policyRulesCount, skipInvalidPolicies, nil, fmt.Errorf("failed to load request info (%w)", err)
 		}
 		deprecations.CheckUserInfo(out, c.UserInfoPath, info)
 		userInfo = &info.RequestInfo
 	}
 	variables, err := variables.New(out, nil, "", c.ValuesFile, nil, c.Variables...)
 	if err != nil {
-		return nil, nil, skipInvalidPolicies, nil, fmt.Errorf("failed to decode yaml (%w)", err)
+		return nil, nil, policyRulesCount, skipInvalidPolicies, nil, fmt.Errorf("failed to decode yaml (%w)", err)
 	}
 	var store store.Store
 	rc, resources1, skipInvalidPolicies, responses1, dClient, err := c.initStoreAndClusterClient(&store, skipInvalidPolicies)
 	if err != nil {
-		return rc, resources1, skipInvalidPolicies, responses1, err
+		return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, err
 	}
 	rc, resources1, skipInvalidPolicies, responses1, policies, vaps, vapBindings, err := c.loadPolicies(skipInvalidPolicies)
 	if err != nil {
-		return rc, resources1, skipInvalidPolicies, responses1, err
+		return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, err
 	}
 	resources, err := c.loadResources(out, policies, vaps, dClient)
 	if err != nil {
-		return rc, resources1, skipInvalidPolicies, responses1, err
+		return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, err
 	}
 	var exceptions []*kyvernov2.PolicyException
 	if c.inlineExceptions {
@@ -139,11 +150,10 @@ func (c *ApplyCommandConfig) ApplyCommandHelper(out io.Writer) (*processor.Resul
 	} else {
 		exceptions, err = exception.Load(c.Exception...)
 		if err != nil {
-			return rc, resources1, skipInvalidPolicies, responses1, fmt.Errorf("Error: failed to load exceptions (%s)", err)
+			return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, fmt.Errorf("Error: failed to load exceptions (%s)", err)
 		}
 	}
 	if !c.Stdin && !c.PolicyReport && !c.GenerateExceptions {
-		var policyRulesCount int
 		for _, policy := range policies {
 			policyRulesCount += len(autogen.ComputeRules(policy, ""))
 		}
@@ -168,16 +178,16 @@ func (c *ApplyCommandConfig) ApplyCommandHelper(out io.Writer) (*processor.Resul
 		mutateLogPathIsDir,
 	)
 	if err != nil {
-		return rc, resources1, skipInvalidPolicies, responses1, err
+		return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, err
 	}
 	responses2, err := c.applyValidatingAdmissionPolicytoResource(vaps, vapBindings, resources1, variables.NamespaceSelectors(), rc, dClient)
 	if err != nil {
-		return rc, resources1, skipInvalidPolicies, responses1, err
+		return rc, resources1, policyRulesCount, skipInvalidPolicies, responses1, err
 	}
 	var responses []engineapi.EngineResponse
 	responses = append(responses, responses1...)
 	responses = append(responses, responses2...)
-	return rc, resources1, skipInvalidPolicies, responses, nil
+	return rc, resources1, policyRulesCount, skipInvalidPolicies, responses, nil
 }
 
 func (c *ApplyCommandConfig) getMutateLogPathIsDir(skipInvalidPolicies SkippedInvalidPolicies) (*processor.ResultCounts, []*unstructured.Unstructured, SkippedInvalidPolicies, []engineapi.EngineResponse, error, bool) {
@@ -246,9 +256,9 @@ func (c *ApplyCommandConfig) applyPolicytoResource(
 			log.Log.Error(err, "policy validation error")
 			rc.IncrementError(1)
 			if strings.HasPrefix(err.Error(), "variable 'element.name'") {
-				skipInvalidPolicies.invalid = append(skipInvalidPolicies.invalid, pol.GetName())
+				skipInvalidPolicies.Invalid = append(skipInvalidPolicies.Invalid, pol.GetName())
 			} else {
-				skipInvalidPolicies.skipped = append(skipInvalidPolicies.skipped, pol.GetName())
+				skipInvalidPolicies.Skipped = append(skipInvalidPolicies.Skipped, pol.GetName())
 			}
 			continue
 		}
@@ -427,23 +437,4 @@ type WarnExitCodeError struct {
 
 func (w WarnExitCodeError) Error() string {
 	return fmt.Sprintf("exit as warnExitCode is %d", w.ExitCode)
-}
-
-func exit(out io.Writer, rc *processor.ResultCounts, warnExitCode int, warnNoPassed bool) error {
-	if rc.Fail > 0 {
-		return fmt.Errorf("exit as there are policy violations")
-	} else if rc.Error > 0 {
-		return fmt.Errorf("exit as there are policy errors")
-	} else if rc.Warn > 0 && warnExitCode != 0 {
-		fmt.Printf("exit as warnExitCode is %d", warnExitCode)
-		return WarnExitCodeError{
-			ExitCode: warnExitCode,
-		}
-	} else if rc.Pass == 0 && warnNoPassed {
-		fmt.Println(out, "exit as no objects satisfied policy")
-		return WarnExitCodeError{
-			ExitCode: warnExitCode,
-		}
-	}
-	return nil
 }

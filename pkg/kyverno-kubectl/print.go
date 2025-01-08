@@ -23,18 +23,18 @@ import (
 )
 
 func printSkippedAndInvalidPolicies(out io.Writer, skipInvalidPolicies SkippedInvalidPolicies) {
-	if len(skipInvalidPolicies.skipped) > 0 {
+	if len(skipInvalidPolicies.Skipped) > 0 {
 		fmt.Fprintln(out, divider)
 		fmt.Fprintln(out, "Policies Skipped (as required variables are not provided by the user):")
-		for i, policyName := range skipInvalidPolicies.skipped {
+		for i, policyName := range skipInvalidPolicies.Skipped {
 			fmt.Fprintf(out, "%d. %s\n", i+1, policyName)
 		}
 		fmt.Fprintln(out, divider)
 	}
-	if len(skipInvalidPolicies.invalid) > 0 {
+	if len(skipInvalidPolicies.Invalid) > 0 {
 		fmt.Fprintln(out, divider)
 		fmt.Fprintln(out, "Invalid Policies:")
-		for i, policyName := range skipInvalidPolicies.invalid {
+		for i, policyName := range skipInvalidPolicies.Invalid {
 			fmt.Fprintf(out, "%d. %s\n", i+1, policyName)
 		}
 		fmt.Fprintln(out, divider)

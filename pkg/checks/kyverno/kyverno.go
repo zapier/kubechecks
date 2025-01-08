@@ -3,21 +3,21 @@ package kyverno
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 
 	engineapi "github.com/kyverno/kyverno/pkg/engine/api"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/container"
-	"github.com/zapier/kubechecks/pkg/msg"
 	"go.opentelemetry.io/otel"
 
+	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/container"
 	apply "github.com/zapier/kubechecks/pkg/kyverno-kubectl"
+	"github.com/zapier/kubechecks/pkg/msg"
 )
 
 var tracer = otel.Tracer("pkg/checks/kyverno")
+
+const divider = "----------------------------------------------------------------------"
 
 func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "KyvernoValidate")
@@ -32,26 +32,27 @@ func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targ
 	defer os.Remove(tempFile.Name())
 
 	log.Debug().Str("tempFile", tempFile.Name()).Msg("Temporary file created")
+	// log.Debug().Msgf("App Manifests: %v", appManifests)
 
 	for _, manifest := range appManifests {
-		if _, err := tempFile.WriteString(manifest + "\n---"); err != nil {
+		if _, err := tempFile.WriteString(manifest); err != nil {
 			log.Error().Err(err).Msg("Failed to write manifest to temporary file")
 			return msg.Result{}, err
 		}
 	}
 
-	log.Debug().Msg("App manifests written to temporary file")
-	_, _ = io.Copy(os.Stdout, tempFile)
+	log.Debug().Str("tempfile", tempFile.Name()).Msg("App manifests written to temporary file")
 
 	if err := tempFile.Close(); err != nil {
 		log.Error().Err(err).Msg("Failed to close temporary file")
 		return msg.Result{}, err
 	}
 
-	policyPaths := getPoliciesLocations(ctr)
+	policyPaths := ctr.Config.KyvernoPoliciesLocation
 	resourcesPath := []string{tempFile.Name()}
 	applyResult := apply.RunKyvernoApply(policyPaths, resourcesPath)
 	if applyResult.Error != nil {
+		log.Error().Err(applyResult.Error).Msg("Failed to apply kyverno policies")
 		return msg.Result{}, err
 	}
 
@@ -61,8 +62,49 @@ func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targ
 	} else {
 		cr.State = pkg.StateSuccess
 	}
+	failedRulesMsg := getFailedRuleMsg(applyResult)
+
+	log.Debug().Msg("Kyverno validation completed")
+	cr.Summary = "<b>Show kyverno report:</b>"
+	cr.Details = fmt.Sprintf(`> Kyverno Policy Report
+
+Applied %d policy rule(s) to %d resource(s)...
+
+%s
+
+		pass: %d, fail: %d, warn: %d, error: %d, skip: %d`,
+		applyResult.PolicyRuleCount, len(applyResult.Resources),
+		failedRulesMsg, applyResult.RC.Pass, applyResult.RC.Fail, applyResult.RC.Warn, applyResult.RC.Error, applyResult.RC.Skip,
+	)
+
+	log.Debug().Msg("Kyverno validation completed")
+
+	return cr, nil
+}
+
+func getFailedRuleMsg(applyResult apply.Result) string {
 	out := os.Stdout
 	failedRulesMsg := ""
+
+	if len(applyResult.SkippedInvalidPolicies.Skipped) > 0 {
+		failedRulesMsg += "\n" + divider + "\n"
+		fmt.Fprintln(out, "Policies Skipped (as required variables are not provided by the user):")
+		failedRulesMsg += "Policies Skipped (as required variables are not provided by the user):\n"
+		for i, policyName := range applyResult.SkippedInvalidPolicies.Skipped {
+			fmt.Fprintf(out, "%d. %s\n", i+1, policyName)
+			failedRulesMsg += fmt.Sprintf("%d. %s\n", i+1, policyName)
+		}
+		failedRulesMsg += "\n" + divider
+	}
+	if len(applyResult.SkippedInvalidPolicies.Invalid) > 0 {
+		fmt.Fprintln(out, "Invalid Policies:")
+		failedRulesMsg += "\nInvalid Policies:\n"
+		for i, policyName := range applyResult.SkippedInvalidPolicies.Invalid {
+			fmt.Fprintf(out, "%d. %s\n", i+1, policyName)
+			failedRulesMsg += fmt.Sprintf("%d. %s\n", i+1, policyName)
+		}
+		failedRulesMsg += "\n" + divider
+	}
 
 	for _, response := range applyResult.Responses {
 		var failedRules []engineapi.RuleResponse
@@ -80,42 +122,14 @@ func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targ
 			}
 		}
 		if len(failedRules) > 0 {
-			failedRulesMsg = fmt.Sprintf(failedRulesMsg, "policy %s -> resource %s failed: \n", response.Policy().GetName(), resPath)
+			failedRulesMsg += fmt.Sprintf("\npolicy `%s` -> resource `%s` failed: \n", response.Policy().GetName(), resPath)
 			fmt.Fprintln(out, "policy", response.Policy().GetName(), "->", "resource", resPath, "failed:")
 			for i, rule := range failedRules {
 				fmt.Fprintln(out, i+1, "-", rule.Name(), rule.Message())
-				failedRulesMsg = fmt.Sprintf(failedRulesMsg, "%d - %s %s \n", i+1, rule.Name(), rule.Message())
+				failedRulesMsg += fmt.Sprintf("\n%d - %s %s \n", i+1, rule.Name(), rule.Message())
 			}
-			failedRulesMsg = fmt.Sprintf(failedRulesMsg, "\n")
+			failedRulesMsg += "\n" + divider + "\n"
 		}
 	}
-
-	log.Debug().Msg("Kyverno validation completed")
-	cr.Summary = "<b>Show kyverno report:</b>"
-	cr.Details = fmt.Sprintf(`> Kyverno Policy Report \n\n
-		%s \n\n
-		\npass: %d, fail: %d, warn: %d, error: %d, skip: %d \n`,
-		failedRulesMsg, applyResult.RC.Pass, applyResult.RC.Fail, applyResult.RC.Warn, applyResult.RC.Error, applyResult.RC.Skip,
-	)
-
-	log.Debug().Msg("Kyverno validation completed")
-
-	return cr, nil
-}
-
-func getPoliciesLocations(ctr container.Container) []string {
-	cfg := ctr.Config
-
-	// schemas configured globally
-	var locations []string
-
-	for _, location := range cfg.KyvernoPoliciesLocation {
-		for _, path := range cfg.KyvernoPoliciesPaths {
-			locations = append(locations, filepath.Join(location, path))
-		}
-	}
-
-	log.Debug().Strs("locations", locations).Msg("processed kyverno policies locations")
-
-	return locations
+	return failedRulesMsg
 }
