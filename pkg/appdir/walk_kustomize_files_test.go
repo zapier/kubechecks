@@ -55,6 +55,10 @@ resources:
 - file1.yaml
 - ../overlays/base
 - /common/overlays/prod
+
+components:
+- ../components/one/
+- ../components/two/
 `)},
 			"test/overlays/base/kustomization.yaml": {
 				Data: toBytes(`
@@ -73,6 +77,8 @@ resources:
 			"common/overlays/prod/kustomization.yaml":  {Data: toBytes("hello: world")},
 			"test/overlays/base/some-file1.yaml":       {Data: toBytes("hello: world")},
 			"test/overlays/base/some-file2.yaml":       {Data: toBytes("hello: world")},
+			"test/components/one/kustomization.yaml":   {Data: toBytes("hello: world")},
+			"test/components/two/kustomization.yaml":   {Data: toBytes("hello: world")},
 		}
 	)
 
@@ -133,6 +139,12 @@ resources:
 		},
 		"common/overlays/prod": {
 			kustomizeApp1Name,
+			kustomizeApp2Name,
+		},
+		"test/components/one": {
+			kustomizeApp2Name,
+		},
+		"test/components/two": {
 			kustomizeApp2Name,
 		},
 	}, appdir.appDirs)

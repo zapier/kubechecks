@@ -40,6 +40,7 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 
 		kustomize struct {
 			Bases                 []string        `yaml:"bases"`
+			Components            []string        `yaml:"components"`
 			Resources             []string        `yaml:"resources"`
 			PatchesJson6902       []patchJson6902 `yaml:"patchesJson6902"`
 			PatchesStrategicMerge []string        `yaml:"patchesStrategicMerge"`
@@ -66,7 +67,7 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 
 	for _, resource := range kustomize.Resources {
 		if isGoGetterIsh(resource) {
-			// no reason to walk remote files, since they can't be changed
+			// no reason to walk remote files, since they can't be changed in this PR
 			continue
 		}
 
@@ -107,6 +108,17 @@ func walkKustomizeFiles(result *AppDirectory, fs fs.FS, appName, dirpath string)
 		result.addDir(appName, relPath)
 		if err = walkKustomizeFiles(result, fs, appName, relPath); err != nil {
 			log.Warn().Err(err).Msgf("failed to read kustomize.yaml from bases in %s", relPath)
+		}
+	}
+
+	for _, componentPath := range kustomize.Components {
+		if isGoGetterIsh(componentPath) {
+			continue
+		}
+		relPath := filepath.Join(dirpath, componentPath)
+		result.addDir(appName, relPath)
+		if err = walkKustomizeFiles(result, fs, appName, relPath); err != nil {
+			log.Warn().Err(err).Msgf("failed to read kustomize.yaml from components in %s", relPath)
 		}
 	}
 
