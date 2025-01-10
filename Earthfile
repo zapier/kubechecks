@@ -171,7 +171,7 @@ golang-ci-lint:
     WORKDIR /src
     COPY . .
 
-    RUN golangci-lint --timeout 15m run --verbose
+    RUN golangci-lint --timeout 15m run --verbose --exclude-dirs mock
 
 staticcheck-golang:
     ARG --required STATICCHECK_VERSION
