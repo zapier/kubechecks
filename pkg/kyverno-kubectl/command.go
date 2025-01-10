@@ -37,8 +37,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-const divider = "----------------------------------------------------------------------"
-
 type SkippedInvalidPolicies struct {
 	Skipped []string
 	Invalid []string
@@ -60,8 +58,6 @@ type ApplyCommandConfig struct {
 	ResourcePaths         []string
 	PolicyPaths           []string
 	GitBranch             string
-	warnExitCode          int
-	warnNoPassed          bool
 	Exception             []string
 	ContinueOnFail        bool
 	inlineExceptions      bool
@@ -80,7 +76,10 @@ type Result struct {
 
 func RunKyvernoApply(policyPaths []string, resourcePaths []string) Result {
 	logging.InitFlags(nil)
-	logging.Setup(logging.TextFormat, logging.DefaultTime, 4)
+	err := logging.Setup(logging.TextFormat, logging.DefaultTime, 4)
+	if err != nil {
+		log.Log.Error(err, "failed to set kyverno logging")
+	}
 	applyCommandConfig := &ApplyCommandConfig{}
 	applyCommandConfig.ResourcePaths = resourcePaths
 	result := Result{}

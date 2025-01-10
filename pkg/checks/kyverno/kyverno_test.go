@@ -108,10 +108,3 @@ policy ` + "`policy`" + ` -> resource ` + "`namespace1/Pod/mypod`" + ` failed:
 		})
 	}
 }
-
-// Placeholder function for engineapi.Policy
-type MockPolicy struct {
-	name string
-}
-
-func (m MockPolicy) GetName() string { return m.name }

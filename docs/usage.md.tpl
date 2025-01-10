@@ -41,4 +41,4 @@ The full list of supported environment variables is described below:
 {{- end }}
 
 
-See [integration](#integration) for more information on the tools integrated into `kubechecks` .
+See [integrations](./integrations) for more information on the tools integrated into `kubechecks` .
