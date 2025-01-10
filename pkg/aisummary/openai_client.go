@@ -27,7 +27,7 @@ func GetOpenAiClient(apiToken string) *OpenAiClient {
 			client := openai.NewClient(apiToken)
 			openAiClient = &OpenAiClient{client: client, enabled: true}
 		} else {
-			log.Debug().Msg("OpenAI client not enabled")
+			log.Info().Msg("OpenAI client not enabled")
 			openAiClient = &OpenAiClient{enabled: false}
 		}
 	})

@@ -142,10 +142,10 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 
 	var packageDir string
 	if a.sendFullRepository {
-		log.Info().Msg("sending full repository")
+		log.Debug().Msg("sending full repository")
 		packageDir = repo.Directory
 	} else {
-		log.Info().Msg("packaging app")
+		log.Debug().Str("app", app.Name).Msg("packaging app")
 		packageDir, err = packageApp(ctx, source, refs, repo, getRepo)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to package application")
@@ -258,7 +258,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, fmt.Errorf("failed to send manifest stream file: %w", err)
 	}
 
-	log.Debug().Msg("receiving repsonse")
+	log.Debug().Msg("receiving response")
 	response, err := stream.CloseAndRecv()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get response")

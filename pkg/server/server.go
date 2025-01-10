@@ -107,7 +107,7 @@ func (s *Server) ensureWebhooks(ctx context.Context) error {
 
 		if wh == nil {
 			if err = vcsClient.CreateHook(ctx, repo, fullUrl, s.ctr.Config.WebhookSecret); err != nil {
-				log.Info().Err(err).Msgf("failed to create hook for %s:", repo)
+				log.Error().Err(err).Msgf("failed to create hook for %s:", repo)
 			}
 		}
 	}

@@ -89,3 +89,6 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_WORST_KUBECONFORM_STATE`|The worst state that can be returned from kubeconform.|`panic`|
 |`KUBECHECKS_WORST_KYVERNO_STATE`|The worst state that can be returned from the kyverno checks.|`panic`|
 |`KUBECHECKS_WORST_PREUPGRADE_STATE`|The worst state that can be returned from preupgrade checks.|`panic`|
+
+
+See [integration](#integration) for more information on the tools integrated into `kubechecks` .

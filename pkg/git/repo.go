@@ -81,7 +81,7 @@ func (r *Repo) Clone(ctx context.Context) error {
 		}
 	}
 
-	log.Info().Msg("repo has been cloned")
+	log.Info().Str("repo", r.CloneURL).Msg("repo has been cloned")
 	return nil
 }
 
