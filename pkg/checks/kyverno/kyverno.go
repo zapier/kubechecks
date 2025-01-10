@@ -17,34 +17,36 @@ import (
 
 var tracer = otel.Tracer("pkg/checks/kyverno")
 
+const check = "kyverno"
+
 const divider = "----------------------------------------------------------------------"
 
 func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "KyvernoValidate")
 	defer span.End()
 
-	log.Debug().Msg("Creating temporary file for app manifests")
+	log.Debug().Str("check", check).Msg("Creating temporary file for app manifests")
 	tempFile, err := os.CreateTemp("/tmp", "appManifests-*.yaml")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create temporary file")
+		log.Error().Str("check", check).Err(err).Msg("Failed to create temporary file")
 		return msg.Result{}, err
 	}
-	defer os.Remove(tempFile.Name())
+	// defer os.Remove(tempFile.Name())
 
-	log.Debug().Str("tempFile", tempFile.Name()).Msg("Temporary file created")
-	// log.Debug().Msgf("App Manifests: %v", appManifests)
+	log.Debug().Str("check", check).Str("tempFile", tempFile.Name()).Msg("Temporary file created")
+	// log.Debug().Str("check", check).Msgf("App Manifests: %v", appManifests)
 
 	for _, manifest := range appManifests {
 		if _, err := tempFile.WriteString(manifest); err != nil {
-			log.Error().Err(err).Msg("Failed to write manifest to temporary file")
+			log.Error().Str("check", check).Err(err).Msg("Failed to write manifest to temporary file")
 			return msg.Result{}, err
 		}
 	}
 
-	log.Debug().Str("tempfile", tempFile.Name()).Msg("App manifests written to temporary file")
+	log.Debug().Str("check", check).Str("tempfile", tempFile.Name()).Msg("App manifests written to temporary file")
 
 	if err := tempFile.Close(); err != nil {
-		log.Error().Err(err).Msg("Failed to close temporary file")
+		log.Error().Str("check", check).Err(err).Msg("Failed to close temporary file")
 		return msg.Result{}, err
 	}
 
@@ -52,7 +54,7 @@ func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targ
 	resourcesPath := []string{tempFile.Name()}
 	applyResult := apply.RunKyvernoApply(policyPaths, resourcesPath)
 	if applyResult.Error != nil {
-		log.Error().Err(applyResult.Error).Msg("Failed to apply kyverno policies")
+		log.Error().Str("check", check).Err(applyResult.Error).Msg("Failed to apply kyverno policies")
 		return msg.Result{}, err
 	}
 
@@ -64,7 +66,7 @@ func kyvernoValidate(ctx context.Context, ctr container.Container, appName, targ
 	}
 	failedRulesMsg := getFailedRuleMsg(applyResult)
 
-	log.Debug().Msg("Kyverno validation completed")
+	log.Debug().Str("check", check).Msg("Kyverno validation completed")
 	cr.Summary = "<b>Show kyverno report:</b>"
 	cr.Details = fmt.Sprintf(`> Kyverno Policy Report
 
@@ -77,7 +79,7 @@ Applied %d policy rule(s) to %d resource(s)...
 		failedRulesMsg, applyResult.RC.Pass, applyResult.RC.Fail, applyResult.RC.Warn, applyResult.RC.Error, applyResult.RC.Skip,
 	)
 
-	log.Debug().Msg("Kyverno validation completed")
+	log.Debug().Str("check", check).Msg("Kyverno validation completed")
 
 	return cr, nil
 }
