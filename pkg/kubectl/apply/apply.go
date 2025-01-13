@@ -37,7 +37,6 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/cli-runtime/pkg/printers"
-	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/openapi3"
 	"k8s.io/client-go/util/csaupgrade"
@@ -52,6 +51,8 @@ import (
 	"k8s.io/kubectl/pkg/util/prune"
 	"k8s.io/kubectl/pkg/util/templates"
 	"k8s.io/kubectl/pkg/validation"
+
+	"github.com/zapier/kubechecks/pkg/kubectl/cli-runtime/resource"
 )
 
 // ApplyFlags directly reflect the information that CLI is gathering via flags.  They will be converted to Options, which
@@ -584,15 +585,25 @@ func (o *ApplyOptions) applyOneObject(info *resource.Info) error {
 		options := metav1.PatchOptions{
 			Force: &o.ForceConflicts,
 		}
-		obj, err := helper.
+		result := helper.
 			WithSubresource(o.Subresource).
-			Patch(
+			PatchWithWarnings(
 				info.Namespace,
 				info.Name,
 				types.ApplyPatchType,
 				data,
 				&options,
 			)
+		if len(result.Warnings()) > 0 {
+			warnings := ""
+			for _, warning := range result.Warnings() {
+				warnings += fmt.Sprintf("Warning:  %s\n", warning.Text)
+			}
+			if warnings != "" {
+				return fmt.Errorf("%s", warnings)
+			}
+		}
+		obj, err := result.Get()
 		if err != nil {
 			if isIncompatibleServerError(err) {
 				err = fmt.Errorf("Server-side apply not available on the server: (%v)", err)

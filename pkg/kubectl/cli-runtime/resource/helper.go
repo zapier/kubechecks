@@ -23,6 +23,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -247,6 +248,10 @@ func (m *Helper) createResource(c RESTClient, resource, namespace string, obj ru
 		Get()
 }
 func (m *Helper) Patch(namespace, name string, pt types.PatchType, data []byte, options *metav1.PatchOptions) (runtime.Object, error) {
+	return m.PatchWithWarnings(namespace, name, pt, data, options).Get()
+}
+
+func (m *Helper) PatchWithWarnings(namespace, name string, pt types.PatchType, data []byte, options *metav1.PatchOptions) rest.Result {
 	if options == nil {
 		options = &metav1.PatchOptions{}
 	}
@@ -266,8 +271,7 @@ func (m *Helper) Patch(namespace, name string, pt types.PatchType, data []byte, 
 		SubResource(m.Subresource).
 		VersionedParams(options, metav1.ParameterCodec).
 		Body(data).
-		Do(context.TODO()).
-		Get()
+		Do(context.TODO())
 }
 
 func (m *Helper) Replace(namespace, name string, overwrite bool, obj runtime.Object) (runtime.Object, error) {
