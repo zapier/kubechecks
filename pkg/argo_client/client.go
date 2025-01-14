@@ -59,6 +59,8 @@ func NewArgoClient(
 	log.Info().Msg("creating client")
 	tlsConfig := tls.Config{InsecureSkipVerify: cfg.ArgoCDRepositoryInsecure}
 	conn, err := grpc.NewClient(cfg.ArgoCDRepositoryEndpoint,
+		// without this, kubechecks picks a single pod and sends all requests to it
+		grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"round_robin":{}}]}`),
 		grpc.WithTransportCredentials(
 			credentials.NewTLS(&tlsConfig),
 		),
