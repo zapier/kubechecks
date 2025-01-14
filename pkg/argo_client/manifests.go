@@ -226,6 +226,8 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		RefSources:         refSources,
 	}
 
+	// creating a new client forces grpc to create a new connection, which causes
+	//the k8s load balancer to select a new pod, balancing requests among all repo-server pods.
 	repoClient, conn, err := a.createRepoServerClient()
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating repo client")
@@ -237,7 +239,12 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get manifests with files")
 	}
-	defer stream.CloseSend()
+	defer func() {
+		err := stream.CloseSend()
+		if err != nil {
+			log.Error().Err(err).Msg("failed to close stream")
+		}
+	}()
 
 	log.Info().Msg("sending request")
 	if err := stream.Send(&repoapiclient.ManifestRequestWithFiles{
