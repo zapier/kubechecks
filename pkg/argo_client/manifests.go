@@ -126,8 +126,8 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, errors.Wrap(err, "failed to get settings")
 	}
 
-	settingsMgr := argosettings.NewSettingsManager(ctx, a.k8s, a.namespace)
-	argoDB := db.NewDB(a.namespace, settingsMgr, a.k8s)
+	settingsMgr := argosettings.NewSettingsManager(ctx, a.k8s, a.cfg.ArgoCDNamespace)
+	argoDB := db.NewDB(a.cfg.ArgoCDNamespace, settingsMgr, a.k8s)
 
 	repoTarget := source.TargetRevision
 	if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
@@ -141,7 +141,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	}
 
 	var packageDir string
-	if a.sendFullRepository {
+	if a.cfg.ArgoCDSendFullRepository {
 		log.Info().Msg("sending full repository")
 		packageDir = repo.Directory
 	} else {
@@ -226,11 +226,18 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		RefSources:         refSources,
 	}
 
+	repoClient, conn, err := a.createRepoServerClient()
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating repo client")
+	}
+	defer conn.Close()
+
 	log.Info().Msg("generating manifest with files")
-	stream, err := a.repoClient.GenerateManifestWithFiles(ctx)
+	stream, err := repoClient.GenerateManifestWithFiles(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get manifests with files")
 	}
+	defer stream.CloseSend()
 
 	log.Info().Msg("sending request")
 	if err := stream.Send(&repoapiclient.ManifestRequestWithFiles{
