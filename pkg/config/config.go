@@ -27,6 +27,7 @@ type ServerConfig struct {
 	ArgoCDRepositoryEndpoint string `mapstructure:"argocd-repository-endpoint"`
 	ArgoCDRepositoryInsecure bool   `mapstructure:"argocd-repository-insecure"`
 	ArgoCDSendFullRepository bool   `mapstructure:"argocd-send-full-repository"`
+	ArgoCDIncludeDotGit      bool   `mapstructure:"argocd-include-dot-git"`
 	KubernetesConfig         string `mapstructure:"kubernetes-config"`
 	KubernetesType           string `mapstructure:"kubernetes-type"`
 	KubernetesClusterID      string `mapstructure:"kubernetes-clusterid"`

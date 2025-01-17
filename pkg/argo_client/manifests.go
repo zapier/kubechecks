@@ -153,7 +153,13 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	}
 
 	log.Info().Msg("compressing files")
-	f, filesWritten, checksum, err := tgzstream.CompressFiles(packageDir, []string{"*"}, []string{".git"})
+
+	exclude := []string{}
+	if !a.cfg.ArgoCDIncludeDotGit {
+		exclude = append(exclude, ".git")
+	}
+
+	f, filesWritten, checksum, err := tgzstream.CompressFiles(packageDir, []string{"*"}, exclude)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compress files: %w", err)
 	}
