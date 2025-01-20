@@ -23,13 +23,10 @@ import (
 )
 
 type ArgoClient struct {
-	client apiclient.Client
-
-	repoClient         repoapiclient.RepoServerServiceClient
-	namespace          string
-	k8s                kubernetes.Interface
-	k8sConfig          *rest.Config
-	sendFullRepository bool
+	client    apiclient.Client
+	k8s       kubernetes.Interface
+	k8sConfig *rest.Config
+	cfg       config.ServerConfig
 }
 
 func NewArgoClient(
@@ -56,25 +53,27 @@ func NewArgoClient(
 		return nil, err
 	}
 
+	return &ArgoClient{
+		cfg:       cfg,
+		client:    argo,
+		k8s:       k8s.ClientSet(),
+		k8sConfig: k8s.Config(),
+	}, nil
+}
+
+func (a *ArgoClient) createRepoServerClient() (repoapiclient.RepoServerServiceClient, *grpc.ClientConn, error) {
 	log.Info().Msg("creating client")
-	tlsConfig := tls.Config{InsecureSkipVerify: cfg.ArgoCDRepositoryInsecure}
-	conn, err := grpc.NewClient(cfg.ArgoCDRepositoryEndpoint,
+	tlsConfig := tls.Config{InsecureSkipVerify: a.cfg.ArgoCDRepositoryInsecure}
+	conn, err := grpc.NewClient(a.cfg.ArgoCDRepositoryEndpoint,
 		grpc.WithTransportCredentials(
 			credentials.NewTLS(&tlsConfig),
 		),
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create client")
+		return nil, nil, errors.Wrap(err, "failed to create client")
 	}
 
-	return &ArgoClient{
-		repoClient:         repoapiclient.NewRepoServerServiceClient(conn),
-		client:             argo,
-		namespace:          cfg.ArgoCDNamespace,
-		k8s:                k8s.ClientSet(),
-		k8sConfig:          k8s.Config(),
-		sendFullRepository: cfg.ArgoCDSendFullRepository,
-	}, nil
+	return repoapiclient.NewRepoServerServiceClient(conn), conn, nil
 }
 
 // GetApplicationClient has related argocd diff code https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L899
