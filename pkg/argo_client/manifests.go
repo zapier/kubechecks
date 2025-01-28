@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,6 +25,9 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/vcs"
+	"sigs.k8s.io/kustomize/api/types"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
+	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
 type getRepo func(ctx context.Context, cloneURL string, branchName string) (*git.Repo, error)
@@ -110,7 +112,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	clusterCloser, clusterClient := a.GetClusterClient()
 	defer clusterCloser.Close()
 
-	cluster, err := clusterClient.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
+	clusterData, err := clusterClient.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
 	if err != nil {
 		getManifestsFailed.WithLabelValues(app.Name).Inc()
 		return nil, errors.Wrap(err, "failed to get cluster")
@@ -214,8 +216,8 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		ApplicationSource:  &source,
 		Repos:              permittedHelmRepos,
 		KustomizeOptions:   argoSettings.KustomizeOptions,
-		KubeVersion:        cluster.Info.ServerVersion,
-		ApiVersions:        cluster.Info.APIVersions,
+		KubeVersion:        clusterData.Info.ServerVersion,
+		ApiVersions:        clusterData.Info.APIVersions,
 		HelmRepoCreds:      permittedHelmCredentials,
 		HelmOptions:        helmOptions,
 		TrackingMethod:     argoSettings.TrackingMethod,
@@ -282,6 +284,46 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	return response.Manifests, nil
 }
 
+func copyDir(fs filesys.FileSystem, src, dst string) error {
+
+	if !fs.Exists(dst) {
+		// First create the destination root directory
+		if err := os.MkdirAll(dst, 0o777); err != nil {
+			return errors.Wrapf(err, "failed to create directory %s", dst)
+		}
+	}
+
+	return filepath.Walk(src, func(srcPath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip root directory creation (already handled above)
+		if srcPath == src {
+			return nil
+		}
+
+		// Get relative path from source root
+		relPath, err := filepath.Rel(src, srcPath)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get relative path for %s", srcPath)
+		}
+
+		dstPath := filepath.Join(dst, relPath)
+
+		// Handle directories
+		if info.IsDir() {
+			if err := os.MkdirAll(dstPath, 0o777); err != nil {
+				return errors.Wrapf(err, "failed to create directory %s", dstPath)
+			}
+			return nil
+		}
+
+		// Handle regular files
+		return copyFile(srcPath, dstPath)
+	})
+}
+
 func copyFile(srcpath, dstpath string) error {
 	dstdir := filepath.Dir(dstpath)
 	if err := os.MkdirAll(dstdir, 0o777); err != nil {
@@ -317,33 +359,23 @@ func packageApp(ctx context.Context, source v1alpha1.ApplicationSource, refs []v
 		return "", errors.Wrap(err, "failed to make temp dir")
 	}
 
+	repoFs := filesys.MakeFsOnDisk()
 	tempAppDir := filepath.Join(tempDir, source.Path)
 	appPath := filepath.Join(repo.Directory, source.Path)
 
-	// copy app files to the temp dir
-	if err = filepath.Walk(appPath, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		relPath, err := filepath.Rel(appPath, path)
-		if err != nil {
-			return errors.Wrapf(err, "failed to calculate rel between %q and %q", appPath, path)
-		}
-		src := path
-		dst := filepath.Join(tempAppDir, relPath)
-		if err := copyFile(src, dst); err != nil {
-			return errors.Wrapf(err, "failed to %s => %s", src, dst)
-		}
-		return nil
-	}); err != nil {
-		return "", errors.Wrap(err, "failed to copy files")
+	// First copy the entire source directory
+	if err := copyDir(repoFs, appPath, filepath.Join(tempDir, source.Path)); err != nil {
+		return "", errors.Wrap(err, "failed to copy base directory")
 	}
 
+	// Process kustomization dependencies
+	kustPath := filepath.Join(appPath, "kustomization.yaml")
+	if repoFs.Exists(kustPath) {
+		// Process kustomization dependencies with repo root
+		if err := processKustomizationDeps(repoFs, repo.Directory, appPath, tempDir); err != nil {
+			return "", errors.Wrap(err, "failed to process kustomization dependencies")
+		}
+	}
 	if source.Helm != nil {
 		refsByName := make(map[string]v1alpha1.ApplicationSource)
 		for _, ref := range refs {
@@ -488,4 +520,106 @@ func sendFile(ctx context.Context, sender sender, file *os.File) error {
 
 func areSameTargetRef(ref1, ref2 string) bool {
 	return ref1 == ref2
+}
+
+func processKustomizationDeps(fs filesys.FileSystem, repoRoot string, basePath string, tempDir string) error {
+	visited := make(map[string]bool)
+	return walkKustomizationDeps(fs, repoRoot, basePath, tempDir, visited)
+}
+
+// walkKustomizationDeps recursively processes kustomization dependencies and copies them to the temp directory
+func walkKustomizationDeps(fs filesys.FileSystem, repoRoot string, currentPath string, tempDir string, visited map[string]bool) error {
+	kustPath := filepath.Join(currentPath, "kustomization.yaml")
+	if !fs.Exists(kustPath) {
+		return nil // No kustomization.yaml in this directory
+	}
+
+	if visited[currentPath] {
+		return nil // Already processed
+	}
+	visited[currentPath] = true
+
+	// Parse using official Kustomization type
+	content, err := fs.ReadFile(kustPath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to read kustomization.yaml at %s", currentPath)
+	}
+
+	kust := &types.Kustomization{}
+	if err := yaml.Unmarshal(content, kust); err != nil {
+		return errors.Wrapf(err, "failed to parse kustomization.yaml at %s", currentPath)
+	}
+
+	// Collect all dependencies from various fields
+	var allDeps []string
+	allDeps = append(allDeps, kust.Resources...)
+	allDeps = append(allDeps, kust.Components...)
+	allDeps = append(allDeps, kust.Configurations...)
+	allDeps = append(allDeps, kust.Crds...)
+
+	// Handle replacements
+	for _, r := range kust.Replacements {
+		allDeps = append(allDeps, r.Path)
+	}
+
+	// Process all dependencies
+	for _, dep := range allDeps {
+		absDepPath := filepath.Clean(filepath.Join(currentPath, dep))
+
+		// Skip remote resources
+		if isRemoteResource(dep) {
+			continue
+		}
+
+		// Get relative path from repo root
+		relPath, err := filepath.Rel(repoRoot, absDepPath)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get relative path for %s", absDepPath)
+		}
+
+		tempPath := filepath.Join(tempDir, relPath)
+		if _, err := os.Stat(tempPath); err == nil {
+			continue
+		}
+
+		// Copy the dependency
+		if err := copyDir(fs, absDepPath, tempPath); err != nil {
+			return errors.Wrapf(err, "failed to copy dependency %s", dep)
+		}
+
+		// Recursively process nested kustomizations
+		if fs.IsDir(absDepPath) {
+			if err := walkKustomizationDeps(fs, repoRoot, absDepPath, tempDir, visited); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func isRemoteResource(resource string) bool {
+	// Check for URL schemes
+	if strings.Contains(resource, "://") {
+		return true
+	}
+
+	// Check for common Git SSH patterns
+	if strings.HasPrefix(resource, "git@") {
+		return true
+	}
+
+	// Check for Kustomize's special GitHub/Bitbucket shorthand
+	if strings.HasPrefix(resource, "github.com/") ||
+		strings.HasPrefix(resource, "bitbucket.org/") ||
+		strings.HasPrefix(resource, "gitlab.com/") {
+		return true
+	}
+
+	// Check for HTTP(S) URLs without explicit scheme (kustomize allows this)
+	if strings.HasPrefix(resource, "//") {
+		return true
+	}
+
+	return false
 }
