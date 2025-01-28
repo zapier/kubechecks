@@ -181,10 +181,11 @@ type repoTargetPath struct {
 
 func TestPackageApp(t *testing.T) {
 	testCases := map[string]struct {
-		app           v1alpha1.Application
-		pullRequest   vcs.PullRequest
-		filesByRepo   map[repoTarget]set[string]
-		expectedFiles map[string]repoTargetPath
+		app                    v1alpha1.Application
+		pullRequest            vcs.PullRequest
+		filesByRepo            map[repoTarget]set[string]
+		filesByRepoWithContent map[repoTarget]map[string]string
+		expectedFiles          map[string]repoTargetPath
 	}{
 		"unused-paths-are-ignored": {
 			app: v1alpha1.Application{
@@ -309,6 +310,67 @@ func TestPackageApp(t *testing.T) {
 				".refs/staging/base.yaml": {"git@github.com:testuser/otherrepo.git", "main", "base.yaml"},
 			},
 		},
+
+		"kustomize-deps-are-copied": {
+			pullRequest: vcs.PullRequest{
+				CloneURL: "git@github.com:testuser/testrepo.git",
+				BaseRef:  "main",
+				HeadRef:  "update-code",
+			},
+			app: v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Sources: []v1alpha1.ApplicationSource{
+						{
+							RepoURL:        "git@github.com:testuser/testrepo.git",
+							Path:           "app1/",
+							TargetRevision: "main",
+						},
+					},
+				},
+			},
+			filesByRepo: map[repoTarget]set[string]{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
+					"app1/resource1.yaml",
+					"app1/component1.yaml",
+					"app1/crds/crd1.yaml",
+					"base/resource2.yaml",
+					"base/component2.yaml",
+					"base/crds/crd2.yaml",
+				),
+			},
+			filesByRepoWithContent: map[repoTarget]map[string]string{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: map[string]string{
+					"app1/kustomization.yaml": `apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../base
+- resource1.yaml
+components:
+- component1.yaml
+crds:
+- crds/crd1.yaml`,
+					"base/kustomization.yaml": `apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- resource2.yaml
+components:
+- component2.yaml
+crds:
+- crds/crd2.yaml`,
+				},
+			},
+			expectedFiles: map[string]repoTargetPath{
+				"app1/kustomization.yaml": {"git@github.com:testuser/testrepo.git", "main", "app1/kustomization.yaml"},
+				"app1/resource1.yaml":     {"git@github.com:testuser/testrepo.git", "main", "app1/resource1.yaml"},
+				"app1/crds/crd1.yaml":     {"git@github.com:testuser/testrepo.git", "main", "app1/crds/crd1.yaml"},
+				"app1/component1.yaml":    {"git@github.com:testuser/testrepo.git", "main", "app1/component1.yaml"},
+				"base/kustomization.yaml": {"git@github.com:testuser/testrepo.git", "main", "base/kustomization.yaml"},
+				"base/resource2.yaml":     {"git@github.com:testuser/testrepo.git", "main", "base/resource2.yaml"},
+				"base/crds/crd2.yaml":     {"git@github.com:testuser/testrepo.git", "main", "base/crds/crd2.yaml"},
+				"base/component2.yaml":    {"git@github.com:testuser/testrepo.git", "main", "base/component2.yaml"},
+			},
+		},
 	}
 
 	for name, tc := range testCases {
@@ -318,7 +380,7 @@ func TestPackageApp(t *testing.T) {
 
 			// write garbage content for files in fake repos, and
 			// store the tempdirs as repos
-			repoDirs, fileContentByRepo := createTestRepos(t, tc.filesByRepo)
+			repoDirs, fileContentByRepo := createTestRepos(t, tc.filesByRepo, tc.filesByRepoWithContent)
 
 			// split sources from refs
 			sources, refs := preprocessSources(&tc.app, tc.pullRequest)
@@ -376,7 +438,11 @@ func makeExpectedFilesSet(t *testing.T, files map[string]repoTargetPath) set[str
 	return result
 }
 
-func createTestRepos(t *testing.T, filesByRepo map[repoTarget]set[string]) (map[string]*git.Repo, map[repoTargetPath]string) {
+func createTestRepos(
+	t *testing.T,
+	filesByRepo map[repoTarget]set[string],
+	filesByRepoWithContent map[repoTarget]map[string]string,
+) (map[string]*git.Repo, map[repoTargetPath]string) {
 	repoDirs := make(map[string]*git.Repo)
 	fileContents := make(map[repoTargetPath]string)
 
@@ -401,6 +467,39 @@ func createTestRepos(t *testing.T, filesByRepo map[repoTarget]set[string]) (map[
 
 			// generate and store content
 			fileContent := uuid.NewString()
+			fileContents[repoTargetPath{cloneURL.repo, cloneURL.target, file}] = fileContent
+
+			// write the file to disk
+			err = os.WriteFile(fullfilepath, []byte(fileContent), 0o600)
+			require.NoError(t, err)
+		}
+	}
+
+	for cloneURL, files := range filesByRepoWithContent {
+		repoHash := hash(t, cloneURL)
+		repoDir, ok := repoDirs[repoHash]
+
+		var tempDir string
+		if !ok {
+			tempDir = filepath.Join(t.TempDir(), repoHash)
+			repoDirs[repoHash] = &git.Repo{
+				BranchName: cloneURL.target,
+				CloneURL:   cloneURL.repo,
+				Directory:  tempDir,
+			}
+		} else {
+			tempDir = repoDir.Directory
+		}
+
+		for file, fileContent := range files {
+			fullfilepath := filepath.Join(tempDir, file)
+
+			// ensure the directories exist
+			filedir := filepath.Dir(fullfilepath)
+			err = os.MkdirAll(filedir, 0o755)
+			require.NoError(t, err)
+
+			// generate and store content
 			fileContents[repoTargetPath{cloneURL.repo, cloneURL.target, file}] = fileContent
 
 			// write the file to disk
