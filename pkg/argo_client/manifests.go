@@ -577,8 +577,10 @@ func walkKustomizationDeps(fs filesys.FileSystem, repoRoot string, currentPath s
 			return errors.Wrapf(err, "failed to get relative path for %s", absDepPath)
 		}
 
+		// check if the file exists in the temp directory
+		// skip copying if it exists
 		tempPath := filepath.Join(tempDir, relPath)
-		if _, err := os.Stat(tempPath); err == nil {
+		if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
 			continue
 		}
 
@@ -587,7 +589,7 @@ func walkKustomizationDeps(fs filesys.FileSystem, repoRoot string, currentPath s
 			return errors.Wrapf(err, "failed to copy dependency %s", dep)
 		}
 
-		// Recursively process nested kustomizations
+		// Recursively process nested kustomizations (e.g. base/kustomization.yaml imports other resources)
 		if fs.IsDir(absDepPath) {
 			if err := walkKustomizationDeps(fs, repoRoot, absDepPath, tempDir, visited); err != nil {
 				return err
