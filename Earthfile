@@ -8,7 +8,6 @@ test:
 
 ci-golang:
     BUILD +fmt-golang
-    BUILD +staticcheck-golang
     BUILD +golang-ci-lint
     BUILD +validate-golang
     BUILD +test-golang
@@ -172,28 +171,6 @@ golang-ci-lint:
     COPY . .
 
     RUN golangci-lint --timeout 15m run --verbose
-
-staticcheck-golang:
-    ARG --required STATICCHECK_VERSION
-
-    FROM +go-deps
-
-    # install staticcheck
-    RUN FILE=staticcheck.tgz \
-        && URL=https://github.com/dominikh/go-tools/releases/download/$STATICCHECK_VERSION/staticcheck_linux_$USERARCH.tar.gz \
-        && wget ${URL} \
-            --output-document ${FILE} \
-        && tar \
-            --extract \
-            --verbose \
-            --directory /bin \
-            --strip-components=1 \
-            --file ${FILE} \
-        && staticcheck -version
-
-    WORKDIR /src
-    COPY . /src
-    RUN staticcheck ./...
 
 test-helm:
     ARG CHART_TESTING_VERSION="3.7.1"
