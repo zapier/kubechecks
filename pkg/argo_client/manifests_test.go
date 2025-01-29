@@ -331,15 +331,14 @@ func TestPackageApp(t *testing.T) {
 			filesByRepo: map[repoTarget]set[string]{
 				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
 					"app1/resource1.yaml",
-					"app1/component1.yaml",
 					"app1/crds/crd1.yaml",
 					"base/resource2.yaml",
-					"base/component2.yaml",
 					"base/crds/crd2.yaml",
+					"component1/resource3.yaml",
 				),
 			},
 			filesByRepoWithContent: map[repoTarget]map[string]string{
-				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: map[string]string{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: {
 					"app1/kustomization.yaml": `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -347,7 +346,7 @@ resources:
 - ../base
 - resource1.yaml
 components:
-- component1.yaml
+- ../component1
 crds:
 - crds/crd1.yaml`,
 					"base/kustomization.yaml": `apiVersion: kustomize.config.k8s.io/v1beta1
@@ -355,20 +354,24 @@ kind: Kustomization
 resources:
 - resource2.yaml
 components:
-- component2.yaml
+- ../component1
 crds:
 - crds/crd2.yaml`,
+					"component1/kustomization.yaml": `apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- resource3.yaml`,
 				},
 			},
 			expectedFiles: map[string]repoTargetPath{
-				"app1/kustomization.yaml": {"git@github.com:testuser/testrepo.git", "main", "app1/kustomization.yaml"},
-				"app1/resource1.yaml":     {"git@github.com:testuser/testrepo.git", "main", "app1/resource1.yaml"},
-				"app1/crds/crd1.yaml":     {"git@github.com:testuser/testrepo.git", "main", "app1/crds/crd1.yaml"},
-				"app1/component1.yaml":    {"git@github.com:testuser/testrepo.git", "main", "app1/component1.yaml"},
-				"base/kustomization.yaml": {"git@github.com:testuser/testrepo.git", "main", "base/kustomization.yaml"},
-				"base/resource2.yaml":     {"git@github.com:testuser/testrepo.git", "main", "base/resource2.yaml"},
-				"base/crds/crd2.yaml":     {"git@github.com:testuser/testrepo.git", "main", "base/crds/crd2.yaml"},
-				"base/component2.yaml":    {"git@github.com:testuser/testrepo.git", "main", "base/component2.yaml"},
+				"app1/kustomization.yaml":       {"git@github.com:testuser/testrepo.git", "main", "app1/kustomization.yaml"},
+				"app1/resource1.yaml":           {"git@github.com:testuser/testrepo.git", "main", "app1/resource1.yaml"},
+				"app1/crds/crd1.yaml":           {"git@github.com:testuser/testrepo.git", "main", "app1/crds/crd1.yaml"},
+				"base/kustomization.yaml":       {"git@github.com:testuser/testrepo.git", "main", "base/kustomization.yaml"},
+				"base/resource2.yaml":           {"git@github.com:testuser/testrepo.git", "main", "base/resource2.yaml"},
+				"base/crds/crd2.yaml":           {"git@github.com:testuser/testrepo.git", "main", "base/crds/crd2.yaml"},
+				"component1/kustomization.yaml": {"git@github.com:testuser/testrepo.git", "main", "component1/kustomization.yaml"},
+				"component1/resource3.yaml":     {"git@github.com:testuser/testrepo.git", "main", "component1/resource3.yaml"},
 			},
 		},
 	}

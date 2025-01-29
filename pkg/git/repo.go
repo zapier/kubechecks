@@ -68,7 +68,7 @@ func (r *Repo) Clone(ctx context.Context) error {
 		args = append(args, "--branch", r.BranchName)
 	}
 
-	cmd := r.execCommand("git", args...)
+	cmd := r.execGitCommand(args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to clone repository, %s", out)
@@ -96,7 +96,7 @@ func printFile(s string, d fs.DirEntry, err error) error {
 }
 
 func (r *Repo) GetRemoteHead() (string, error) {
-	cmd := r.execCommand("git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
+	cmd := r.execGitCommand("symbolic-ref", "refs/remotes/origin/HEAD", "--short")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", errors.Wrap(err, "failed to determine which branch HEAD points to")
@@ -119,7 +119,7 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 		))
 	defer span.End()
 
-	cmd := r.execCommand("git", "merge", ref)
+	cmd := r.execGitCommand("merge", ref)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		telemetry.SetError(span, err, "merge commit into branch")
@@ -131,17 +131,17 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 }
 
 func (r *Repo) Update(ctx context.Context) error {
-	cmd := r.execCommand("git", "pull")
+	cmd := r.execGitCommand("pull")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stdout
 	return cmd.Run()
 }
 
-func (r *Repo) execCommand(name string, args ...string) *exec.Cmd {
+func (r *Repo) execGitCommand(args ...string) *exec.Cmd {
 	argsToLog := r.censorVcsToken(args)
 
 	log.Debug().Strs("args", argsToLog).Msg("building command")
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command("git", args...)
 	if r.Directory != "" {
 		cmd.Dir = r.Directory
 	}
@@ -258,7 +258,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 
 	var fileList []string
 
-	cmd := r.execCommand("git", "diff", "--name-only", fmt.Sprintf("%s/%s", "origin", r.BranchName))
+	cmd := r.execGitCommand("diff", "--name-only", fmt.Sprintf("%s/%s", "origin", r.BranchName))
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
 	scanner := bufio.NewScanner(pipe)

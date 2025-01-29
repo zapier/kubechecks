@@ -1,12 +1,14 @@
 package appdir
 
 import (
+	"path/filepath"
 	"testing"
 	"testing/fstest"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zapier/kubechecks/pkg/kustomize"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -28,6 +30,11 @@ func TestKustomizeWalking(t *testing.T) {
 		kustomizeApp2Path = "test/app2"
 
 		fs = fstest.MapFS{
+			"test/base/kustomization.yaml": {
+				Data: toBytes(`
+resources:
+- base_resource.yaml`),
+			},
 			"test/app/kustomization.yaml": {
 				Data: toBytes(`
 bases:
@@ -73,6 +80,7 @@ resources:
 			"common/overlays/prod/kustomization.yaml":  {Data: toBytes("hello: world")},
 			"test/overlays/base/some-file1.yaml":       {Data: toBytes("hello: world")},
 			"test/overlays/base/some-file2.yaml":       {Data: toBytes("hello: world")},
+			"test/base/base_resource.yaml":             {Data: toBytes(`hello: world`)},
 		}
 	)
 
@@ -103,10 +111,20 @@ resources:
 	appdir.AddApp(newApp(kustomizeApp2Name, kustomizeApp2Path, "HEAD", false, true))
 	appdir.AddApp(newApp(kustomizeBaseName, kustomizeBasePath, "HEAD", false, true))
 
-	err = walkKustomizeFiles(appdir, fs, kustomizeApp1Name, kustomizeApp1Path)
+	testProc1 := &processor{
+		appName: kustomizeApp1Name,
+		result:  appdir,
+	}
+
+	err = kustomize.ProcessKustomizationFile(fs, filepath.Join(kustomizeApp1Path, "kustomization.yaml"), testProc1)
 	require.NoError(t, err)
 
-	err = walkKustomizeFiles(appdir, fs, kustomizeApp2Name, kustomizeApp2Path)
+	testProc2 := &processor{
+		appName: kustomizeApp2Name,
+		result:  appdir,
+	}
+
+	err = kustomize.ProcessKustomizationFile(fs, filepath.Join(kustomizeApp2Path, "kustomization.yaml"), testProc2)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string][]string{
@@ -138,6 +156,19 @@ resources:
 	}, appdir.appDirs)
 
 	assert.Equal(t, map[string][]string{
+		"common/overlays/prod/kustomization.yaml": {
+			kustomizeApp1Name,
+			kustomizeApp2Name,
+		},
+		"test/app/kustomization.yaml": {
+			kustomizeApp1Name,
+		},
+		"test/app/overlays/dev/kustomization.yaml": {
+			kustomizeApp1Name,
+		},
+		"test/app2/kustomization.yaml": {
+			kustomizeApp2Name,
+		},
 		"test/app/file1.yaml": {
 			kustomizeApp1Name,
 		},
@@ -162,6 +193,20 @@ resources:
 			kustomizeApp2Name,
 		},
 		"test/app2/file1.yaml": {
+			kustomizeApp2Name,
+		},
+		"test/base/base_resource.yaml": {
+			kustomizeApp1Name,
+		},
+		"test/base/kustomization.yaml": {
+			kustomizeApp1Name,
+		},
+		"test/overlays/base/kustomization.yaml": {
+			kustomizeApp1Name,
+			kustomizeApp2Name,
+		},
+		"test/overlays/common/kustomization.yaml": {
+			kustomizeApp1Name,
 			kustomizeApp2Name,
 		},
 	}, appdir.appFiles)

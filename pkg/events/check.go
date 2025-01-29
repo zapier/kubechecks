@@ -405,19 +405,3 @@ func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 
 	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, ":hourglass: kubechecks running ... ")
 }
-
-// cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.
-// It reformats Helm error messages by removing excess information, and makes file paths relative to the git repo root.
-func cleanupGetManifestsError(err error, repoDirectory string) string {
-	// cleanup the chonky helm error message for a better DX
-	errStr := err.Error()
-	if strings.Contains(errStr, "helm template") && strings.Contains(errStr, "failed exit status") {
-		errMsgIdx := strings.Index(errStr, "Error:")
-		errStr = fmt.Sprintf("Helm %s", errStr[errMsgIdx:])
-	}
-
-	// strip the temp directory from any files mentioned to make file paths relative to git repo root
-	errStr = strings.ReplaceAll(errStr, repoDirectory+"/", "")
-
-	return errStr
-}
