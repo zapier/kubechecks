@@ -1,4 +1,4 @@
-apiVersion: networking.k8s.io/v1beta1
+apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: httpdump-external
@@ -9,8 +9,10 @@ spec:
   rules:
     - http:
         paths:
-          - path: /httpdump/(.*)
-            pathType: ImplementationSpecific
+          - path: /httpbin/(.*)
             backend:
-              serviceName: httpdump
-              servicePort: 8080
+              service:
+                name: httpbin
+                port:
+                  name: http
+            pathType: ImplementationSpecific
