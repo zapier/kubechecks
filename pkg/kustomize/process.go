@@ -12,36 +12,32 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
-type Processor interface {
-	AddDir(string) error
-	AddFile(string) error
-}
-
-func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string, processor Processor) error {
+// ProcessKustomizationFile processes a kustomization file and returns all the files and directories it references.
+func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string) (files []string, dirs []string, err error) {
 	dirName := filepath.Dir(relKustomizationPath)
-	return processDir(sourceFS, dirName, processor)
+	return processDir(sourceFS, dirName)
 }
 
-func processDir(sourceFS fs.FS, relBase string, processor Processor) error {
+func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, err error) {
 	absKustPath := filepath.Join(relBase, "kustomization.yaml")
 
 	// Parse using official Kustomization type
 	file, err := sourceFS.Open(absKustPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // No kustomization.yaml in this directory
+			return nil, nil, nil // No kustomization.yaml in this directory
 		}
-		return errors.Wrap(err, "failed to open file")
+		return nil, nil, errors.Wrapf(err, "failed to open file %q", absKustPath)
 	}
 
 	content, err := io.ReadAll(file)
 	if err != nil {
-		return errors.Wrap(err, "failed to read file")
+		return nil, nil, errors.Wrapf(err, "failed to read file kustomization.yam")
 	}
 
 	var kust types.Kustomization
 	if err := yaml.Unmarshal(content, &kust); err != nil {
-		return errors.Wrap(err, "failed to parse kustomization.yaml")
+		return nil, nil, errors.Wrapf(err, "failed to parse %q", absKustPath)
 	}
 
 	// collect all the possible files and directories that kustomize can contain
@@ -52,7 +48,7 @@ func processDir(sourceFS fs.FS, relBase string, processor Processor) error {
 	var directories []string
 	directories = append(directories, kust.Components...)
 
-	files := []string{"kustomization.yaml"}
+	files = []string{"kustomization.yaml"}
 	files = append(files, kust.Configurations...)
 	files = append(files, kust.Crds...)
 	files = append(files, kust.Transformers...)
@@ -85,11 +81,11 @@ func processDir(sourceFS fs.FS, relBase string, processor Processor) error {
 	for _, fileOrDirectory := range filesOrDirectories {
 		file, err := sourceFS.Open(fileOrDirectory)
 		if err != nil {
-			return errors.Wrapf(err, "failed to stat %s", fileOrDirectory)
+			return nil, nil, errors.Wrapf(err, "failed to stat %s", fileOrDirectory)
 		}
 
 		if stat, err := file.Stat(); err != nil {
-			return errors.Wrapf(err, "failed to stat %s", fileOrDirectory)
+			return nil, nil, errors.Wrapf(err, "failed to stat %s", fileOrDirectory)
 		} else if stat.IsDir() {
 			directories = append(directories, fileOrDirectory)
 		} else {
@@ -97,24 +93,21 @@ func processDir(sourceFS fs.FS, relBase string, processor Processor) error {
 		}
 	}
 
-	// add files
-	for _, relResource := range files {
-		if err := processor.AddFile(relResource); err != nil {
-			return errors.Wrapf(err, "failed to add resource %q", relResource)
-		}
-	}
+	// We now know this directory has a kustomization.yaml, so add it to "dirs".
+	allDirs := append([]string(nil), relBase)
+	allFiles := append([]string(nil), files...)
 
 	// process directories and add them
 	for _, relResource := range directories {
-		if err = processor.AddDir(relResource); err != nil {
-			return errors.Wrapf(err, "failed to add directory %q", relResource)
+		subFiles, subDirs, err := processDir(sourceFS, relResource)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to process %q", relResource)
 		}
-		if err = processDir(sourceFS, relResource, processor); err != nil {
-			return errors.Wrapf(err, "failed to process %q", relResource)
-		}
+		allFiles = append(allFiles, subFiles...)
+		allDirs = append(allDirs, subDirs...)
 	}
 
-	return nil
+	return allFiles, allDirs, nil
 }
 
 func cleanPaths(relativeBase string, paths []string) []string {

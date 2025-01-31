@@ -379,14 +379,16 @@ func packageApp(
 	relKustPath := filepath.Join(source.Path, "kustomization.yaml")
 	absKustPath := filepath.Join(destDir, relKustPath)
 	if fsIface.Exists(absKustPath) {
-		p := processor{
-			repoRoot: repo.Directory,
-			tempDir:  destDir,
-			repoFS:   fsIface,
-		}
 
-		if err := kustomize.ProcessKustomizationFile(sourceFS, relKustPath, &p); err != nil {
+		files, _, err := kustomize.ProcessKustomizationFile(sourceFS, relKustPath)
+		if err != nil {
 			return "", errors.Wrap(err, "failed to process kustomization dependencies")
+		}
+		for _, file := range files {
+			err := addFile(repo.Directory, destDir, file)
+			if err != nil {
+				return "", errors.Wrap(err, "failed to add file")
+			}
 		}
 	}
 
