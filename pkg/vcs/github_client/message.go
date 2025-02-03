@@ -212,7 +212,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, pr vcs.PullRequest, c
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) {
-			// GitHub API does not expose minimizeComment API. IT's only available from the GraphQL API
+			// GitHub API does not expose minimizeComment API. It's only available from the GraphQL API
 			// https://docs.github.com/en/graphql/reference/mutations#minimizecomment
 			var m struct {
 				MinimizeComment struct {
