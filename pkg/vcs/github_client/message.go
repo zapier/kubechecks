@@ -130,7 +130,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 	}
 
 	for _, comment := range comments {
-		comment, _, err := c.googleClient.Issues.CreateComment(
+		cc, _, err := c.googleClient.Issues.CreateComment(
 			ctx,
 			repoNameComponents[0],
 			repoNameComponents[1],
@@ -142,7 +142,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 			log.Error().Err(err).Msg("could not post updated message comment to PR")
 			return err
 		}
-		m.NoteID = int(*comment.ID)
+		m.NoteID = int(*cc.ID)
 	}
 
 	return nil
