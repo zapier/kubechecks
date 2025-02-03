@@ -16,7 +16,11 @@ import (
 )
 
 func initTestObjects(t *testing.T) *ApplicationWatcher {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	cfg, err := config.New()
+	cfg.AdditionalAppsNamespaces = []string{"*"}
 	// Handle the error appropriately, e.g., log it or fail the test
 	require.NoError(t, err, "failed to create config")
 
@@ -40,7 +44,7 @@ func initTestObjects(t *testing.T) *ApplicationWatcher {
 		vcsToArgoMap:         appdir.NewVcsToArgoMap("vcs-username"),
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*1, cfg)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*1, cfg, ctx)
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
 
@@ -86,9 +90,10 @@ func TestApplicationUpdated(t *testing.T) {
 	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
 
 	oldAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
+	assert.Equal(t, oldAppDirectory.AppsCount(), 1)
+
 	newAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
-	assert.Equal(t, oldAppDirectory.Count(), 1)
-	assert.Equal(t, newAppDirectory.Count(), 0)
+	assert.Equal(t, newAppDirectory.AppsCount(), 0)
 	//
 	_, err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications("default").Update(ctx, &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-1", Namespace: "default"},
@@ -102,8 +107,8 @@ func TestApplicationUpdated(t *testing.T) {
 	time.Sleep(time.Second * 1)
 	oldAppDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	newAppDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo-3.git")
-	assert.Equal(t, oldAppDirectory.Count(), 0)
-	assert.Equal(t, newAppDirectory.Count(), 1)
+	assert.Equal(t, oldAppDirectory.AppsCount(), 0)
+	assert.Equal(t, newAppDirectory.AppsCount(), 1)
 }
 
 func TestApplicationDeleted(t *testing.T) {
@@ -119,7 +124,7 @@ func TestApplicationDeleted(t *testing.T) {
 	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
 
 	appDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
-	assert.Equal(t, appDirectory.Count(), 1)
+	assert.Equal(t, appDirectory.AppsCount(), 1)
 	//
 	err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications("default").Delete(ctx, "test-app-1", metav1.DeleteOptions{})
 	if err != nil {
@@ -128,7 +133,7 @@ func TestApplicationDeleted(t *testing.T) {
 	time.Sleep(time.Second * 1)
 
 	appDirectory = ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
-	assert.Equal(t, appDirectory.Count(), 0)
+	assert.Equal(t, appDirectory.AppsCount(), 0)
 }
 
 // TestIsGitRepo will test various URLs against the isGitRepo function.
@@ -251,6 +256,52 @@ func TestCanProcessApp(t *testing.T) {
 			} else {
 				assert.Nil(t, app)
 			}
+		})
+	}
+}
+
+func TestIsAppNamespaceAllowed(t *testing.T) {
+	tests := map[string]struct {
+		expected bool
+		cfg      config.ServerConfig
+		meta     *metav1.ObjectMeta
+	}{
+		"All namespaces for application are allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"*"}},
+			meta:     &metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		},
+		"Specific namespaces for application are allowed": {
+			expected: false,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"default", "kube-system"}},
+			meta:     &metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		},
+		"Wildcard namespace for application is allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"default-*"}},
+			meta:     &metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		},
+		"Invalid characters in namespace for application are not allowed": {
+			expected: false,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"<default-*", "kube-system"}},
+			meta:     &metav1.ObjectMeta{Name: "test-app-1", Namespace: "default-ns"},
+		},
+		"Specific namespace for application set is allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"<default-*>", "kube-system"}},
+			meta:     &metav1.ObjectMeta{Name: "test-appset-1", Namespace: "kube-system"},
+		},
+		"Regex in namespace for application set is allowed": {
+			expected: true,
+			cfg:      config.ServerConfig{AdditionalAppsNamespaces: []string{"/^((?!kube-system).)*$/"}},
+			meta:     &metav1.ObjectMeta{Name: "test-appset-1", Namespace: "kube-namespace"},
+		},
+	}
+
+	for testName, test := range tests {
+		t.Run(testName, func(t *testing.T) {
+			actual := isAppNamespaceAllowed(test.meta, test.cfg)
+			assert.Equal(t, test.expected, actual)
 		})
 	}
 }

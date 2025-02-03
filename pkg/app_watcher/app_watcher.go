@@ -9,15 +9,18 @@ import (
 
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	appclientset "github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
-	informers "github.com/argoproj/argo-cd/v2/pkg/client/informers/externalversions/application/v1alpha1"
 	applisters "github.com/argoproj/argo-cd/v2/pkg/client/listers/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v2/util/glob"
 	"github.com/rs/zerolog/log"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/rest"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/container"
 )
 
 // ApplicationWatcher is the controller that watches ArgoCD Application resources via the Kubernetes API
@@ -34,16 +37,16 @@ type ApplicationWatcher struct {
 //   - kubeCfg is the Kubernetes configuration.
 //   - vcsToArgoMap is the mapping between VCS and Argo applications.
 //   - cfg is the server configuration.
-func NewApplicationWatcher(kubeCfg *rest.Config, vcsToArgoMap appdir.VcsToArgoMap, cfg config.ServerConfig) (*ApplicationWatcher, error) {
-	if kubeCfg == nil {
+func NewApplicationWatcher(ctr container.Container, ctx context.Context) (*ApplicationWatcher, error) {
+	if ctr.KubeClientSet == nil {
 		return nil, fmt.Errorf("kubeCfg cannot be nil")
 	}
 	ctrl := ApplicationWatcher{
-		applicationClientset: appclientset.NewForConfigOrDie(kubeCfg),
-		vcsToArgoMap:         vcsToArgoMap,
+		applicationClientset: appclientset.NewForConfigOrDie(ctr.KubeClientSet.Config()),
+		vcsToArgoMap:         ctr.VcsToArgoMap,
 	}
 
-	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, cfg)
+	appInformer, appLister := ctrl.newApplicationInformerAndLister(time.Second*30, ctr.Config, ctx)
 
 	ctrl.appInformer = appInformer
 	ctrl.appLister = appLister
@@ -116,6 +119,11 @@ func (ctrl *ApplicationWatcher) onApplicationDeleted(obj interface{}) {
 	ctrl.vcsToArgoMap.DeleteApp(app)
 }
 
+// isAppNamespaceAllowed is used by both the ApplicationWatcher and the ApplicationSetWatcher
+func isAppNamespaceAllowed(meta *metav1.ObjectMeta, cfg config.ServerConfig) bool {
+	return meta.Namespace == cfg.ArgoCDNamespace || glob.MatchStringInList(cfg.AdditionalAppsNamespaces, meta.Namespace, glob.REGEXP)
+}
+
 /*
 newApplicationInformerAndLister, is part of the ApplicationWatcher struct. It sets up a Kubernetes SharedIndexInformer
 and a Lister for Argo CD Applications.
@@ -127,12 +135,41 @@ that need to observe the object.
 newApplicationInformerAndLister use the data from the informer's cache to provide a read-optimized view of the cache which reduces
 the load on the API Server and hides some complexity.
 */
-func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig) (cache.SharedIndexInformer, applisters.ApplicationLister) {
-	log.Debug().Msgf("Creating Application informer with namespace: %s", cfg.ArgoCDNamespace)
-	informer := informers.NewApplicationInformer(ctrl.applicationClientset, cfg.ArgoCDNamespace, refreshTimeout,
+func (ctrl *ApplicationWatcher) newApplicationInformerAndLister(refreshTimeout time.Duration, cfg config.ServerConfig, ctx context.Context) (cache.SharedIndexInformer, applisters.ApplicationLister) {
+
+	watchNamespace := cfg.ArgoCDNamespace
+	// If we have at least one additional namespace configured, we need to
+	// watch on them all.
+	if len(cfg.AdditionalAppsNamespaces) > 0 {
+		watchNamespace = ""
+	}
+
+	informer := cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (apiruntime.Object, error) {
+				// We are only interested in apps that exist in namespaces the
+				// user wants to be enabled.
+				appList, err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications(watchNamespace).List(ctx, options)
+				if err != nil {
+					return nil, err
+				}
+				newItems := []appv1alpha1.Application{}
+				for _, app := range appList.Items {
+					if isAppNamespaceAllowed(&app.ObjectMeta, cfg) {
+						newItems = append(newItems, app)
+					}
+				}
+				appList.Items = newItems
+				return appList, nil
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				return ctrl.applicationClientset.ArgoprojV1alpha1().Applications(watchNamespace).Watch(ctx, options)
+			},
+		},
+		&appv1alpha1.Application{},
+		refreshTimeout,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
-
 	lister := applisters.NewApplicationLister(informer.GetIndexer())
 	if _, err := informer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
@@ -152,14 +189,14 @@ func canProcessApp(obj interface{}) (*appv1alpha1.Application, bool) {
 		return nil, false
 	}
 
-	for _, src := range app.Spec.Sources {
+	if src := app.Spec.Source; src != nil {
 		if isGitRepo(src.RepoURL) {
 			return app, true
 		}
 	}
 
-	if app.Spec.Source != nil {
-		if isGitRepo(app.Spec.Source.RepoURL) {
+	for _, src := range app.Spec.Sources {
+		if isGitRepo(src.RepoURL) {
 			return app, true
 		}
 	}

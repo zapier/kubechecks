@@ -259,18 +259,25 @@ func getArgoSettings(ctx context.Context, request checks.Request) (*settings.Set
 var nilApp = argoappv1.Application{}
 
 func isApp(item objKeyLiveTarget, manifests []byte) (argoappv1.Application, bool) {
+	logger := log.With().
+		Str("kind", item.key.Kind).
+		Str("name", item.key.Name).
+		Str("namespace", item.key.Namespace).
+		Str("group", item.key.Group).
+		Logger()
+
 	if strings.ToLower(item.key.Group) != "argoproj.io" {
-		log.Debug().Str("group", item.key.Group).Msg("group is not correct")
+		logger.Debug().Msg("group is not correct")
 		return nilApp, false
 	}
 	if strings.ToLower(item.key.Kind) != "application" {
-		log.Debug().Str("kind", item.key.Kind).Msg("kind is not correct")
+		logger.Debug().Msg("kind is not correct")
 		return nilApp, false
 	}
 
 	var app argoappv1.Application
 	if err := json.Unmarshal(manifests, &app); err != nil {
-		log.Warn().Err(err).Msg("failed to deserialize application")
+		logger.Warn().Err(err).Msg("failed to deserialize application")
 		return nilApp, false
 	}
 
@@ -318,7 +325,9 @@ func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.Resourc
 		}
 		if local, ok := objs[key]; ok || live != nil {
 			if local != nil && !kube.IsCRD(local) {
-				if err := resourceTracking.SetAppInstance(local, argoSettings.AppLabelKey, appName, "", argoappv1.TrackingMethod(argoSettings.GetTrackingMethod())); err != nil {
+				if err := resourceTracking.SetAppInstance(
+					local, argoSettings.AppLabelKey, appName, "", argoappv1.TrackingMethod(argoSettings.GetTrackingMethod()), "",
+				); err != nil {
 					return nil, err
 				}
 			}
@@ -344,8 +353,9 @@ type resourceInfoProvider struct {
 	namespacedByGk map[schema.GroupKind]bool
 }
 
-// Infer if obj is namespaced or not from corresponding live objects list. If corresponding live object has namespace then target object is also namespaced.
-// If live object is missing then it does not matter if target is namespaced or not.
+// IsNamespaced infers if obj is namespaced or not from corresponding live objects list. If corresponding live object
+// has namespace then target object is also namespaced. If live object is missing then it does not matter if target is
+// namespaced or not.
 func (p *resourceInfoProvider) IsNamespaced(gk schema.GroupKind) (bool, error) {
 	return p.namespacedByGk[gk], nil
 }

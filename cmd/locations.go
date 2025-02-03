@@ -25,6 +25,8 @@ func processLocations(ctx context.Context, ctr container.Container, locations []
 		}
 	}
 
+	log.Debug().Strs("locations", locations).Msg("locations after processing")
+
 	return nil
 }
 

@@ -62,7 +62,7 @@ func TestAppSetDirectory_ProcessApp(t *testing.T) {
 				appSetFiles: tt.input.appSetFiles,
 				appSetsMap:  tt.input.appSetsMap,
 			}
-			d.ProcessApp(tt.args.app)
+			d.ProcessAppSet(tt.args.app)
 			assert.Equal(t, tt.expected.appSetDirs, d.appSetDirs)
 		})
 	}
@@ -212,7 +212,7 @@ spec:
 				t.Fatalf("failed to create tmp folder %s", fatalErr)
 			}
 			d := &AppSetDirectory{}
-			result := d.FindAppsBasedOnChangeList(tt.changeList, &git.Repo{Directory: tempDir})
+			result := d.FindAppSetsBasedOnChangeList(tt.changeList, &git.Repo{Directory: tempDir})
 			assert.Equal(t, tt.expected, result)
 		})
 	}

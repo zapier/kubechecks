@@ -23,8 +23,16 @@ func NewAppDirectory() *AppDirectory {
 	}
 }
 
-func (d *AppDirectory) Count() int {
+func (d *AppDirectory) AppsCount() int {
 	return len(d.appsMap)
+}
+
+func (d *AppDirectory) AppFilesCount() int {
+	return len(d.appFiles)
+}
+
+func (d *AppDirectory) AppDirsCount() int {
+	return len(d.appDirs)
 }
 
 func (d *AppDirectory) Union(other *AppDirectory) *AppDirectory {
@@ -33,29 +41,6 @@ func (d *AppDirectory) Union(other *AppDirectory) *AppDirectory {
 	join.appDirs = mergeMaps(d.appDirs, other.appDirs, mergeLists[string])
 	join.appFiles = mergeMaps(d.appFiles, other.appFiles, mergeLists[string])
 	return &join
-}
-
-func (d *AppDirectory) ProcessApp(app v1alpha1.Application) {
-	appName := app.Name
-
-	src := app.Spec.GetSource()
-
-	// common data
-	srcPath := src.Path
-	d.AddApp(app)
-
-	// handle extra helm paths
-	if helm := src.Helm; helm != nil {
-		for _, param := range helm.FileParameters {
-			path := filepath.Join(srcPath, param.Path)
-			d.AddFile(appName, path)
-		}
-
-		for _, valueFilePath := range helm.ValueFiles {
-			path := filepath.Join(srcPath, valueFilePath)
-			d.AddFile(appName, path)
-		}
-	}
 }
 
 // FindAppsBasedOnChangeList receives a list of modified file paths and
@@ -155,21 +140,47 @@ func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 		log.Debug().Msgf("app %s already exists", app.Name)
 		return
 	}
-	log.Debug().
-		Str("appName", app.Name).
-		Str("cluster-name", app.Spec.Destination.Name).
-		Str("cluster-server", app.Spec.Destination.Server).
-		Str("source", getSourcePath(app)).
-		Msg("add app")
-	d.appsMap[app.Name] = app
-	d.AddDir(app.Name, getSourcePath(app))
+
+	for _, src := range getSources(app) {
+		sourcePath := src.Path
+		log.Debug().
+			Str("appName", app.Name).
+			Str("cluster-name", app.Spec.Destination.Name).
+			Str("cluster-server", app.Spec.Destination.Server).
+			Str("source", sourcePath).
+			Msg("add app")
+
+		d.appsMap[app.Name] = app
+		d.addDir(app.Name, sourcePath)
+
+		// handle extra helm paths
+		if helm := src.Helm; helm != nil {
+			for _, param := range helm.FileParameters {
+				path := filepath.Join(sourcePath, param.Path)
+				d.addFile(app.Name, path)
+			}
+
+			for _, valueFilePath := range helm.ValueFiles {
+				path := filepath.Join(sourcePath, valueFilePath)
+				d.addFile(app.Name, path)
+			}
+		}
+	}
 }
 
-func (d *AppDirectory) AddDir(appName, path string) {
+func getSources(app v1alpha1.Application) []v1alpha1.ApplicationSource {
+	if !app.Spec.HasMultipleSources() {
+		return []v1alpha1.ApplicationSource{*app.Spec.Source}
+	}
+
+	return app.Spec.Sources
+}
+
+func (d *AppDirectory) addDir(appName, path string) {
 	d.appDirs[path] = append(d.appDirs[path], appName)
 }
 
-func (d *AppDirectory) AddFile(appName, path string) {
+func (d *AppDirectory) addFile(appName, path string) {
 	d.appFiles[path] = append(d.appFiles[path], appName)
 }
 

@@ -42,7 +42,7 @@ type CheckEvent struct {
 	repoManager repoManager
 	processors  []checks.ProcessorEntry
 	repoLock    sync.Mutex
-	clonedRepos map[string]*git.Repo
+	clonedRepos map[repoKey]*git.Repo
 
 	addedAppsSet     map[string]v1alpha1.Application
 	addedAppsSetLock sync.Mutex
@@ -58,7 +58,7 @@ type repoManager interface {
 	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 }
 
-func GenerateMatcher(ce *CheckEvent, repo *git.Repo) error {
+func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
 	log.Debug().Msg("using the argocd matcher")
 	m, err := affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
 	if err != nil {
@@ -82,7 +82,7 @@ func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoMan
 		addedAppsSet: make(map[string]v1alpha1.Application),
 		appChannel:   make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
 		ctr:          ctr,
-		clonedRepos:  make(map[string]*git.Repo),
+		clonedRepos:  make(map[repoKey]*git.Repo),
 		processors:   processors,
 		pullRequest:  pullRequest,
 		repoManager:  repoManager,
@@ -160,15 +160,14 @@ func canonicalize(cloneURL string) (pkg.RepoURL, error) {
 	return parsed, nil
 }
 
-func generateRepoKey(cloneURL pkg.RepoURL, branchName string) string {
-	return fmt.Sprintf("%s|||%s", cloneURL.CloneURL(""), branchName)
+type repoKey string
+
+func generateRepoKey(cloneURL pkg.RepoURL, branchName string) repoKey {
+	key := fmt.Sprintf("%s|||%s", cloneURL.CloneURL(""), branchName)
+	return repoKey(key)
 }
 
-type hasUsername interface {
-	Username() string
-}
-
-func (ce *CheckEvent) getRepo(ctx context.Context, vcsClient hasUsername, cloneURL, branchName string) (*git.Repo, error) {
+func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) (*git.Repo, error) {
 	var (
 		err  error
 		repo *git.Repo
@@ -181,7 +180,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, vcsClient hasUsername, cloneU
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse clone url")
 	}
-	cloneURL = parsed.CloneURL(vcsClient.Username())
+	cloneURL = parsed.CloneURL(ce.ctr.VcsClient.Username())
 
 	branchName = strings.TrimSpace(branchName)
 	if branchName == "" {
@@ -227,6 +226,22 @@ func (ce *CheckEvent) getRepo(ctx context.Context, vcsClient hasUsername, cloneU
 	return repo, nil
 }
 
+func (ce *CheckEvent) mergeIntoTarget(ctx context.Context, repo *git.Repo, branch string) error {
+	if err := repo.MergeIntoTarget(ctx, fmt.Sprintf("origin/%s", branch)); err != nil {
+		return errors.Wrap(err, "failed to merge into target")
+	}
+
+	parsed, err := canonicalize(repo.CloneURL)
+	if err != nil {
+		return errors.Wrap(err, "failed to canonicalize url")
+	}
+
+	reposKey := generateRepoKey(parsed, branch)
+	ce.clonedRepos[reposKey] = repo
+
+	return nil
+}
+
 func (ce *CheckEvent) Process(ctx context.Context) error {
 	start := time.Now()
 
@@ -234,13 +249,13 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	defer span.End()
 
 	// Clone the repo's BaseRef (main, etc.) locally into the temp dir we just made
-	repo, err := ce.getRepo(ctx, ce.ctr.VcsClient, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
+	repo, err := ce.getRepo(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
 	if err != nil {
 		return errors.Wrap(err, "failed to clone repo")
 	}
 
 	// Merge the most recent changes into the branch we just cloned
-	if err = repo.MergeIntoTarget(ctx, ce.pullRequest.SHA); err != nil {
+	if err = ce.mergeIntoTarget(ctx, repo, ce.pullRequest.HeadRef); err != nil {
 		return errors.Wrap(err, "failed to merge into target")
 	}
 
@@ -250,7 +265,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
-	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef, GenerateMatcher); err != nil {
+	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef, generateMatcher); err != nil {
 		return errors.Wrap(err, "failed to generate a list of affected apps")
 	}
 
@@ -275,11 +290,12 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	for num := 0; num <= ce.ctr.Config.MaxConcurrenctChecks; num++ {
 
 		w := worker{
-			appChannel: ce.appChannel,
-			ctr:        ce.ctr,
-			logger:     ce.logger.With().Int("workerID", num).Logger(),
-			processors: ce.processors,
-			vcsNote:    ce.vcsNote,
+			appChannel:  ce.appChannel,
+			ctr:         ce.ctr,
+			logger:      ce.logger.With().Int("workerID", num).Logger(),
+			pullRequest: ce.pullRequest,
+			processors:  ce.processors,
+			vcsNote:     ce.vcsNote,
 
 			done:      ce.wg.Done,
 			getRepo:   ce.getRepo,

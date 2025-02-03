@@ -93,7 +93,7 @@ docker:
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
-    ARG KUSTOMIZE_VERSION=4.5.7
+    ARG KUSTOMIZE_VERSION=5.6.0
     RUN \
         curl \
             --fail \

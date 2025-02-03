@@ -32,6 +32,10 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.deployment.podSecurityContext | nindent 8 }}
+      {{- with .Values.deployment.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.deployment.image }}

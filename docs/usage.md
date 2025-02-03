@@ -36,11 +36,15 @@ The full list of supported environment variables is described below:
 
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
+|`KUBECHECKS_ADDITIONAL_APPS_NAMESPACES`|Additional namespaces other than the ArgoCDNamespace to monitor for applications.|`[]`|
 |`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections over TLS to the ArgoCD API server.|`false`|
 |`KUBECHECKS_ARGOCD_API_NAMESPACE`|ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.|`argocd`|
 |`KUBECHECKS_ARGOCD_API_PLAINTEXT`|Enable to use plaintext connections without TLS.|`false`|
 |`KUBECHECKS_ARGOCD_API_SERVER_ADDR`|ArgoCD API Server Address.|`argocd-server`|
 |`KUBECHECKS_ARGOCD_API_TOKEN`|ArgoCD API token.||
+|`KUBECHECKS_ARGOCD_REPOSITORY_ENDPOINT`|Location of the argocd repository service endpoint.|`argocd-repo-server.argocd:8081`|
+|`KUBECHECKS_ARGOCD_REPOSITORY_INSECURE`|True if you need to skip validating the grpc tls certificate.|`true`|
+|`KUBECHECKS_ARGOCD_SEND_FULL_REPOSITORY`|Set to true if you want to try to send the full repository to ArgoCD when generating manifests.|`false`|
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
 |`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
@@ -57,7 +61,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of error, warn, info, debug, trace.|`info`|
 |`KUBECHECKS_MAX_CONCURRENCT_CHECKS`|Number of concurrent checks to run.|`32`|
 |`KUBECHECKS_MAX_QUEUE_SIZE`|Size of app diff check queue.|`1024`|
-|`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`false`|
+|`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`true`|
 |`KUBECHECKS_OPENAI_API_TOKEN`|OpenAI API Token.||
 |`KUBECHECKS_OTEL_COLLECTOR_HOST`|The OpenTelemetry collector host.||
 |`KUBECHECKS_OTEL_COLLECTOR_PORT`|The OpenTelemetry collector port.||
@@ -66,7 +70,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_POLICIES_LOCATION`|Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.|`[./policies]`|
 |`KUBECHECKS_REPLAN_COMMENT_MSG`|comment message which re-triggers kubechecks on PR.|`kubechecks again`|
 |`KUBECHECKS_REPO_REFRESH_INTERVAL`|Interval between static repo refreshes (for schemas and policies).|`5m`|
-|`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be common paths inside the repos being checked or git urls in either git or http(s) format.|`[]`|
+|`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.|`[]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||

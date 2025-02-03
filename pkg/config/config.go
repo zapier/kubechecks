@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
@@ -17,15 +18,19 @@ import (
 
 type ServerConfig struct {
 	// argocd
-	ArgoCDServerAddr    string `mapstructure:"argocd-api-server-addr"`
-	ArgoCDToken         string `mapstructure:"argocd-api-token"`
-	ArgoCDPathPrefix    string `mapstructure:"argocd-api-path-prefix"`
-	ArgoCDInsecure      bool   `mapstructure:"argocd-api-insecure"`
-	ArgoCDNamespace     string `mapstructure:"argocd-api-namespace"`
-	ArgoCDPlainText     bool   `mapstructure:"argocd-api-plaintext"`
-	KubernetesConfig    string `mapstructure:"kubernetes-config"`
-	KubernetesType      string `mapstructure:"kubernetes-type"`
-	KubernetesClusterID string `mapstructure:"kubernetes-clusterid"`
+	ArgoCDServerAddr         string `mapstructure:"argocd-api-server-addr"`
+	ArgoCDToken              string `mapstructure:"argocd-api-token"`
+	ArgoCDPathPrefix         string `mapstructure:"argocd-api-path-prefix"`
+	ArgoCDInsecure           bool   `mapstructure:"argocd-api-insecure"`
+	ArgoCDNamespace          string `mapstructure:"argocd-api-namespace"`
+	ArgoCDPlainText          bool   `mapstructure:"argocd-api-plaintext"`
+	ArgoCDRepositoryEndpoint string `mapstructure:"argocd-repository-endpoint"`
+	ArgoCDRepositoryInsecure bool   `mapstructure:"argocd-repository-insecure"`
+	ArgoCDSendFullRepository bool   `mapstructure:"argocd-send-full-repository"`
+	ArgoCDIncludeDotGit      bool   `mapstructure:"argocd-include-dot-git"`
+	KubernetesConfig         string `mapstructure:"kubernetes-config"`
+	KubernetesType           string `mapstructure:"kubernetes-type"`
+	KubernetesClusterID      string `mapstructure:"kubernetes-clusterid"`
 
 	// otel
 	EnableOtel        bool   `mapstructure:"otel-enabled"`
@@ -67,6 +72,7 @@ type ServerConfig struct {
 	WorstPreupgradeState pkg.CommitState `mapstructure:"worst-preupgrade-state"`
 
 	// misc
+	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`
 	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`
 	LabelFilter              string        `mapstructure:"label-filter"`
 	LogLevel                 zerolog.Level `mapstructure:"log-level"`
@@ -102,6 +108,12 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 			if in.String() == "string" && out.String() == "time.Duration" {
 				input := value.(string)
 				return time.ParseDuration(input)
+			}
+
+			if in.String() == "string" && out.String() == "[]string" {
+				input := value.(string)
+				ns := strings.Split(input, ",")
+				return ns, nil
 			}
 
 			return value, nil

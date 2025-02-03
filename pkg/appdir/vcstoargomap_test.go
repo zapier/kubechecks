@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TestAddApp tests the AddApp method from the VcsToArgoMap type.
+// TestAddApp tests the AddAppSet method from the VcsToArgoMap type.
 func TestAddApp(t *testing.T) {
 	// Setup your mocks and expected calls here.
 
@@ -26,7 +26,7 @@ func TestAddApp(t *testing.T) {
 	v2a.AddApp(app1)
 	appDir := v2a.GetAppsInRepo("https://github.com/argoproj/argo-cd.git")
 
-	assert.Equal(t, appDir.Count(), 1)
+	assert.Equal(t, appDir.AppsCount(), 1)
 	assert.Equal(t, len(appDir.appDirs["test-app-1"]), 1)
 
 	// Assertions to verify the behavior here.
@@ -41,7 +41,7 @@ func TestAddApp(t *testing.T) {
 	}
 
 	v2a.AddApp(app2)
-	assert.Equal(t, appDir.Count(), 2)
+	assert.Equal(t, appDir.AppsCount(), 2)
 	assert.Equal(t, len(appDir.appDirs["test-app-2"]), 1)
 }
 
@@ -73,12 +73,12 @@ func TestDeleteApp(t *testing.T) {
 	v2a.AddApp(app2)
 	appDir := v2a.GetAppsInRepo("https://github.com/argoproj/argo-cd.git")
 
-	assert.Equal(t, appDir.Count(), 2)
+	assert.Equal(t, appDir.AppsCount(), 2)
 	assert.Equal(t, len(appDir.appDirs["test-app-1"]), 1)
 	assert.Equal(t, len(appDir.appDirs["test-app-2"]), 1)
 
 	v2a.DeleteApp(app2)
-	assert.Equal(t, appDir.Count(), 1)
+	assert.Equal(t, appDir.AppsCount(), 1)
 	assert.Equal(t, len(appDir.appDirs["test-app-2"]), 0)
 }
 
@@ -86,14 +86,13 @@ func TestVcsToArgoMap_AddAppSet(t *testing.T) {
 	type args struct {
 		app *v1alpha1.ApplicationSet
 	}
-	tests := []struct {
+	tests := map[string]struct {
 		name          string
 		fields        VcsToArgoMap
 		args          args
 		expectedCount int
 	}{
-		{
-			name:   "normal process, expect to get the appset stored in the map",
+		"normal process, expect to get the appset stored in the map": {
 			fields: NewVcsToArgoMap("dummyuser"),
 			args: args{
 				app: &v1alpha1.ApplicationSet{
@@ -112,8 +111,7 @@ func TestVcsToArgoMap_AddAppSet(t *testing.T) {
 			},
 			expectedCount: 1,
 		},
-		{
-			name:   "invalid appset",
+		"invalid appset": {
 			fields: NewVcsToArgoMap("vcs-username"),
 			args: args{
 				app: &v1alpha1.ApplicationSet{
