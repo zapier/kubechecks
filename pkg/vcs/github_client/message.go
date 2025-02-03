@@ -109,18 +109,25 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c), nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message string) error {
+func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) error {
 	_, span := tracer.Start(ctx, "UpdateMessage")
 	defer span.End()
 
-	comments := splitComment(message, MaxCommentLength, sepEnd, sepStart)
-	repoNameComponents := strings.Split(m.Name, "/")
+	comments := splitComment(msg, MaxCommentLength, sepEnd, sepStart)
+
+	owner, repo, ok := strings.Cut(m.Name, "/")
+	if !ok {
+		e := fmt.Errorf("invalid GitHub repository name: no '/' in %q", m.Name)
+		telemetry.SetError(span, e, "Invalid GitHub full repository name")
+		log.Error().Err(e).Msg("invalid GitHub repository name")
+		return e
+	}
 
 	pr := vcs.PullRequest{
-		Owner:    repoNameComponents[0],
-		Name:     repoNameComponents[1],
+		Owner:    owner,
+		Name:     repo,
 		CheckID:  m.CheckID,
-		FullName: fmt.Sprintf("%s/%s", repoNameComponents[0], repoNameComponents[1]),
+		FullName: m.Name,
 	}
 
 	log.Debug().Msgf("Updating message in PR %d in repo %s", pr.CheckID, pr.FullName)
@@ -131,11 +138,7 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 
 	for _, comment := range comments {
 		cc, _, err := c.googleClient.Issues.CreateComment(
-			ctx,
-			repoNameComponents[0],
-			repoNameComponents[1],
-			m.CheckID,
-			&github.IssueComment{Body: &comment},
+			ctx, owner, repo, m.CheckID, &github.IssueComment{Body: &comment},
 		)
 		if err != nil {
 			telemetry.SetError(span, err, "Update Pull Request comment")
@@ -150,25 +153,28 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 
 func (c *Client) deleteLatestRunningComment(ctx context.Context, pr vcs.PullRequest) error {
 	_, span := tracer.Start(ctx, "deleteLatestRunningComment")
-	repoNameComponents := strings.Split(pr.FullName, "/")
+	defer span.End()
 
-	existingComments, _, err := c.googleClient.Issues.ListComments(ctx, repoNameComponents[0], repoNameComponents[1], pr.CheckID, &github.IssueListCommentsOptions{
-		Sort:      pkg.Pointer("created"),
-		Direction: pkg.Pointer("asc"),
-	})
+	existingComments, resp, err := c.googleClient.Issues.ListComments(
+		ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueListCommentsOptions{
+			Sort:      pkg.Pointer("created"),
+			Direction: pkg.Pointer("asc"),
+		},
+	)
 	if err != nil {
 		telemetry.SetError(span, err, "List Pull Request comments")
-		log.Error().Err(err).Msg("could not retrieve existing comments for PR")
+		log.Error().Err(err).Msgf("could not retrieve existing PR comments, response: %+v", resp)
 		return fmt.Errorf("failed to list comments: %w", err)
 	}
 
+	// Find and delete the first running comment.
 	for _, existingComment := range existingComments {
 		if existingComment.Body != nil && strings.Contains(*existingComment.Body, ":hourglass: kubechecks running ... ") {
 			log.Debug().Msgf("Deleting 'kubechecks running' comment with ID %d", *existingComment.ID)
-			if _, err := c.googleClient.Issues.DeleteComment(ctx, repoNameComponents[0], repoNameComponents[1], *existingComment.ID); err != nil {
-				telemetry.SetError(span, err, "Delete Pull Request comment")
-				log.Error().Err(err).Msg("failed to delete 'kubechecks running' comment")
-				return fmt.Errorf("failed to delete 'kubechecks running' comment: %w", err)
+			if r, e := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *existingComment.ID); e != nil {
+				telemetry.SetError(span, e, "Delete Pull Request comment")
+				log.Error().Err(e).Msgf("failed to delete 'kubechecks running' comment, response: %+v", r)
+				return fmt.Errorf("failed to delete 'kubechecks running' comment: %w", e)
 			}
 			break
 		}
@@ -206,7 +212,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, pr vcs.PullRequest, c
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) {
-			// Github API does not expose minimizeComment API. IT's only available from the GraphQL API
+			// GitHub API does not expose minimizeComment API. IT's only available from the GraphQL API
 			// https://docs.github.com/en/graphql/reference/mutations#minimizecomment
 			var m struct {
 				MinimizeComment struct {
