@@ -19,60 +19,63 @@ import (
 const MaxCommentLength = 64 * 1024
 
 const sepEnd = "\n```\n</details>" +
-"\n<br>\n\n**Warning**: Output length greater than max comment size. Continued in next comment."
+	"\n<br>\n\n**Warning**: Output length greater than maximum allowed comment size. Continued in next comment."
 
 const sepStart = "Continued from previous comment.\n<details><summary>Show Output</summary>\n\n"
 
-// splitComment splits comment into a slice of comments that are under maxSize.
-// It appends sepEnd to all comments that have a following comment.
-// It prepends sepStart to all comments that have a preceding comment.
+// splitComment splits the given comment into chunks from the beginning,
+// ensuring that each decorated chunk does not exceed maxSize.
+// - The first chunk has no prefix but, if not the only chunk, is suffixed with sepEnd.
+// - Subsequent chunks are prefixed with sepStart. If they’re not final, they are also suffixed with sepEnd.
+// This forward‐splitting approach preserves the beginning of the comment.
 func splitComment(comment string, maxSize int, sepEnd string, sepStart string) []string {
+	// Guard: If the comment fits in one chunk, return it unsplit.
 	if len(comment) <= maxSize {
 		return []string{comment}
 	}
+	// Guard: if maxSize is too small to accommodate even one raw character with decorations,
+	// return the unsplit comment.
+	if maxSize < len(sepEnd)+1 || maxSize < len(sepStart)+1 {
+		return []string{comment}
+	}
 
-	var comments []string
-	var builder strings.Builder
-	remaining := comment
-	maxWithSep := maxSize - len(sepEnd) - len(sepStart)
-	sepStartWithCode := sepStart + "```diff\n"
+	// Check if we have capacity for subsequent chunks
+	if maxSize-len(sepStart)-len(sepEnd) <= 0 {
+		// No room for raw text if we try to use both prefix and suffix
+		// => fallback to unsplit
+		return []string{comment}
+	}
 
-	for len(remaining) > 0 {
-		if builder.Len() > 0 && builder.Len()+len(sepEnd) > maxWithSep {
-			comments = append(comments, builder.String()+sepEnd)
-			builder.Reset()
-			builder.WriteString(sepStartWithCode)
-		}
+	var parts []string
 
-		lineEnd := strings.LastIndex(remaining[:min(len(remaining), maxWithSep-builder.Len())], "\n")
-		if lineEnd == -1 {
-			lineEnd = min(len(remaining), maxWithSep-builder.Len())
+	// Process the first chunk.
+	// For the first chunk (if a split is needed) we reserve space for sepEnd only.
+	firstRawCapacity := maxSize - len(sepEnd)
+	firstChunkRaw := comment[0:firstRawCapacity]
+	parts = append(parts, firstChunkRaw+sepEnd)
+	i := firstRawCapacity
+
+	// Process subsequent chunks.
+	for i < len(comment) {
+		remaining := len(comment) - i
+
+		// If the remaining text fits in one final chunk (with only the sepStart prefix),
+		// then create that final chunk without a trailing sepEnd.
+		if remaining <= maxSize-len(sepStart) {
+			parts = append(parts, sepStart+comment[i:])
+			break
 		} else {
-			lineEnd++
-		}
-
-		builder.WriteString(remaining[:lineEnd])
-		remaining = remaining[lineEnd:]
-
-		if builder.Len() >= maxWithSep {
-			comments = append(comments, builder.String()+sepEnd)
-			builder.Reset()
-			builder.WriteString(sepStartWithCode)
+			// Otherwise, for a non-final chunk, reserve space for both prefix and suffix.
+			rawCapacity := maxSize - len(sepStart) - len(sepEnd)
+			// The following slice is guaranteed to be in range because we only land here
+			// if remaining > maxSize - len(sepStart). Consequently, rawCapacity <= remaining,
+			// ensuring i+rawCapacity is within the comment's length.
+			chunk := sepStart + comment[i:i+rawCapacity] + sepEnd
+			parts = append(parts, chunk)
+			i += rawCapacity
 		}
 	}
-
-	if builder.Len() > 0 {
-		comments = append(comments, builder.String())
-	}
-
-	return comments
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return parts
 }
 
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
@@ -114,9 +117,9 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 	repoNameComponents := strings.Split(m.Name, "/")
 
 	pr := vcs.PullRequest{
-		Owner:   repoNameComponents[0],
-		Name:    repoNameComponents[1],
-		CheckID: m.CheckID,
+		Owner:    repoNameComponents[0],
+		Name:     repoNameComponents[1],
+		CheckID:  m.CheckID,
 		FullName: fmt.Sprintf("%s/%s", repoNameComponents[0], repoNameComponents[1]),
 	}
 
