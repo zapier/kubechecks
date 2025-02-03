@@ -80,7 +80,7 @@ func Init(ctx context.Context, serviceName, gitTag, gitCommit string, otelEnable
 	return bt, nil
 }
 
-func createGRPCConn(ctx context.Context, enabled bool, otelHost string, otelPort string) (*grpc.ClientConn, error) {
+func createGRPCConn(enabled bool, otelHost string, otelPort string) (*grpc.ClientConn, error) {
 	if !enabled {
 		log.Info().Msg("otel disabled")
 		return nil, nil
@@ -103,7 +103,7 @@ func createGRPCConn(ctx context.Context, enabled bool, otelHost string, otelPort
 }
 
 func (bt *BaseTelemetry) initProviders(res *resource.Resource, enabled bool, otelHost string, otelPort string) error {
-	conn, err := createGRPCConn(bt.c, enabled, otelHost, otelPort)
+	conn, err := createGRPCConn(enabled, otelHost, otelPort)
 	if err != nil {
 		return err
 	}
