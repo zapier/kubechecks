@@ -16,12 +16,20 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-const MaxCommentLength = 64 * 1024
+const (
+	MaxCommentLength = 64 * 1024
 
-const sepEnd = "\n```\n</details>" +
-	"\n<br>\n\n**Warning**: Output length greater than maximum allowed comment size. Continued in next comment."
+	// Using string concatenation for better code readability.
+	// Cannot use raw string literal (backticks) here as the separators themselves contain backticks.
+	sepStart = "Continued from previous comment.\n" +
+		"<details><summary>Show Output</summary>\n\n" +
+		"```diff\n"
 
-const sepStart = "Continued from previous comment.\n<details><summary>Show Output</summary>\n\n"
+	sepEnd = "\n```\n" +
+		"</details>\n" +
+		"<br>\n\n" +
+		"**Warning**: Output length greater than maximum allowed comment size. Continued in next comment."
+)
 
 // splitComment splits the given comment into chunks from the beginning,
 // ensuring that each decorated chunk does not exceed maxSize.
