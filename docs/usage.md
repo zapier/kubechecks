@@ -49,7 +49,6 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
 |`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|
-|`KUBECHECKS_ENABLE_SHALLOW_CLONE`|Enable shallow cloning for all git repos.|`false`|
 |`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
 |`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks.|`1.23.0`|
 |`KUBECHECKS_GITHUB_APP_ID`|Github App ID.|`0`|
@@ -71,6 +70,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_POLICIES_LOCATION`|Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.|`[./policies]`|
 |`KUBECHECKS_REPLAN_COMMENT_MSG`|comment message which re-triggers kubechecks on PR.|`kubechecks again`|
 |`KUBECHECKS_REPO_REFRESH_INTERVAL`|Interval between static repo refreshes (for schemas and policies).|`5m`|
+|`KUBECHECKS_REPO_SHALLOW_CLONE`|Enable shallow cloning for all git repos.|`false`|
 |`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.|`[]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|

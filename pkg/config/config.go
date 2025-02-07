@@ -38,13 +38,12 @@ type ServerConfig struct {
 	OtelCollectorPort string `mapstructure:"otel-collector-port"`
 
 	// vcs
-	VcsUsername        string `mapstructure:"vcs-username"`
-	VcsEmail           string `mapstructure:"vcs-email"`
-	VcsBaseUrl         string `mapstructure:"vcs-base-url"`
-	VcsUploadUrl       string `mapstructure:"vcs-upload-url"` // github enterprise upload URL
-	VcsToken           string `mapstructure:"vcs-token"`
-	VcsType            string `mapstructure:"vcs-type"`
-	EnableShallowClone bool   `mapstructure:"enable-shallow-clone"`
+	VcsUsername  string `mapstructure:"vcs-username"`
+	VcsEmail     string `mapstructure:"vcs-email"`
+	VcsBaseUrl   string `mapstructure:"vcs-base-url"`
+	VcsUploadUrl string `mapstructure:"vcs-upload-url"` // github enterprise upload URL
+	VcsToken     string `mapstructure:"vcs-token"`
+	VcsType      string `mapstructure:"vcs-type"`
 
 	//github
 	GithubPrivateKey     string `mapstructure:"github-private-key"`
@@ -80,6 +79,7 @@ type ServerConfig struct {
 	MonitorAllApplications   bool          `mapstructure:"monitor-all-applications"`
 	OpenAIAPIToken           string        `mapstructure:"openai-api-token"`
 	RepoRefreshInterval      time.Duration `mapstructure:"repo-refresh-interval"`
+	RepoShallowClone         bool          `mapstructure:"repo-shallow-clone"`
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
