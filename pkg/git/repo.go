@@ -28,6 +28,7 @@ type Repo struct {
 	BranchName string
 	Config     config.ServerConfig
 	CloneURL   string
+	Shallow    bool
 
 	// exposed state
 	Directory string
@@ -46,6 +47,10 @@ func New(cfg config.ServerConfig, cloneUrl, branchName string) *Repo {
 }
 
 func (r *Repo) Clone(ctx context.Context) error {
+	if r.Shallow {
+		return r.ShallowClone(ctx)
+	}
+
 	var err error
 
 	r.Directory, err = os.MkdirTemp("/tmp", "kubechecks-repo-")
@@ -73,6 +78,61 @@ func (r *Repo) Clone(ctx context.Context) error {
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to clone repository, %s", out)
 		return err
+	}
+
+	if log.Trace().Enabled() {
+		if err = filepath.WalkDir(r.Directory, printFile); err != nil {
+			log.Warn().Err(err).Msg("failed to walk directory")
+		}
+	}
+
+	log.Info().Msg("repo has been cloned")
+	return nil
+}
+
+func (r *Repo) ShallowClone(ctx context.Context) error {
+	var err error
+
+	r.Directory, err = os.MkdirTemp("/tmp", "kubechecks-repo-")
+	if err != nil {
+		return errors.Wrap(err, "failed to make temp dir")
+	}
+
+	log.Info().
+		Str("temp-dir", r.Directory).
+		Str("clone-url", r.CloneURL).
+		Str("branch", r.BranchName).
+		Msg("cloning git repo")
+
+	//  Attempt to locally clone the repo based on the provided information stored within
+	_, span := tracer.Start(ctx, "ShallowCloneRepo")
+	defer span.End()
+
+	args := []string{"clone", r.CloneURL, r.Directory, "--depth", "1"}
+	cmd := r.execGitCommand(args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Error().Err(err).Msgf("unable to clone repository, %s", out)
+		return err
+	}
+
+	if r.BranchName != "HEAD" {
+		// Fetch SHA
+		args = []string{"fetch", "origin", r.BranchName, "--depth", "1"}
+		cmd = r.execGitCommand(args...)
+		out, err = cmd.CombinedOutput()
+		if err != nil {
+			log.Error().Err(err).Msgf("unable to fetch %s repository, %s", r.BranchName, out)
+			return err
+		}
+		// Checkout SHA
+		args = []string{"checkout", r.BranchName}
+		cmd = r.execGitCommand(args...)
+		out, err = cmd.CombinedOutput()
+		if err != nil {
+			log.Error().Err(err).Msgf("unable to checkout branch %s repository, %s", r.BranchName, out)
+			return err
+		}
 	}
 
 	if log.Trace().Enabled() {
@@ -118,8 +178,24 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 			attribute.String("sha", ref),
 		))
 	defer span.End()
+	merge_command := []string{"merge", ref}
+	// For shallow clones, we need to pull the ref into the repo
+	if r.Shallow {
+		ref = strings.TrimPrefix(ref, "origin/")
+		cmd := r.execGitCommand("fetch", "origin", fmt.Sprintf("%s:%s", ref, ref), "--depth", "1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			telemetry.SetError(span, err, "fetch origin ref")
+			log.Error().Err(err).Msgf("unable to fetch ref %s, %s", ref, out)
+			return err
+		}
+		// When merging shallow clones, we need to allow unrelated histories
+		// and use the "theirs" strategy to avoid conflicts
+		// cons of this is that it may not be entirely accurate and may overwrite changes in the target branch
+		merge_command = []string{"merge", ref, "--allow-unrelated-histories", "-X", "theirs"}
+	}
 
-	cmd := r.execGitCommand("merge", ref)
+	cmd := r.execGitCommand(merge_command...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		telemetry.SetError(span, err, "merge commit into branch")
@@ -131,6 +207,11 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 }
 
 func (r *Repo) Update(ctx context.Context) error {
+	// Since we're shallow cloning, to update we need to wipe the directory and re-clone
+	if r.Shallow {
+		r.Wipe()
+		return r.Clone(ctx)
+	}
 	cmd := r.execGitCommand("pull")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stdout

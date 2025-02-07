@@ -119,6 +119,9 @@ func init() {
 		newStringOpts().
 			withDefault("kubechecks again"))
 	stringSliceFlag(flags, "additional-apps-namespaces", "Additional namespaces other than the ArgoCDNamespace to monitor for applications.")
+	boolFlag(flags, "enable-shallow-clone", "Enable shallow cloning for all git repos.",
+		newBoolOpts().
+			withDefault(false))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()

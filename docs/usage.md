@@ -49,6 +49,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
 |`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|
+|`KUBECHECKS_ENABLE_SHALLOW_CLONE`|Enable shallow cloning for all git repos.|`false`|
 |`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
 |`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks.|`1.23.0`|
 |`KUBECHECKS_GITHUB_APP_ID`|Github App ID.|`0`|

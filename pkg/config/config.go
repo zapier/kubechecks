@@ -38,12 +38,13 @@ type ServerConfig struct {
 	OtelCollectorPort string `mapstructure:"otel-collector-port"`
 
 	// vcs
-	VcsUsername  string `mapstructure:"vcs-username"`
-	VcsEmail     string `mapstructure:"vcs-email"`
-	VcsBaseUrl   string `mapstructure:"vcs-base-url"`
-	VcsUploadUrl string `mapstructure:"vcs-upload-url"` // github enterprise upload URL
-	VcsToken     string `mapstructure:"vcs-token"`
-	VcsType      string `mapstructure:"vcs-type"`
+	VcsUsername        string `mapstructure:"vcs-username"`
+	VcsEmail           string `mapstructure:"vcs-email"`
+	VcsBaseUrl         string `mapstructure:"vcs-base-url"`
+	VcsUploadUrl       string `mapstructure:"vcs-upload-url"` // github enterprise upload URL
+	VcsToken           string `mapstructure:"vcs-token"`
+	VcsType            string `mapstructure:"vcs-type"`
+	EnableShallowClone bool   `mapstructure:"enable-shallow-clone"`
 
 	//github
 	GithubPrivateKey     string `mapstructure:"github-private-key"`
