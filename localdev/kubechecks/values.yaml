@@ -24,6 +24,7 @@ configMap:
     # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
     KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
     KUBECHECKS_ENABLE_CONFTEST: "false"
+    KUBECHECKS_ENABLE_SHALLOW_CLONE: "true"
 
 
 deployment:

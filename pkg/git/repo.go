@@ -53,9 +53,11 @@ func (r *Repo) Clone(ctx context.Context) error {
 
 	var err error
 
-	r.Directory, err = os.MkdirTemp("/tmp", "kubechecks-repo-")
-	if err != nil {
-		return errors.Wrap(err, "failed to make temp dir")
+	if r.Directory == "" {
+		r.Directory, err = os.MkdirTemp("/tmp", "kubechecks-repo-")
+		if err != nil {
+			return errors.Wrap(err, "failed to make temp dir")
+		}
 	}
 
 	log.Info().
@@ -93,9 +95,11 @@ func (r *Repo) Clone(ctx context.Context) error {
 func (r *Repo) ShallowClone(ctx context.Context) error {
 	var err error
 
-	r.Directory, err = os.MkdirTemp("/tmp", "kubechecks-repo-")
-	if err != nil {
-		return errors.Wrap(err, "failed to make temp dir")
+	if r.Directory == "" {
+		r.Directory, err = os.MkdirTemp("/tmp", "kubechecks-repo-")
+		if err != nil {
+			return errors.Wrap(err, "failed to make temp dir")
+		}
 	}
 
 	log.Info().
