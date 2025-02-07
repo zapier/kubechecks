@@ -210,6 +210,10 @@ func (r *Repo) Update(ctx context.Context) error {
 	// Since we're shallow cloning, to update we need to wipe the directory and re-clone
 	if r.Shallow {
 		r.Wipe()
+		err := os.Mkdir(r.Directory, 0700)
+		if err == nil {
+			return errors.Wrap(err, "failed to create repo directory")
+		}
 		return r.Clone(ctx)
 	}
 	cmd := r.execGitCommand("pull")
