@@ -7,6 +7,7 @@ metadata:
   {{- end}}
   labels: {{- include "kubechecks.labels" . | nindent 4 }}
 spec:
+  revisionHistoryLimit: {{ .Values.deployment.revisionHistoryLimit }}
   replicas: {{ .Values.deployment.replicaCount }}
   selector:
     matchLabels:

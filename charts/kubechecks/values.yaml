@@ -40,6 +40,7 @@ deployment:
       memory: 256Mi
       cpu: 200m
 
+  revisionHistoryLimit: 10
   replicaCount: 1
 
   image:
