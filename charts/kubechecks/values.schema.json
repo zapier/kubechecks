@@ -93,6 +93,9 @@
         "readinessProbe": {
           "type": "object"
         },
+        "revisionHistoryLimit": {
+          "type": "integer"
+        },
         "replicaCount": {
           "type": "integer"
         },
