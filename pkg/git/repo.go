@@ -48,7 +48,7 @@ func New(cfg config.ServerConfig, cloneUrl, branchName string) *Repo {
 
 func (r *Repo) Clone(ctx context.Context) error {
 	if r.Shallow {
-		return r.ShallowClone(ctx)
+		return r.shallowClone(ctx)
 	}
 
 	var err error
@@ -92,7 +92,7 @@ func (r *Repo) Clone(ctx context.Context) error {
 	return nil
 }
 
-func (r *Repo) ShallowClone(ctx context.Context) error {
+func (r *Repo) shallowClone(ctx context.Context) error {
 	var err error
 
 	if r.Directory == "" {
@@ -215,7 +215,7 @@ func (r *Repo) Update(ctx context.Context) error {
 	if r.Shallow {
 		r.Wipe()
 		err := os.Mkdir(r.Directory, 0700)
-		if err == nil {
+		if err != nil {
 			return errors.Wrap(err, "failed to create repo directory")
 		}
 		return r.Clone(ctx)
