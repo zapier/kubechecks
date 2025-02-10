@@ -55,7 +55,7 @@ type CheckEvent struct {
 }
 
 type repoManager interface {
-	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
+	Clone(ctx context.Context, cloneURL, branchName string, shallow bool) (*git.Repo, error)
 }
 
 func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
@@ -192,7 +192,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 		return repo, nil
 	}
 
-	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName)
+	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName, ce.ctr.Config.RepoShallowClone)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to clone repo")
 	}
