@@ -13,20 +13,27 @@ import (
 )
 
 // ProcessKustomizationFile processes a kustomization file and returns all the files and directories it references.
-func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string) (files []string, dirs []string, err error) {
+func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string) (files, dirs []string, err error) {
 	dirName := filepath.Dir(relKustomizationPath)
-	return processDir(sourceFS, dirName)
+
+	files, dirs, err = processDir(sourceFS, dirName)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to process kustomize file %q", relKustomizationPath)
+	}
+
+	return files, dirs, nil
 }
 
-func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, err error) {
+func processDir(sourceFS fs.FS, relBase string) (files, dirs []string, err error) {
 	absKustPath := filepath.Join(relBase, "kustomization.yaml")
 
 	// Parse using official Kustomization type
 	file, err := sourceFS.Open(absKustPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil, nil // No kustomization.yaml in this directory
+			return nil, []string{relBase}, nil // No kustomization.yaml in this directory, the dir is the important thing
 		}
+
 		return nil, nil, errors.Wrapf(err, "failed to open file %q", absKustPath)
 	}
 
@@ -44,7 +51,7 @@ func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, 
 	var filesOrDirectories []string
 	filesOrDirectories = append(filesOrDirectories, kust.Bases...) // nolint:staticcheck // deprecated doesn't mean unused
 	filesOrDirectories = append(filesOrDirectories, kust.Resources...)
-	filesOrDirectories = append(filesOrDirectories, getValuesFromKustomizationHelm(&kust)...)
+
 	var directories []string
 	directories = append(directories, kust.Components...)
 
@@ -52,6 +59,10 @@ func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, 
 	files = append(files, kust.Configurations...)
 	files = append(files, kust.Crds...)
 	files = append(files, kust.Transformers...)
+
+	for _, helm := range kust.HelmCharts {
+		files = append(files, helm.ValuesFile)
+	}
 
 	for _, patch := range kust.Patches {
 		if patch.Path != "" {
@@ -93,9 +104,8 @@ func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, 
 		}
 	}
 
-	// We now know this directory has a kustomization.yaml, so add it to "dirs".
-	allDirs := append([]string(nil), relBase)
 	allFiles := append([]string(nil), files...)
+	var allDirs []string
 
 	// process directories and add them
 	for _, relResource := range directories {
@@ -153,12 +163,4 @@ func isRemoteResource(resource string) bool {
 	}
 
 	return false
-}
-
-// getValuesFromKustomizationHelm will parse the helmCharts sections' valueFile field and return them as a slice of strings.
-func getValuesFromKustomizationHelm(kust *types.Kustomization) (files []string) {
-	for _, helm := range kust.HelmCharts {
-		files = append(files, helm.ValuesFile)
-	}
-	return files
 }
