@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/kustomize/api/types"
 	_ "sigs.k8s.io/kustomize/api/types"
 )
 
@@ -232,4 +233,41 @@ dummy:
 		assert.NoError(t, err)
 		assert.Contains(t, files, "testdir/values-dummy.yaml")
 	})
+}
+
+func Test_getValuesFromKustomizationHelm(t *testing.T) {
+	type args struct {
+		kust *types.Kustomization
+	}
+	tests := []struct {
+		name      string
+		args      args
+		wantFiles []string
+	}{
+		{
+			name: "normal",
+			args: args{
+				kust: &types.Kustomization{
+					HelmCharts: []types.HelmChart{
+						{Name: "dummy", ValuesFile: "values-dummy.yaml"},
+					},
+				},
+			},
+			wantFiles: []string{"values-dummy.yaml"},
+		},
+		{
+			name: "helmChart is nil.",
+			args: args{
+				kust: &types.Kustomization{
+					HelmCharts: nil,
+				},
+			},
+			wantFiles: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.wantFiles, getValuesFromKustomizationHelm(tt.args.kust), "getValuesFromKustomizationHelm(%v)", tt.args.kust)
+		})
+	}
 }
