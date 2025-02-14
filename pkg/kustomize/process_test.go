@@ -217,7 +217,7 @@ helmCharts:
 `
 		valueContent := `
 dummy:
-  lables:
+  labels:
     release: dummy
 `
 		sourceFS := fstest.MapFS{
