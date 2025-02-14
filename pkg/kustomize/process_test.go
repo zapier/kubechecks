@@ -210,7 +210,7 @@ helmCharts:
     repo: https://dummy.local/repo
     version: 1.2.3
     releaseName: dummy
-    namespace: dumy
+    namespace: dummy
     includeCRDs: true
     valuesFile: values-dummy.yaml
 `
