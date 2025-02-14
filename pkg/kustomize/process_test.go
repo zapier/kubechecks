@@ -203,4 +203,33 @@ resources:
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to stat testdir/missing-resource.yaml")
 	})
+	t.Run("helmChart", func(t *testing.T) {
+		kustContent := `
+helmCharts:
+  - name: dummy
+    repo: https://dummy.local/repo
+    version: 1.2.3
+    releaseName: dummy
+    namespace: dumy
+    includeCRDs: true
+    valuesFile: values-dummy.yaml
+`
+		valueContent := `
+dummy:
+  lables:
+    release: dummy
+`
+		sourceFS := fstest.MapFS{
+			"testdir/kustomization.yaml": &fstest.MapFile{
+				Data: []byte(kustContent),
+			},
+			"testdir/values-dummy.yaml": &fstest.MapFile{
+				Data: []byte(valueContent),
+			},
+		}
+
+		files, _, err := processDir(sourceFS, "testdir")
+		assert.NoError(t, err)
+		assert.Contains(t, files, "testdir/values-dummy.yaml")
+	})
 }

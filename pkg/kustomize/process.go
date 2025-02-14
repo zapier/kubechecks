@@ -44,7 +44,7 @@ func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, 
 	var filesOrDirectories []string
 	filesOrDirectories = append(filesOrDirectories, kust.Bases...) // nolint:staticcheck // deprecated doesn't mean unused
 	filesOrDirectories = append(filesOrDirectories, kust.Resources...)
-
+	filesOrDirectories = append(filesOrDirectories, getValuesFromKustomizationHelm(&kust)...)
 	var directories []string
 	directories = append(directories, kust.Components...)
 
@@ -153,4 +153,12 @@ func isRemoteResource(resource string) bool {
 	}
 
 	return false
+}
+
+// getValuesFromKustomizationHelm will parse the helmCharts sections' valueFile field and return them as a slice of strings.
+func getValuesFromKustomizationHelm(kust *types.Kustomization) (files []string) {
+	for _, helm := range kust.HelmCharts {
+		files = append(files, helm.ValuesFile)
+	}
+	return files
 }
