@@ -406,5 +406,7 @@ func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf(":hourglass: kubechecks %s running ... ", ce.ctr.Config.Identifier))
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf(`
+	## Kubechecks %s Report
+	:hourglass: kubechecks running ... `, ce.ctr.Config.Identifier))
 }
