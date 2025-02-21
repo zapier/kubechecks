@@ -45,24 +45,26 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 
 	log.Debug().Msg("hiding outdated comments")
 
-	// loop through notes and collapse any that are from the current user
+	// loop through notes and collapse any that are from the current user and current identifier
 	for _, note := range notes {
 
 		// Do not try to hide the note if
 		// note user is not the gitlabTokenUser
 		// note is an internal system note such as notes on commit messages
 		// note is already hidden
-		if note.Author.Username != c.username || note.System || strings.Contains(note.Body, "<summary><i>OUTDATED: Kubechecks Report</i></summary>") {
+		if note.Author.Username != c.username || note.System ||
+			strings.Contains(note.Body, fmt.Sprintf("<summary><i>OUTDATED: Kubechecks %s Report</i></summary>", c.cfg.Identifier)) ||
+			!strings.Contains(note.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
 			continue
 		}
 
 		newBody := fmt.Sprintf(`
 <details>
-	<summary><i>OUTDATED: Kubechecks Report</i></summary>
+	<summary><i>OUTDATED: Kubechecks %s Report</i></summary>
 	
 %s
 </details>
-			`, note.Body)
+			`, c.cfg.Identifier, note.Body)
 
 		if len(newBody) > MaxCommentLength {
 			log.Warn().Int("original_length", len(newBody)).Msg("trimming the comment size")
@@ -114,7 +116,7 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 	log.Debug().Msg("deleting outdated comments")
 
 	for _, note := range notes {
-		if note.Author.Username == c.username {
+		if note.Author.Username == c.username && strings.Contains(note.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
 			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
 			_, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
 			if err != nil {

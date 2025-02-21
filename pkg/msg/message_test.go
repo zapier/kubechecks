@@ -31,8 +31,8 @@ func TestBuildComment(t *testing.T) {
 	}
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false)
-	assert.Equal(t, `# Kubechecks Report
+	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier")
+	assert.Equal(t, `# Kubechecks test-identifier Report
 <details>
 <summary>
 
@@ -79,8 +79,8 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false)
-	assert.Equal(t, `# Kubechecks Report
+	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier")
+	assert.Equal(t, `# Kubechecks test-identifier Report
 <details>
 <summary>
 
@@ -183,7 +183,7 @@ func TestMultipleItemsWithNewlines(t *testing.T) {
 		Summary: "summary-2",
 		Details: "detail-2",
 	})
-	result := message.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false)
+	result := message.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier")
 
 	// header rows need double newlines before and after
 	index := 0
