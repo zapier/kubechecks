@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"sigs.k8s.io/kustomize/api/types"
 	_ "sigs.k8s.io/kustomize/api/types"
 )
 
@@ -56,10 +55,10 @@ func (d dummyFileInfo) Sys() interface{}   { return nil }
 func TestProcessDir(t *testing.T) {
 	t.Run("NoKustomization", func(t *testing.T) {
 		sourceFS := fstest.MapFS{}
-		files, dirs, err := processDir(sourceFS, "testdir")
+		files, dirs, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		assert.NoError(t, err)
 		assert.Empty(t, files)
-		assert.Empty(t, dirs)
+		assert.Equal(t, []string{"testdir"}, dirs)
 	})
 
 	t.Run("OpenError", func(t *testing.T) {
@@ -71,7 +70,7 @@ func TestProcessDir(t *testing.T) {
 				return nil, fs.ErrNotExist
 			},
 		}
-		_, _, err := processDir(mfs, "testdir")
+		_, _, err := ProcessKustomizationFile(mfs, filepath.Join("testdir", "kustomation.yaml"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to open file")
 	})
@@ -85,7 +84,7 @@ func TestProcessDir(t *testing.T) {
 				return nil, fs.ErrNotExist
 			},
 		}
-		_, _, err := processDir(mfs, "testdir")
+		_, _, err := ProcessKustomizationFile(mfs, filepath.Join("testdir", "kustomization.yaml"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to read file")
 	})
@@ -93,16 +92,18 @@ func TestProcessDir(t *testing.T) {
 	t.Run("ValidKustomization", func(t *testing.T) {
 		kustContent := `
 resources:
- - resource.yaml
+- resource.yaml
+- ../rootdir
 bases:
- - base
+- base
 components:
- - components
+- components
 `
 		sourceFS := fstest.MapFS{
 			"testdir/kustomization.yaml": &fstest.MapFile{
 				Data: []byte(kustContent),
 			},
+			"rootdir/file.yaml":     &fstest.MapFile{},
 			"testdir/resource.yaml": &fstest.MapFile{},
 			"testdir/base/kustomization.yaml": &fstest.MapFile{
 				Data: []byte(`resources: ["base_resource.yaml"]`),
@@ -113,7 +114,7 @@ components:
 			},
 		}
 
-		files, dir, err := processDir(sourceFS, "testdir")
+		files, dirs, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		require.NoError(t, err)
 
 		expectedFiles := []string{
@@ -123,18 +124,44 @@ components:
 			"testdir/base/base_resource.yaml",
 			"testdir/components/kustomization.yaml",
 		}
+		expectedDirs := []string{
+			"rootdir",
+		}
 		sort.Strings(files)
 		sort.Strings(expectedFiles)
 		assert.Equal(t, expectedFiles, files)
+		assert.Equal(t, expectedDirs, dirs)
+	})
 
-		expectedDirs := []string{
-			"testdir",
-			"testdir/base",
-			"testdir/components",
+	t.Run("relative components", func(t *testing.T) {
+		sourceFS := fstest.MapFS{
+			"apps/app1/overlays/env1/kustomization.yaml": &fstest.MapFile{
+				Data: []byte(`
+components:
+  - ../../components/component1
+  - ../../components/component2
+`),
+			},
+			"apps/app1/components/component1/kustomization.yaml": &fstest.MapFile{
+				Data: []byte(`
+resources:
+- resource1.yaml`),
+			},
+			"apps/app1/components/component1/resource1.yaml": &fstest.MapFile{},
+			"apps/app1/components/component2/resource1.yaml": &fstest.MapFile{},
+			"apps/app1/components/component2/resource2.yaml": &fstest.MapFile{},
 		}
-		sort.Strings(dir)
-		sort.Strings(expectedDirs)
-		assert.Equal(t, expectedDirs, dir)
+
+		files, dirs, err := ProcessKustomizationFile(sourceFS, filepath.Join("apps", "app1", "overlays", "env1", "kustomization.yaml"))
+		require.NoError(t, err)
+		assert.Equal(t, []string{
+			"apps/app1/overlays/env1/kustomization.yaml",
+			"apps/app1/components/component1/kustomization.yaml",
+			"apps/app1/components/component1/resource1.yaml",
+		}, files)
+		assert.Equal(t, []string{
+			"apps/app1/components/component2",
+		}, dirs)
 	})
 
 	t.Run("StrategicMergePatch", func(t *testing.T) {
@@ -150,7 +177,7 @@ patchesStrategicMerge:
 			},
 		}
 
-		files, _, err := processDir(sourceFS, "testdir")
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"testdir/kustomization.yaml"}, files)
 	})
@@ -167,7 +194,7 @@ patches:
 			"testdir/patch.yaml": &fstest.MapFile{},
 		}
 
-		files, _, err := processDir(sourceFS, "testdir")
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		require.NoError(t, err)
 		assert.Contains(t, files, "testdir/patch.yaml")
 	})
@@ -184,7 +211,7 @@ patchesJson6902:
 			"testdir/patch.yaml": &fstest.MapFile{},
 		}
 
-		files, _, err := processDir(sourceFS, "testdir")
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		require.NoError(t, err)
 		assert.Contains(t, files, "testdir/patch.yaml")
 	})
@@ -200,10 +227,11 @@ resources:
 			},
 		}
 
-		_, _, err := processDir(sourceFS, "testdir")
+		_, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to stat testdir/missing-resource.yaml")
 	})
+
 	t.Run("helmChart", func(t *testing.T) {
 		kustContent := `
 helmCharts:
@@ -229,45 +257,8 @@ dummy:
 			},
 		}
 
-		files, _, err := processDir(sourceFS, "testdir")
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		assert.NoError(t, err)
 		assert.Contains(t, files, "testdir/values-dummy.yaml")
 	})
-}
-
-func Test_getValuesFromKustomizationHelm(t *testing.T) {
-	type args struct {
-		kust *types.Kustomization
-	}
-	tests := []struct {
-		name      string
-		args      args
-		wantFiles []string
-	}{
-		{
-			name: "normal",
-			args: args{
-				kust: &types.Kustomization{
-					HelmCharts: []types.HelmChart{
-						{Name: "dummy", ValuesFile: "values-dummy.yaml"},
-					},
-				},
-			},
-			wantFiles: []string{"values-dummy.yaml"},
-		},
-		{
-			name: "helmChart is nil.",
-			args: args{
-				kust: &types.Kustomization{
-					HelmCharts: nil,
-				},
-			},
-			wantFiles: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.wantFiles, getValuesFromKustomizationHelm(tt.args.kust), "getValuesFromKustomizationHelm(%v)", tt.args.kust)
-		})
-	}
 }
