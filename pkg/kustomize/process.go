@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"sigs.k8s.io/kustomize/api/types"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
@@ -16,7 +17,11 @@ import (
 func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string) (files, dirs []string, err error) {
 	dirName := filepath.Dir(relKustomizationPath)
 
-	files, dirs, err = processDir(sourceFS, dirName)
+	proc := processor{
+		visitedDirs: make(map[string]struct{}),
+	}
+
+	files, dirs, err = proc.processDir(sourceFS, dirName)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to process kustomize file %q", relKustomizationPath)
 	}
@@ -24,7 +29,19 @@ func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string) (file
 	return files, dirs, nil
 }
 
-func processDir(sourceFS fs.FS, relBase string) (files, dirs []string, err error) {
+type processor struct {
+	visitedDirs map[string]struct{}
+}
+
+func (p processor) processDir(sourceFS fs.FS, relBase string) (files, dirs []string, err error) {
+	if _, ok := p.visitedDirs[relBase]; ok {
+		log.Warn().Msgf("directory %q already processed", relBase)
+		return nil, nil, nil
+	}
+
+	log.Info().Msgf("processing directory %q", relBase)
+	p.visitedDirs[relBase] = struct{}{}
+
 	absKustPath := filepath.Join(relBase, "kustomization.yaml")
 
 	// Parse using official Kustomization type
@@ -109,7 +126,7 @@ func processDir(sourceFS fs.FS, relBase string) (files, dirs []string, err error
 
 	// process directories and add them
 	for _, relResource := range directories {
-		subFiles, subDirs, err := processDir(sourceFS, relResource)
+		subFiles, subDirs, err := p.processDir(sourceFS, relResource)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to process %q", relResource)
 		}

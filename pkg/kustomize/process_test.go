@@ -55,7 +55,7 @@ func (d dummyFileInfo) Sys() interface{}   { return nil }
 func TestProcessDir(t *testing.T) {
 	t.Run("NoKustomization", func(t *testing.T) {
 		sourceFS := fstest.MapFS{}
-		files, dirs, err := processDir(sourceFS, "testdir")
+		files, dirs, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		assert.NoError(t, err)
 		assert.Empty(t, files)
 		assert.Equal(t, []string{"testdir"}, dirs)
@@ -70,7 +70,7 @@ func TestProcessDir(t *testing.T) {
 				return nil, fs.ErrNotExist
 			},
 		}
-		_, _, err := processDir(mfs, "testdir")
+		_, _, err := ProcessKustomizationFile(mfs, filepath.Join("testdir", "kustomation.yaml"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to open file")
 	})
@@ -84,7 +84,7 @@ func TestProcessDir(t *testing.T) {
 				return nil, fs.ErrNotExist
 			},
 		}
-		_, _, err := processDir(mfs, "testdir")
+		_, _, err := ProcessKustomizationFile(mfs, filepath.Join("testdir", "kustomization.yaml"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to read file")
 	})
@@ -114,7 +114,7 @@ components:
 			},
 		}
 
-		files, dirs, err := processDir(sourceFS, "testdir")
+		files, dirs, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		require.NoError(t, err)
 
 		expectedFiles := []string{
@@ -152,7 +152,7 @@ resources:
 			"apps/app1/components/component2/resource2.yaml": &fstest.MapFile{},
 		}
 
-		files, dirs, err := processDir(sourceFS, "apps/app1/overlays/env1")
+		files, dirs, err := ProcessKustomizationFile(sourceFS, filepath.Join("apps", "app1", "overlays", "env1", "kustomization.yaml"))
 		require.NoError(t, err)
 		assert.Equal(t, []string{
 			"apps/app1/overlays/env1/kustomization.yaml",
@@ -177,7 +177,7 @@ patchesStrategicMerge:
 			},
 		}
 
-		files, _, err := processDir(sourceFS, "testdir")
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"testdir/kustomization.yaml"}, files)
 	})
@@ -194,7 +194,7 @@ patches:
 			"testdir/patch.yaml": &fstest.MapFile{},
 		}
 
-		files, _, err := processDir(sourceFS, "testdir")
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		require.NoError(t, err)
 		assert.Contains(t, files, "testdir/patch.yaml")
 	})
@@ -211,7 +211,7 @@ patchesJson6902:
 			"testdir/patch.yaml": &fstest.MapFile{},
 		}
 
-		files, _, err := processDir(sourceFS, "testdir")
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		require.NoError(t, err)
 		assert.Contains(t, files, "testdir/patch.yaml")
 	})
@@ -227,7 +227,7 @@ resources:
 			},
 		}
 
-		_, _, err := processDir(sourceFS, "testdir")
+		_, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to stat testdir/missing-resource.yaml")
 	})
@@ -257,7 +257,7 @@ dummy:
 			},
 		}
 
-		files, _, err := processDir(sourceFS, "testdir")
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
 		assert.NoError(t, err)
 		assert.Contains(t, files, "testdir/values-dummy.yaml")
 	})
