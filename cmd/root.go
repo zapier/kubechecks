@@ -119,6 +119,9 @@ func init() {
 		newStringOpts().
 			withDefault("kubechecks again"))
 	stringSliceFlag(flags, "additional-apps-namespaces", "Additional namespaces other than the ArgoCDNamespace to monitor for applications.")
+	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
+		newStringOpts().
+			withDefault(""))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()
