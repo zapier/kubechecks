@@ -8,25 +8,49 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"sigs.k8s.io/kustomize/api/types"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
 // ProcessKustomizationFile processes a kustomization file and returns all the files and directories it references.
-func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string) (files []string, dirs []string, err error) {
+func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string) (files, dirs []string, err error) {
 	dirName := filepath.Dir(relKustomizationPath)
-	return processDir(sourceFS, dirName)
+
+	proc := processor{
+		visitedDirs: make(map[string]struct{}),
+	}
+
+	files, dirs, err = proc.processDir(sourceFS, dirName)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to process kustomize file %q", relKustomizationPath)
+	}
+
+	return files, dirs, nil
 }
 
-func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, err error) {
+type processor struct {
+	visitedDirs map[string]struct{}
+}
+
+func (p processor) processDir(sourceFS fs.FS, relBase string) (files, dirs []string, err error) {
+	if _, ok := p.visitedDirs[relBase]; ok {
+		log.Warn().Msgf("directory %q already processed", relBase)
+		return nil, nil, nil
+	}
+
+	log.Info().Msgf("processing directory %q", relBase)
+	p.visitedDirs[relBase] = struct{}{}
+
 	absKustPath := filepath.Join(relBase, "kustomization.yaml")
 
 	// Parse using official Kustomization type
 	file, err := sourceFS.Open(absKustPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil, nil // No kustomization.yaml in this directory
+			return nil, []string{relBase}, nil // No kustomization.yaml in this directory, the dir is the important thing
 		}
+
 		return nil, nil, errors.Wrapf(err, "failed to open file %q", absKustPath)
 	}
 
@@ -52,6 +76,10 @@ func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, 
 	files = append(files, kust.Configurations...)
 	files = append(files, kust.Crds...)
 	files = append(files, kust.Transformers...)
+
+	for _, helm := range kust.HelmCharts {
+		files = append(files, helm.ValuesFile)
+	}
 
 	for _, patch := range kust.Patches {
 		if patch.Path != "" {
@@ -93,13 +121,12 @@ func processDir(sourceFS fs.FS, relBase string) (files []string, dirs []string, 
 		}
 	}
 
-	// We now know this directory has a kustomization.yaml, so add it to "dirs".
-	allDirs := append([]string(nil), relBase)
 	allFiles := append([]string(nil), files...)
+	var allDirs []string
 
 	// process directories and add them
 	for _, relResource := range directories {
-		subFiles, subDirs, err := processDir(sourceFS, relResource)
+		subFiles, subDirs, err := p.processDir(sourceFS, relResource)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to process %q", relResource)
 		}

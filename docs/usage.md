@@ -54,6 +54,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_GITHUB_APP_ID`|Github App ID.|`0`|
 |`KUBECHECKS_GITHUB_INSTALLATION_ID`|Github Installation ID.|`0`|
 |`KUBECHECKS_GITHUB_PRIVATE_KEY`|Github App Private Key.||
+|`KUBECHECKS_IDENTIFIER`|Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.||
 |`KUBECHECKS_KUBERNETES_CLUSTERID`|Kubernetes Cluster ID, must be specified if kubernetes-type is eks.||
 |`KUBECHECKS_KUBERNETES_CONFIG`|Path to your kubernetes config file, used to monitor applications.||
 |`KUBECHECKS_KUBERNETES_TYPE`|Kubernetes Type One of eks, or local.|`local`|

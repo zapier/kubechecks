@@ -142,14 +142,14 @@ func (m *Message) buildFooter(start time.Time, commitSHA, labelFilter string, sh
 }
 
 // BuildComment iterates the map of all apps in this message, building a final comment from their current state
-func (m *Message) BuildComment(ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool) string {
+func (m *Message) BuildComment(ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool, identifier string) string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
 
 	names := getSortedKeys(m.apps)
 
 	var sb strings.Builder
-	sb.WriteString("# Kubechecks Report\n")
+	sb.WriteString(fmt.Sprintf("# Kubechecks %s Report\n", identifier))
 
 	updateWritten := false
 	for _, appName := range names {

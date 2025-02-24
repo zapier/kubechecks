@@ -86,6 +86,7 @@ type ServerConfig struct {
 	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
 	MaxConcurrenctChecks     int           `mapstructure:"max-concurrenct-checks"`
 	ReplanCommentMessage     string        `mapstructure:"replan-comment-msg"`
+	Identifier               string        `mapstructure:"identifier"`
 }
 
 func New() (ServerConfig, error) {

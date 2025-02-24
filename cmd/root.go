@@ -122,6 +122,9 @@ func init() {
 	boolFlag(flags, "repo-shallow-clone", "Enable shallow cloning for all git repos.",
 		newBoolOpts().
 			withDefault(false))
+	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
+		newStringOpts().
+			withDefault(""))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()

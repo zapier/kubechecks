@@ -26,6 +26,7 @@ configMap:
     KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
     KUBECHECKS_ENABLE_CONFTEST: "false"
     KUBECHECKS_REPO_SHALLOW_CLONE: "true"
+    KUBECHECKS_IDENTIFIER: "test"
 
 deployment:
   annotations:
