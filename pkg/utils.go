@@ -16,6 +16,7 @@ func Pointer[T interface{}](item T) *T {
 }
 
 func WipeDir(dir string) {
+	log.Debug().Str("path", dir).Msg("wiping path")
 	if err := os.RemoveAll(dir); err != nil {
 		log.Error().
 			Err(err).

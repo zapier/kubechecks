@@ -79,6 +79,7 @@ type ServerConfig struct {
 	MonitorAllApplications   bool          `mapstructure:"monitor-all-applications"`
 	OpenAIAPIToken           string        `mapstructure:"openai-api-token"`
 	RepoRefreshInterval      time.Duration `mapstructure:"repo-refresh-interval"`
+	RepoShallowClone         bool          `mapstructure:"repo-shallow-clone"`
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
