@@ -275,10 +275,10 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf(`
+		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("
 		## Kubechecks %s Report
 		No changes
-		`, ce.ctr.Config.Identifier)); err != nil {
+		", ce.ctr.Config.Identifier)); err != nil {
 			return errors.Wrap(err, "failed to post changes")
 		}
 		return nil
@@ -390,7 +390,7 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 
 const (
 	errorCommentFormat = `
-:warning:  **Error while %s** :warning: 
+:warning:  **Error while %s** :warning:
 ` + "```" + `
 %v
 ` + "```" + `
@@ -406,7 +406,7 @@ func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf(`
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("
 	## Kubechecks %s Report
-	:hourglass: kubechecks running ... `, ce.ctr.Config.Identifier))
+	:hourglass: kubechecks running ... ", ce.ctr.Config.Identifier))
 }
