@@ -188,7 +188,6 @@ earthly_build(
         '--HELM_VERSION='+tool_versions.get('helm'),
         '--KUBECONFORM_VERSION='+tool_versions.get('kubeconform'),
         '--KUSTOMIZE_VERSION='+tool_versions.get('kustomize'),
-        '--STATICCHECK_VERSION='+tool_versions.get('staticcheck'),
         '--GIT_COMMIT='+git_commit,
         ],
 )
@@ -208,7 +207,7 @@ cmd_button('restart-pod',
 )
 
 
-helm_resource(name='kubechecks', 
+helm_resource(name='kubechecks',
               chart='./charts/kubechecks',
               image_deps=['kubechecks'],
               image_keys=[('deployment.image.name', 'deployment.image.tag')],

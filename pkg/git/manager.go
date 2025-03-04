@@ -22,8 +22,11 @@ func NewRepoManager(cfg config.ServerConfig) *RepoManager {
 	return &RepoManager{cfg: cfg}
 }
 
-func (rm *RepoManager) Clone(ctx context.Context, cloneUrl, branchName string) (*Repo, error) {
+func (rm *RepoManager) Clone(ctx context.Context, cloneUrl, branchName string, shallow bool) (*Repo, error) {
 	repo := New(rm.cfg, cloneUrl, branchName)
+	if shallow {
+		repo.Shallow = true
+	}
 
 	if err := repo.Clone(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to clone repository")

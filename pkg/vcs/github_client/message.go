@@ -201,7 +201,7 @@ func (c *Client) pruneOldComments(ctx context.Context, pr vcs.PullRequest, comme
 	log.Debug().Msgf("Pruning messages from PR %d in repo %s", pr.CheckID, pr.FullName)
 
 	for _, comment := range comments {
-		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) {
+		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) || strings.Contains(*comment.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
 			_, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *comment.ID)
 			if err != nil {
 				return fmt.Errorf("failed to delete comment: %w", err)
@@ -219,8 +219,8 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, pr vcs.PullRequest, c
 	log.Debug().Msgf("Hiding kubecheck messages in PR %d in repo %s", pr.CheckID, pr.FullName)
 
 	for _, comment := range comments {
-		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) {
-			// GitHub API does not expose minimizeComment API. It's only available from the GraphQL API
+		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) || strings.Contains(*comment.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
+			// Github API does not expose minimizeComment API. IT's only available from the GraphQL API
 			// https://docs.github.com/en/graphql/reference/mutations#minimizecomment
 			var m struct {
 				MinimizeComment struct {

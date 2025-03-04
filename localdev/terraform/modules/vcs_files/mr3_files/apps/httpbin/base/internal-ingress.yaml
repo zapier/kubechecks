@@ -11,5 +11,8 @@ spec:
         paths:
           - path: /helloworld/(.*)
             backend:
-              serviceName: helloworld-svc
-              servicePort: 8080
+              service:
+                name: helloworld-svc
+                port:
+                  name: http
+            pathType: ImplementationSpecific

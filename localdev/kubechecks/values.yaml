@@ -22,16 +22,18 @@ configMap:
     #
     # KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"
     # KUBECHECKS_SCHEMAS_LOCATION: https://github.com/zapier/kubecheck-schemas.git
+    KUBECHECKS_REPO_REFRESH_INTERVAL: 30s
     KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "delete"
     KUBECHECKS_ENABLE_CONFTEST: "false"
-
+    KUBECHECKS_REPO_SHALLOW_CLONE: "true"
+    KUBECHECKS_IDENTIFIER: "test"
 
 deployment:
   annotations:
     reloader.stakater.com/auto: "true" 
   
   image:
-    pullPolicy: Never
+    pullPolicy: IfNotPresent
     name: "kubechecks"
     tag: ""
 

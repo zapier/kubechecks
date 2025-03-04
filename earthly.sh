@@ -38,6 +38,5 @@ earthly $* \
   --HELM_VERSION=${helm_tool_version} \
   --KUBECONFORM_VERSION=${kubeconform_tool_version} \
   --KUSTOMIZE_VERSION=${kustomize_tool_version} \
-  --STATICCHECK_VERSION=${staticcheck_tool_version} \
   --GIT_COMMIT=$(git rev-parse --short HEAD) \
   --KUBECHECKS_LOG_LEVEL=debug

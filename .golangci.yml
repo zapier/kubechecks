@@ -1,0 +1,16 @@
+run:
+  tests: false
+
+linters:
+  enable:
+    - bodyclose
+    - durationcheck
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unparam
+    - unused
+    - usestdlibvars
+    - usetesting

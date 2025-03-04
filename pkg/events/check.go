@@ -55,7 +55,7 @@ type CheckEvent struct {
 }
 
 type repoManager interface {
-	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
+	Clone(ctx context.Context, cloneURL, branchName string, shallow bool) (*git.Repo, error)
 }
 
 func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
@@ -192,7 +192,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 		return repo, nil
 	}
 
-	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName)
+	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName, ce.ctr.Config.RepoShallowClone)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to clone repo")
 	}
@@ -275,7 +275,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "No changes"); err != nil {
+		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
 			return errors.Wrap(err, "failed to post changes")
 		}
 		return nil
@@ -325,7 +325,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	ce.logger.Info().Msg("Finished")
 
-	comment := ce.vcsNote.BuildComment(ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo)
+	comment := ce.vcsNote.BuildComment(ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo, ce.ctr.Config.Identifier)
 
 	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
 		return errors.Wrap(err, "failed to push comment")
@@ -387,7 +387,7 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 
 const (
 	errorCommentFormat = `
-:warning:  **Error while %s** :warning: 
+:warning:  **Error while %s** :warning:
 ` + "```" + `
 %v
 ` + "```" + `
@@ -403,21 +403,5 @@ func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, ":hourglass: kubechecks running ... ")
-}
-
-// cleanupGetManifestsError takes an error as input and returns a simplified and more user-friendly error message.
-// It reformats Helm error messages by removing excess information, and makes file paths relative to the git repo root.
-func cleanupGetManifestsError(err error, repoDirectory string) string {
-	// cleanup the chonky helm error message for a better DX
-	errStr := err.Error()
-	if strings.Contains(errStr, "helm template") && strings.Contains(errStr, "failed exit status") {
-		errMsgIdx := strings.Index(errStr, "Error:")
-		errStr = fmt.Sprintf("Helm %s", errStr[errMsgIdx:])
-	}
-
-	// strip the temp directory from any files mentioned to make file paths relative to git repo root
-	errStr = strings.ReplaceAll(errStr, repoDirectory+"/", "")
-
-	return errStr
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\n:hourglass: kubechecks running...", ce.ctr.Config.Identifier))
 }

@@ -2,6 +2,7 @@ package gitlab_client
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -25,7 +26,7 @@ func getBackOff() *backoff.ExponentialBackOff {
 func checkReturnForBackoff(resp *gitlab.Response, err error) error {
 	// if the error is nil lets check it out
 	if resp != nil {
-		if resp.StatusCode == 429 {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			log.Warn().Msg("being rate limited doing backoff")
 			return fmt.Errorf("%s", "Rate Limited")
 		}
