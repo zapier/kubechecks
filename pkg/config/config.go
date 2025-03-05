@@ -70,6 +70,7 @@ type ServerConfig struct {
 	// -- preupgrade
 	EnablePreupgrade     bool            `mapstructure:"enable-preupgrade"`
 	WorstPreupgradeState pkg.CommitState `mapstructure:"worst-preupgrade-state"`
+	GeneratedStore       string          `mapstructure:"generated-store"`
 
 	// misc
 	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`

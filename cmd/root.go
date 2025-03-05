@@ -125,6 +125,9 @@ func init() {
 	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
 		newStringOpts().
 			withDefault(""))
+	stringFlag(flags, "generated-store", "URL for the kubepug generated store.",
+		newStringOpts().
+			withDefault("https://kubepug.xyz/data/data.json"))
 
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()
