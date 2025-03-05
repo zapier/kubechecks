@@ -7,14 +7,15 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kubepug/kubepug/lib"
+	"github.com/kubepug/kubepug/pkg/results"
 	"github.com/masterminds/semver"
 	"github.com/olekukonko/tablewriter"
-	"github.com/rikatz/kubepug/lib"
-	"github.com/rikatz/kubepug/pkg/results"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
@@ -22,7 +23,7 @@ const docLinkFmt = "[%s Deprecation Notes](https://kubernetes.io/docs/reference/
 
 var tracer = otel.Tracer("pkg/checks/preupgrade")
 
-func checkApp(ctx context.Context, appName, targetKubernetesVersion string, manifests []string) (msg.Result, error) {
+func checkApp(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion string, manifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "KubePug")
 	defer span.End()
 
@@ -56,14 +57,17 @@ func checkApp(ctx context.Context, appName, targetKubernetesVersion string, mani
 	if err != nil {
 		return msg.Result{}, err
 	}
+
 	config := lib.Config{
-		K8sVersion:      fmt.Sprintf("v%s", nextVersion.String()),
-		ForceDownload:   false,
-		APIWalk:         true,
-		ShowDescription: true,
-		Input:           tempDir,
+		K8sVersion:     fmt.Sprintf("v%s", nextVersion.String()),
+		Input:          tempDir,
+		GeneratedStore: ctr.Config.GeneratedStore,
 	}
-	kubepug := lib.NewKubepug(config)
+
+	kubepug, err := lib.NewKubepug(&config)
+	if err != nil {
+		return msg.Result{}, err
+	}
 
 	result, err := kubepug.GetDeprecated()
 	if err != nil {

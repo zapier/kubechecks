@@ -8,5 +8,5 @@ import (
 )
 
 func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
-	return checkApp(ctx, request.AppName, request.KubernetesVersion, request.YamlManifests)
+	return checkApp(ctx, request.Container, request.AppName, request.KubernetesVersion, request.YamlManifests)
 }
