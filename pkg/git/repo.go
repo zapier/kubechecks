@@ -3,14 +3,18 @@ package git
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -357,6 +361,51 @@ func getCloneUrl(user string, cfg config.ServerConfig) (string, error) {
 		}
 		hostname = parts.Host
 		scheme = parts.Scheme
+	}
+
+	if cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != "" {
+		client := &http.Client{
+			Timeout: 5 * time.Minute,
+		}
+		stringAppId := fmt.Sprintf("%d", cfg.GithubAppID)
+		jwt, err := pkg.CreateJWT(cfg.GithubPrivateKey, stringAppId)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to create jwt")
+		}
+		url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", cfg.GithubInstallationID)
+
+		req, err := http.NewRequest("POST", url, nil)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to create request")
+		}
+		req.Header.Add("Accept", "application/vnd.github.v3+json")
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", jwt))
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to get response")
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to read response")
+		}
+
+		var result interface{}
+		err = json.Unmarshal(body, &result)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to unmarshal response")
+		}
+
+		data, ok := result.(map[string]interface{})
+		if !ok {
+			return "", errors.New("failed to convert response to map")
+		}
+
+		if token, exists := data["token"]; exists {
+			user = fmt.Sprintf("x-access-token:%s", token.(string))
+		}
 	}
 
 	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, vcsToken, hostname), nil
