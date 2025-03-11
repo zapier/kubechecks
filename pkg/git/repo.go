@@ -374,7 +374,7 @@ func getCloneUrl(user string, cfg config.ServerConfig) (string, error) {
 		}
 		url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", cfg.GithubInstallationID)
 
-		req, err := http.NewRequest("POST", url, nil)
+		req, err := http.NewRequest(http.MethodPost, url, nil)
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to create request")
 		}
