@@ -1,8 +1,7 @@
 module github.com/zapier/kubechecks
 
 go 1.22.0
-
-toolchain go1.22.7
+toolchain go1.24.1
 
 require (
 	github.com/argoproj/argo-cd/v2 v2.13.1
@@ -53,7 +52,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.33.0
 	go.opentelemetry.io/otel/trace v1.33.0
 	golang.org/x/exp v0.0.0-20240112132812-db7319d0e0e3
-	golang.org/x/net v0.33.0
+	golang.org/x/net v0.37.0
 	golang.org/x/oauth2 v0.24.0
 	google.golang.org/grpc v1.67.1
 	gopkg.in/dealancer/validate.v2 v2.1.0
@@ -274,12 +273,12 @@ require (
 	go.starlark.net v0.0.0-20231121155337-90ade8b19d09 // indirect
 	go.uber.org/automaxprocs v1.5.3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/mod v0.18.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/term v0.30.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
 	golang.org/x/tools v0.22.0 // indirect
 	google.golang.org/api v0.171.0 // indirect
