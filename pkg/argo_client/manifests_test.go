@@ -12,6 +12,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zapier/kubechecks/pkg"
@@ -570,4 +571,219 @@ func (s set[T]) Minus(other set[T]) set[T] {
 		result.Remove(k)
 	}
 	return result
+}
+
+func TestParseChartYAML(t *testing.T) {
+	// Create a temporary directory for test files
+	tempDir, err := os.MkdirTemp("", "chart-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	testCases := map[string]struct {
+		chartContent string
+		expectedDeps []struct {
+			Name       string
+			Version    string
+			Repository string
+		}
+		expectError bool
+	}{
+		"valid chart with dependencies": {
+			chartContent: `apiVersion: v2
+name: test-chart
+version: 1.0.0
+dependencies:
+  - name: dependency1
+    version: 1.2.3
+    repository: https://example.com/charts
+  - name: dependency2
+    version: 2.0.0
+    repository: file://../dependency2`,
+			expectedDeps: []struct {
+				Name       string
+				Version    string
+				Repository string
+			}{
+				{Name: "dependency1", Version: "1.2.3", Repository: "https://example.com/charts"},
+				{Name: "dependency2", Version: "2.0.0", Repository: "file://../dependency2"},
+			},
+			expectError: false,
+		},
+		"valid chart without dependencies": {
+			chartContent: `apiVersion: v2
+name: test-chart
+version: 1.0.0`,
+			expectedDeps: []struct {
+				Name       string
+				Version    string
+				Repository string
+			}{},
+			expectError: false,
+		},
+		"invalid yaml": {
+			chartContent: `apiVersion: v2
+name: test-chart
+version: 1.0.0
+dependencies:
+  - name: dependency1
+    version: 1.2.3
+    repository: https://example.com/charts
+  - name: dependency2
+    version: 2.0.0
+    repository: file://../dependency2
+    invalid: field: here`,
+			expectError: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			// Create a temporary Chart.yaml file
+			chartPath := filepath.Join(tempDir, "Chart.yaml")
+			err := os.WriteFile(chartPath, []byte(tc.chartContent), 0644)
+			require.NoError(t, err)
+
+			// Call the function
+			deps, err := parseChartYAML(chartPath)
+
+			// Check error
+			if tc.expectError {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			// Check dependencies
+			assert.Equal(t, len(tc.expectedDeps), len(deps))
+			for i, expected := range tc.expectedDeps {
+				assert.Equal(t, expected.Name, deps[i].Name)
+				assert.Equal(t, expected.Version, deps[i].Version)
+				assert.Equal(t, expected.Repository, deps[i].Repository)
+			}
+		})
+	}
+}
+
+func TestProcessLocalHelmDependency(t *testing.T) {
+	// Create a temporary directory for test files
+	sourceTempDir, err := os.MkdirTemp("", "helm-dep-test-source-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(sourceTempDir)
+
+	// Create a source application directory structure
+	srcAppPath := filepath.Join(sourceTempDir, "src-app")
+	err = os.MkdirAll(srcAppPath, 0755)
+	require.NoError(t, err)
+
+	destTempDir, err := os.MkdirTemp("", "helm-dep-test-dest-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(destTempDir)
+	// Create a destination application directory
+	destAppDir := filepath.Join(destTempDir, "dest-app")
+	err = os.MkdirAll(destAppDir, 0755)
+	require.NoError(t, err)
+
+	// Create a local dependency directory with some files
+	depPath := filepath.Join(srcAppPath, "../charts/dependency")
+	log.Info().Msgf("dependency path: %s", depPath)
+	err = os.MkdirAll(depPath, 0755)
+	require.NoError(t, err)
+
+	// Create some files in the dependency directory
+	files := map[string]string{
+		"Chart.yaml": `apiVersion: v2
+name: dependency
+version: 1.0.0`,
+		"values.yaml": `replicaCount: 1
+image:
+  repository: nginx
+  tag: latest`,
+		"templates/deployment.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dependency
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: dependency
+  template:
+    metadata:
+      labels:
+        app: dependency
+    spec:
+      containers:
+      - name: dependency
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"`,
+	}
+
+	for file, content := range files {
+		filePath := filepath.Join(depPath, file)
+		err = os.MkdirAll(filepath.Dir(filePath), 0755)
+		require.NoError(t, err)
+		err = os.WriteFile(filePath, []byte(content), 0644)
+		require.NoError(t, err)
+	}
+
+	testCases := map[string]struct {
+		srcAppPath     string
+		destAppDir     string
+		dependencyPath string
+		expectError    bool
+		expectedFiles  []string
+	}{
+		"valid local dependency with file:// prefix": {
+			srcAppPath:     srcAppPath,
+			destAppDir:     destAppDir,
+			dependencyPath: "file://../charts/dependency",
+			expectError:    false,
+			expectedFiles: []string{
+				"../charts/dependency/Chart.yaml",
+				"../charts/dependency/values.yaml",
+				"../charts/dependency/templates/deployment.yaml",
+			},
+		},
+		"non-existent dependency": {
+			srcAppPath:     srcAppPath,
+			destAppDir:     destAppDir,
+			dependencyPath: "../non-existent",
+			expectError:    true,
+			expectedFiles:  []string{},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			// Clear the destination directory for each test case
+			err = os.RemoveAll(destAppDir)
+			require.NoError(t, err)
+			err = os.MkdirAll(destAppDir, 0755)
+			require.NoError(t, err)
+
+			// Call the function
+			err := processLocalHelmDependency(tc.srcAppPath, tc.destAppDir, tc.dependencyPath)
+
+			// Check error
+			if tc.expectError {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			// Check that the expected files were copied
+			for _, expectedFile := range tc.expectedFiles {
+				filePath := filepath.Join(tc.destAppDir, expectedFile)
+				_, err := os.Stat(filePath)
+				assert.NoError(t, err, "Expected file %s to exist", expectedFile)
+			}
+
+			// Verify the content of the copied files
+			for file, content := range files {
+				expectedPath := filepath.Join(tc.destAppDir, "../charts/dependency", file)
+				actualContent, err := os.ReadFile(expectedPath)
+				require.NoError(t, err)
+				assert.Equal(t, content, string(actualContent), "Content of %s does not match", file)
+			}
+		})
+	}
 }

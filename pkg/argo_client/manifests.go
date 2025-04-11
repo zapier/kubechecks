@@ -26,6 +26,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/kustomize"
 	"github.com/zapier/kubechecks/pkg/vcs"
+	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
@@ -358,6 +359,61 @@ func copyFile(srcpath, dstpath string) error {
 	return err
 }
 
+// processLocalHelmDependency handles copying local helm dependencies to the temp directory
+func processLocalHelmDependency(
+	srcAppPath string,
+	destAppDir string,
+	dependencyPath string,
+) error {
+	// Remove the file:// prefix if present
+	cleanPath := strings.TrimPrefix(dependencyPath, "file://")
+
+	// Resolve the absolute path of the dependency
+	absDepPath := filepath.Join(srcAppPath, cleanPath)
+
+	// Create the destination path in the temp directory
+	destDepPath := filepath.Join(destAppDir, cleanPath)
+
+	// Create the charts directory if it doesn't exist
+	if err := os.MkdirAll(destDepPath, os.ModePerm); err != nil {
+		return errors.Wrapf(err, "failed to create charts directory %s", destDepPath)
+	}
+
+	// Copy the entire dependency directory
+	log.Debug().Msgf("copying helm dependency from %s to %s", absDepPath, destDepPath)
+	if err := copyDir(filesys.MakeFsOnDisk(), absDepPath, destDepPath); err != nil {
+		return errors.Wrapf(err, "failed to copy helm dependency from %s to %s", absDepPath, destDepPath)
+	}
+
+	return nil
+}
+
+// parseChartYAML reads and parses a Chart.yaml file to extract dependencies
+func parseChartYAML(chartPath string) ([]struct {
+	Name       string `yaml:"name"`
+	Version    string `yaml:"version"`
+	Repository string `yaml:"repository"`
+}, error) {
+	content, err := os.ReadFile(chartPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read Chart.yaml")
+	}
+
+	var chart struct {
+		Dependencies []struct {
+			Name       string `yaml:"name"`
+			Version    string `yaml:"version"`
+			Repository string `yaml:"repository"`
+		} `yaml:"dependencies"`
+	}
+
+	if err := yaml.Unmarshal(content, &chart); err != nil {
+		return nil, errors.Wrap(err, "failed to parse Chart.yaml")
+	}
+
+	return chart.Dependencies, nil
+}
+
 func packageApp(
 	ctx context.Context,
 	source v1alpha1.ApplicationSource,
@@ -385,7 +441,6 @@ func packageApp(
 	relKustPath := filepath.Join(source.Path, "kustomization.yaml")
 	absKustPath := filepath.Join(destDir, relKustPath)
 	if fsIface.Exists(absKustPath) {
-
 		files, _, err := kustomize.ProcessKustomizationFile(sourceFS, relKustPath)
 		if err != nil {
 			return "", errors.Wrap(err, "failed to process kustomization dependencies")
@@ -398,7 +453,28 @@ func packageApp(
 		}
 	}
 
+	// Process helm dependencies
 	if source.Helm != nil {
+		// Handle local helm dependencies from Chart.yaml
+		chartPath := filepath.Join(srcAppPath, "Chart.yaml")
+		if _, err := os.Stat(chartPath); err == nil {
+			log.Info().Msg("processing helm dependencies")
+			deps, err := parseChartYAML(chartPath)
+			if err != nil {
+				return "", errors.Wrap(err, "failed to parse Chart.yaml")
+			}
+			log.Info().Msgf("helm dependencies: %+v", deps)
+
+			for _, dep := range deps {
+				if strings.HasPrefix(dep.Repository, "file://") {
+					log.Debug().Msgf("processing local helm dependency %s", dep.Repository)
+					if err := processLocalHelmDependency(srcAppPath, destAppDir, dep.Repository); err != nil {
+						return "", errors.Wrapf(err, "failed to process local helm dependency %s", dep.Name)
+					}
+				}
+			}
+		}
+
 		refsByName := make(map[string]v1alpha1.ApplicationSource)
 		for _, ref := range refs {
 			refsByName[ref.Ref] = ref
