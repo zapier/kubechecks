@@ -458,12 +458,11 @@ func packageApp(
 		// Handle local helm dependencies from Chart.yaml
 		chartPath := filepath.Join(srcAppPath, "Chart.yaml")
 		if _, err := os.Stat(chartPath); err == nil {
-			log.Info().Msg("processing helm dependencies")
+			log.Debug().Msg("processing helm dependencies")
 			deps, err := parseChartYAML(chartPath)
 			if err != nil {
 				return "", errors.Wrap(err, "failed to parse Chart.yaml")
 			}
-			log.Info().Msgf("helm dependencies: %+v", deps)
 
 			for _, dep := range deps {
 				if strings.HasPrefix(dep.Repository, "file://") {

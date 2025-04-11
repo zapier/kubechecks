@@ -375,6 +375,59 @@ resources:
 				"component1/resource3.yaml":     {"git@github.com:testuser/testrepo.git", "main", "component1/resource3.yaml"},
 			},
 		},
+
+		"helm-dependencies-are-copied": {
+			pullRequest: vcs.PullRequest{
+				CloneURL: "git@github.com:testuser/testrepo.git",
+				BaseRef:  "main",
+				HeadRef:  "update-code",
+			},
+			app: v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Sources: []v1alpha1.ApplicationSource{
+						{
+							RepoURL:        "git@github.com:testuser/testrepo.git",
+							Path:           "app1/",
+							TargetRevision: "main",
+							Helm: &v1alpha1.ApplicationSourceHelm{
+								ValueFiles: []string{
+									"values.yaml",
+								},
+							},
+						},
+					},
+				},
+			},
+			filesByRepo: map[repoTarget]set[string]{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
+					"app1/values.yaml",
+					"app1/templates/deployment.yaml",
+					"charts/dependency/Chart.yaml",
+					"charts/dependency/values.yaml",
+					"charts/dependency/templates/deployment.yaml",
+				),
+			},
+			filesByRepoWithContent: map[repoTarget]map[string]string{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: {
+					"app1/Chart.yaml": `---
+apiVersion: v2
+name: test-chart
+version: 1.0.0
+dependencies:
+  - name: dependency
+    version: 1.0.0
+    repository: file://../charts/dependency`,
+				},
+			},
+			expectedFiles: map[string]repoTargetPath{
+				"app1/Chart.yaml":                             {"git@github.com:testuser/testrepo.git", "main", "app1/Chart.yaml"},
+				"app1/values.yaml":                            {"git@github.com:testuser/testrepo.git", "main", "app1/values.yaml"},
+				"app1/templates/deployment.yaml":              {"git@github.com:testuser/testrepo.git", "main", "app1/templates/deployment.yaml"},
+				"charts/dependency/Chart.yaml":                {"git@github.com:testuser/testrepo.git", "main", "charts/dependency/Chart.yaml"},
+				"charts/dependency/values.yaml":               {"git@github.com:testuser/testrepo.git", "main", "charts/dependency/values.yaml"},
+				"charts/dependency/templates/deployment.yaml": {"git@github.com:testuser/testrepo.git", "main", "charts/dependency/templates/deployment.yaml"},
+			},
+		},
 	}
 
 	for name, tc := range testCases {
@@ -466,11 +519,16 @@ func createTestRepos(
 
 			// ensure the directories exist
 			filedir := filepath.Dir(fullfilepath)
-			err = os.MkdirAll(filedir, 0o755)
+			err = os.MkdirAll(filedir, os.ModePerm)
 			require.NoError(t, err)
 
 			// generate and store content
 			fileContent := uuid.NewString()
+			if filepath.Base(file) == "Chart.yaml" {
+				fileContent = `apiVersion: v2
+name: test-chart
+version: 1.0.0`
+			}
 			fileContents[repoTargetPath{cloneURL.repo, cloneURL.target, file}] = fileContent
 
 			// write the file to disk
