@@ -247,15 +247,23 @@ func TestPackageApp(t *testing.T) {
 
 			filesByRepo: map[repoTarget]set[string]{
 				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
-					"app1/Chart.yaml",
 					"app1/values.yaml",
-					"app2/Chart.yaml",
 					"app2/values.yaml",
 				),
 
 				repoTarget{"git@github.com:testuser/otherrepo.git", "main"}: newSet[string](
 					"base.yaml",
 				),
+			},
+			filesByRepoWithContent: map[repoTarget]map[string]string{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: {
+					"app1/Chart.yaml": `apiVersion: v2
+name: test-chart
+version: 1.0.0`,
+					"app2/Chart.yaml": `apiVersion: v2
+name: test-chart
+version: 1.0.0`,
+				},
 			},
 
 			expectedFiles: map[string]repoTargetPath{
@@ -296,13 +304,19 @@ func TestPackageApp(t *testing.T) {
 			},
 			filesByRepo: map[repoTarget]set[string]{
 				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
-					"app1/Chart.yaml",
 					"app1/values.yaml",
 					"app1/staging.yaml",
 				),
 				repoTarget{"git@github.com:testuser/otherrepo.git", "main"}: newSet[string](
 					"base.yaml",
 				),
+			},
+			filesByRepoWithContent: map[repoTarget]map[string]string{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: {
+					"app1/Chart.yaml": `apiVersion: v2
+name: test-chart
+version: 1.0.0`,
+				},
 			},
 			expectedFiles: map[string]repoTargetPath{
 				"app1/Chart.yaml":         {"git@github.com:testuser/testrepo.git", "main", "app1/Chart.yaml"},
@@ -524,11 +538,6 @@ func createTestRepos(
 
 			// generate and store content
 			fileContent := uuid.NewString()
-			if filepath.Base(file) == "Chart.yaml" {
-				fileContent = `apiVersion: v2
-name: test-chart
-version: 1.0.0`
-			}
 			fileContents[repoTargetPath{cloneURL.repo, cloneURL.target, file}] = fileContent
 
 			// write the file to disk
