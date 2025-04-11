@@ -61,7 +61,7 @@ func TestApplicationAdded(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(appWatcher.vcsToArgoMap.GetMap()), 2)
+	assert.Equal(t, len(appWatcher.vcsToArgoMap.GetAppMap()), 2)
 
 	_, err := appWatcher.applicationClientset.ArgoprojV1alpha1().Applications("default").Create(ctx, &v1alpha1.Application{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-app-3", Namespace: "default"},
@@ -74,7 +74,7 @@ func TestApplicationAdded(t *testing.T) {
 	}
 
 	time.Sleep(time.Second * 1)
-	assert.Equal(t, len(appWatcher.vcsToArgoMap.GetMap()), 3)
+	assert.Equal(t, len(appWatcher.vcsToArgoMap.GetAppMap()), 3)
 }
 
 func TestApplicationUpdated(t *testing.T) {
@@ -87,7 +87,7 @@ func TestApplicationUpdated(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
+	assert.Equal(t, len(ctrl.vcsToArgoMap.GetAppMap()), 2)
 
 	oldAppDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	assert.Equal(t, oldAppDirectory.AppsCount(), 1)
@@ -121,7 +121,7 @@ func TestApplicationDeleted(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, len(ctrl.vcsToArgoMap.GetMap()), 2)
+	assert.Equal(t, len(ctrl.vcsToArgoMap.GetAppMap()), 2)
 
 	appDirectory := ctrl.vcsToArgoMap.GetAppsInRepo("https://gitlab.com/test/repo.git")
 	assert.Equal(t, appDirectory.AppsCount(), 1)

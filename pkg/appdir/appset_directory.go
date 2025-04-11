@@ -27,6 +27,18 @@ func NewAppSetDirectory() *AppSetDirectory {
 	}
 }
 
+func (d *AppSetDirectory) AppSetDirs() map[string][]string {
+	return d.appSetDirs
+}
+
+func (d *AppSetDirectory) AppSetFiles() map[string][]string {
+	return d.appSetFiles
+}
+
+func (d *AppSetDirectory) AppSetsMap() map[string]v1alpha1.ApplicationSet {
+	return d.appSetsMap
+}
+
 func (d *AppSetDirectory) Count() int {
 	return len(d.appSetsMap)
 }

@@ -23,7 +23,7 @@ func NewVcsToArgoMap(vcsUsername string) VcsToArgoMap {
 	}
 }
 
-func (v2a VcsToArgoMap) GetMap() map[pkg.RepoURL]*AppDirectory {
+func (v2a VcsToArgoMap) GetAppMap() map[pkg.RepoURL]*AppDirectory {
 	return v2a.appDirByRepo
 }
 
