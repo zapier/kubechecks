@@ -9,7 +9,10 @@ type debugData struct {
 }
 
 func (s *Server) dumpDebugInfo(c echo.Context) error {
-	var response debugData
+	response := debugData{
+		FilesByApp: make(map[string]map[string][]string),
+		DirsByApp:  make(map[string]map[string][]string),
+	}
 
 	for _, repoURL := range s.ctr.VcsToArgoMap.GetVcsRepos() {
 		response.RepoURLs = append(response.RepoURLs, repoURL)
@@ -22,6 +25,12 @@ func (s *Server) dumpDebugInfo(c echo.Context) error {
 		for dir, apps := range appDir.AppDirs() {
 			for _, app := range apps {
 				dirsByApp[app] = append(dirsByApp[app], dir)
+			}
+		}
+
+		for file, apps := range appDir.AppFiles() {
+			for _, app := range apps {
+				filesByApp[app] = append(filesByApp[app], file)
 			}
 		}
 
