@@ -14,9 +14,7 @@ func (s *Server) dumpDebugInfo(c echo.Context) error {
 		DirsByApp:  make(map[string]map[string][]string),
 	}
 
-	for _, repoURL := range s.ctr.VcsToArgoMap.GetVcsRepos() {
-		response.RepoURLs = append(response.RepoURLs, repoURL)
-	}
+	response.RepoURLs = append(response.RepoURLs, s.ctr.VcsToArgoMap.GetVcsRepos()...)
 
 	for repoURL, appDir := range s.ctr.VcsToArgoMap.GetMap() {
 		filesByApp := make(map[string][]string)
