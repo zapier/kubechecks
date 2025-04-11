@@ -47,6 +47,9 @@ func (s *Server) Start(ctx context.Context) {
 	e.GET("/ready", echo.WrapHandler(health))
 	e.GET("/live", echo.WrapHandler(health))
 	e.GET("/metrics", echoprometheus.NewHandler())
+	if s.ctr.Config.ShowDebugInfo {
+		e.GET("/debug", s.dumpDebugInfo)
+	}
 
 	hooksGroup := e.Group(s.hooksPrefix())
 

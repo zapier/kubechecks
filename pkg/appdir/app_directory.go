@@ -27,8 +27,16 @@ func (d *AppDirectory) AppsCount() int {
 	return len(d.appsMap)
 }
 
+func (d *AppDirectory) AppFiles() map[string][]string {
+	return d.appFiles
+}
+
 func (d *AppDirectory) AppFilesCount() int {
 	return len(d.appFiles)
+}
+
+func (d *AppDirectory) AppDirs() map[string][]string {
+	return d.appDirs
 }
 
 func (d *AppDirectory) AppDirsCount() int {
