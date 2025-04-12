@@ -262,3 +262,69 @@ dummy:
 		assert.Contains(t, files, "testdir/values-dummy.yaml")
 	})
 }
+
+func TestIsRemoteResource(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource string
+		want     bool
+	}{
+		{
+			name:     "http url",
+			resource: "http://example.com/path",
+			want:     true,
+		},
+		{
+			name:     "https url",
+			resource: "https://example.com/path",
+			want:     true,
+		},
+		{
+			name:     "git ssh url",
+			resource: "git@github.com:user/repo.git",
+			want:     true,
+		},
+		{
+			name:     "github shorthand",
+			resource: "github.com/user/repo",
+			want:     true,
+		},
+		{
+			name:     "bitbucket shorthand",
+			resource: "bitbucket.org/user/repo",
+			want:     true,
+		},
+		{
+			name:     "gitlab shorthand",
+			resource: "gitlab.com/user/repo",
+			want:     true,
+		},
+		{
+			name:     "url without scheme",
+			resource: "//example.com/path",
+			want:     true,
+		},
+		{
+			name:     "local path",
+			resource: "./path/to/resource",
+			want:     false,
+		},
+		{
+			name:     "absolute path",
+			resource: "/path/to/resource",
+			want:     false,
+		},
+		{
+			name:     "relative path",
+			resource: "../path/to/resource",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isRemoteResource(tt.resource)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

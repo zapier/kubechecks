@@ -51,3 +51,77 @@ func TestStringUsages(t *testing.T) {
 		})
 	}
 }
+
+func TestCombine(t *testing.T) {
+	tests := map[string]struct {
+		dst      DocOpt[any]
+		src      DocOpt[any]
+		expected DocOpt[any]
+	}{
+		"combine choices": {
+			dst: DocOpt[any]{},
+			src: DocOpt[any]{
+				choices: []string{"choice1", "choice2"},
+			},
+			expected: DocOpt[any]{
+				choices: []string{"choice1", "choice2"},
+			},
+		},
+		"combine default value": {
+			dst: DocOpt[any]{},
+			src: DocOpt[any]{
+				defaultValue: ptr[any]("default"),
+			},
+			expected: DocOpt[any]{
+				defaultValue: ptr[any]("default"),
+			},
+		},
+		"combine shorthand": {
+			dst: DocOpt[any]{},
+			src: DocOpt[any]{
+				shorthand: ptr("s"),
+			},
+			expected: DocOpt[any]{
+				shorthand: ptr("s"),
+			},
+		},
+		"combine all fields": {
+			dst: DocOpt[any]{},
+			src: DocOpt[any]{
+				choices:      []string{"choice1", "choice2"},
+				defaultValue: ptr[any]("default"),
+				shorthand:    ptr("s"),
+			},
+			expected: DocOpt[any]{
+				choices:      []string{"choice1", "choice2"},
+				defaultValue: ptr[any]("default"),
+				shorthand:    ptr("s"),
+			},
+		},
+		"preserve existing dst values when src is empty": {
+			dst: DocOpt[any]{
+				choices:      []string{"existing"},
+				defaultValue: ptr[any]("existing"),
+				shorthand:    ptr("e"),
+			},
+			src: DocOpt[any]{},
+			expected: DocOpt[any]{
+				choices:      []string{"existing"},
+				defaultValue: ptr[any]("existing"),
+				shorthand:    ptr("e"),
+			},
+		},
+	}
+
+	for testName, test := range tests {
+		t.Run(testName, func(t *testing.T) {
+			combine(&test.dst, test.src)
+			assert.Equal(t, test.expected, test.dst)
+		})
+	}
+}
+
+// Helper function to create pointers for test values
+func ptr[T any](v T) *T {
+	return &v
+}

@@ -61,7 +61,7 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 	config := lib.Config{
 		K8sVersion:     fmt.Sprintf("v%s", nextVersion.String()),
 		Input:          tempDir,
-		GeneratedStore: ctr.Config.GeneratedStore,
+		GeneratedStore: ctr.Config.KubepugGeneratedStore,
 	}
 
 	kubepug, err := lib.NewKubepug(&config)

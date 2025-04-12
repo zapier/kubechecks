@@ -108,7 +108,7 @@ func init() {
 	int64Flag(flags, "max-queue-size", "Size of app diff check queue.",
 		newInt64Opts().
 			withDefault(1024))
-	int64Flag(flags, "max-concurrenct-checks", "Number of concurrent checks to run.",
+	int64Flag(flags, "max-concurrent-checks", "Number of concurrent checks to run.",
 		newInt64Opts().
 			withDefault(32))
 	boolFlag(flags, "enable-hooks-renderer", "Render hooks.", newBoolOpts().withDefault(true))
@@ -125,7 +125,7 @@ func init() {
 	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
 		newStringOpts().
 			withDefault(""))
-	stringFlag(flags, "generated-store", "URL for the kubepug generated store.",
+	stringFlag(flags, "kubepug-generated-store", "URL for the kubepug generated store.",
 		newStringOpts().
 			withDefault("https://kubepug.xyz/data/data.json"))
 

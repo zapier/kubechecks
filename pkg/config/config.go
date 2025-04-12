@@ -68,9 +68,9 @@ type ServerConfig struct {
 	EnableKubeConform     bool            `mapstructure:"enable-kubeconform"`
 	WorstKubeConformState pkg.CommitState `mapstructure:"worst-kubeconform-state"`
 	// -- preupgrade
-	EnablePreupgrade     bool            `mapstructure:"enable-preupgrade"`
-	WorstPreupgradeState pkg.CommitState `mapstructure:"worst-preupgrade-state"`
-	GeneratedStore       string          `mapstructure:"generated-store"`
+	EnablePreupgrade      bool            `mapstructure:"enable-preupgrade"`
+	WorstPreupgradeState  pkg.CommitState `mapstructure:"worst-preupgrade-state"`
+	KubepugGeneratedStore string          `mapstructure:"kubepug-generated-store"`
 
 	// misc
 	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`
@@ -85,7 +85,7 @@ type ServerConfig struct {
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
 	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
-	MaxConcurrenctChecks     int           `mapstructure:"max-concurrenct-checks"`
+	MaxConcurrenctChecks     int           `mapstructure:"max-concurrent-checks"`
 	ReplanCommentMessage     string        `mapstructure:"replan-comment-msg"`
 	Identifier               string        `mapstructure:"identifier"`
 }

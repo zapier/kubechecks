@@ -414,6 +414,8 @@ func parseChartYAML(chartPath string) ([]struct {
 	return chart.Dependencies, nil
 }
 
+// packageApp packages an Argo CD application source and its dependencies into a temporary directory.
+// It copies the source files and processes both Kustomize and Helm dependencies.
 func packageApp(
 	ctx context.Context,
 	source v1alpha1.ApplicationSource,
@@ -516,6 +518,8 @@ func packageApp(
 	return destDir, nil
 }
 
+// processValueReference processes a Helm value file reference that starts with '$' and points to another source.
+// It copies the referenced value file from the source repository to a temporary location and returns the relative path.
 func processValueReference(
 	ctx context.Context,
 	source v1alpha1.ApplicationSource,

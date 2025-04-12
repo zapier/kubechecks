@@ -8,11 +8,21 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// AppDirectory manages the mapping between applications and their associated directories and files.
+// It provides functionality to track which applications are affected by changes in specific directories or files,
+// and maintains a collection of Argo CD applications.
 type AppDirectory struct {
-	appDirs  map[string][]string // directory -> array of app names
-	appFiles map[string][]string // file path -> array of app names
+	// appDirs maps directory paths to the names of applications that use those directories.
+	// This is used to quickly identify which applications are affected when changes occur in a directory.
+	appDirs map[string][]string
 
-	appsMap map[string]v1alpha1.Application // app name -> app stub
+	// appFiles maps file paths to the names of applications that use those files.
+	// This is used to quickly identify which applications are affected when specific files change.
+	appFiles map[string][]string
+
+	// appsMap stores the full Argo CD application definitions, indexed by application name.
+	// This serves as the source of truth for application configurations.
+	appsMap map[string]v1alpha1.Application
 }
 
 func NewAppDirectory() *AppDirectory {
