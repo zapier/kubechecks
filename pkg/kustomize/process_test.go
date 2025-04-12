@@ -70,7 +70,7 @@ func TestProcessDir(t *testing.T) {
 				return nil, fs.ErrNotExist
 			},
 		}
-		_, _, err := ProcessKustomizationFile(mfs, filepath.Join("testdir", "kustomation.yaml"))
+		_, _, err := ProcessKustomizationFile(mfs, filepath.Join("testdir", "kustomization.yaml"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to open file")
 	})
