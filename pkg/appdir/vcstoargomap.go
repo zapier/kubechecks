@@ -2,6 +2,7 @@ package appdir
 
 import (
 	"io/fs"
+	"path/filepath"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
@@ -71,7 +72,8 @@ func (v2a VcsToArgoMap) WalkKustomizeApps(cloneURL string, rootFS fs.FS) *AppDir
 	for _, app := range apps {
 		appPath := app.Spec.GetSource().Path
 
-		kustomizeFiles, kustomizeDir, err := kustomize.ProcessKustomizationFile(rootFS, appPath)
+		kustomizePath := filepath.Join(appPath, "kustomization.yaml")
+		kustomizeFiles, kustomizeDir, err := kustomize.ProcessKustomizationFile(rootFS, kustomizePath)
 		if err != nil {
 			log.Error().Err(err).Msgf("failed to parse kustomize.yaml in %s", appPath)
 		}

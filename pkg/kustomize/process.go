@@ -1,6 +1,7 @@
 package kustomize
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -13,8 +14,15 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
+var ErrUnexpectedFilename = errors.New("kustomization file must be called kustomization.yaml")
+
 // ProcessKustomizationFile processes a kustomization file and returns all the files and directories it references.
 func ProcessKustomizationFile(sourceFS fs.FS, relKustomizationPath string) (files, dirs []string, err error) {
+	filename := filepath.Base(relKustomizationPath)
+	if filename != "kustomization.yaml" {
+		return nil, nil, fmt.Errorf("%q was unexpected: %w", relKustomizationPath, ErrUnexpectedFilename)
+	}
+
 	dirName := filepath.Dir(relKustomizationPath)
 
 	proc := processor{
