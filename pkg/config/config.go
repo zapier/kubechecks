@@ -85,7 +85,7 @@ type ServerConfig struct {
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
 	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
-	MaxConcurrenctChecks     int           `mapstructure:"max-concurrent-checks"`
+	MaxConcurrentChecks      int           `mapstructure:"max-concurrent-checks"`
 	ReplanCommentMessage     string        `mapstructure:"replan-comment-msg"`
 	Identifier               string        `mapstructure:"identifier"`
 }

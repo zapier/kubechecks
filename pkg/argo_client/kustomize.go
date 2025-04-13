@@ -2,11 +2,11 @@ package argo_client
 
 import (
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 )
 
 // addFile copies a file from the repository to the temp directory to prepare to be sent to the ArgoCD API.
@@ -37,7 +37,7 @@ func addFile(repoRoot string, tempDir string, relPath string) error {
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			log.Printf("failed to close file: %v", err)
+			log.Error().Err(err).Msg("failed to close file")
 		}
 	}() // ignore error: file was opened read-only.
 

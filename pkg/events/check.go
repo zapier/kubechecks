@@ -287,7 +287,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create note")
 	}
 
-	for num := 0; num <= ce.ctr.Config.MaxConcurrenctChecks; num++ {
+	for num := 0; num <= ce.ctr.Config.MaxConcurrentChecks; num++ {
 
 		w := worker{
 			appChannel:  ce.appChannel,
