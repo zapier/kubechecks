@@ -2,6 +2,7 @@ package argo_client
 
 import (
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -34,7 +35,11 @@ func addFile(repoRoot string, tempDir string, relPath string) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close() // ignore error: file was opened read-only.
+	defer func() {
+		if err := r.Close(); err != nil {
+			log.Printf("failed to close file: %v", err)
+		}
+	}() // ignore error: file was opened read-only.
 
 	w, err := os.Create(tempPath)
 	if err != nil {

@@ -44,7 +44,11 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 		//return "", err
 		return msg.Result{}, err
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Error().Err(err).Msg("failed to remove temp directory")
+		}
+	}()
 
 	for i, manifest := range manifests {
 		tmpFile := fmt.Sprintf("%s/%b.yaml", tempDir, i)

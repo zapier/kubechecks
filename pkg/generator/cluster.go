@@ -130,20 +130,20 @@ func (g *ClusterGenerator) GenerateParams(appSetGenerator *argoappsetv1alpha1.Ap
 		if appSet.Spec.GoTemplate {
 			meta := map[string]interface{}{}
 
-			if len(cluster.ObjectMeta.Annotations) > 0 {
-				meta["annotations"] = cluster.ObjectMeta.Annotations
+			if len(cluster.Annotations) > 0 {
+				meta["annotations"] = cluster.Annotations
 			}
-			if len(cluster.ObjectMeta.Labels) > 0 {
-				meta["labels"] = cluster.ObjectMeta.Labels
+			if len(cluster.Labels) > 0 {
+				meta["labels"] = cluster.Labels
 			}
 
 			params["metadata"] = meta
 		} else {
-			for key, value := range cluster.ObjectMeta.Annotations {
+			for key, value := range cluster.Annotations {
 				params[fmt.Sprintf("metadata.annotations.%s", key)] = value
 			}
 
-			for key, value := range cluster.ObjectMeta.Labels {
+			for key, value := range cluster.Labels {
 				params[fmt.Sprintf("metadata.labels.%s", key)] = value
 			}
 		}
@@ -171,7 +171,7 @@ func (g *ClusterGenerator) getSecretsByClusterName(appSetGenerator *argoappsetv1
 		return nil, err
 	}
 
-	if err := g.Client.List(context.Background(), clusterSecretList, client.MatchingLabelsSelector{Selector: secretSelector}); err != nil {
+	if err := g.List(context.Background(), clusterSecretList, client.MatchingLabelsSelector{Selector: secretSelector}); err != nil {
 		return nil, err
 	}
 	log.Debug().Msgf("clusters matching labels, count: %d", len(clusterSecretList.Items))

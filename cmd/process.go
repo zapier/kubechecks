@@ -25,7 +25,9 @@ var processCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("fail to create ssh data dir")
 		}
 		defer func() {
-			os.RemoveAll(tempPath)
+			if err := os.RemoveAll(tempPath); err != nil {
+				log.Error().Err(err).Msg("failed to remove temp directory")
+			}
 		}()
 
 		// symlink local ssh known hosts to argocd ssh known hosts
