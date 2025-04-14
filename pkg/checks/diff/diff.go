@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
@@ -162,7 +163,7 @@ func addResourceDiffToMessage(ctx context.Context, diffBuffer *strings.Builder, 
 	_, span := tracer.Start(ctx, "addResourceDiffToMessage")
 	defer span.End()
 
-	diffBuffer.WriteString(fmt.Sprintf("===== %s ======\n", resourceId))
+	fmt.Fprintf(diffBuffer, "===== %s ======\n", resourceId)
 
 	var live *unstructured.Unstructured
 	var target *unstructured.Unstructured
@@ -225,7 +226,7 @@ func getResources(ctx context.Context, request checks.Request) ([]*argoappv1.Res
 	defer span.End()
 
 	closer, appClient := request.Container.ArgoClient.GetApplicationClient()
-	defer closer.Close()
+	defer pkg.WithErrorLogging(closer.Close, "failed to close application connection")
 
 	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
 		ApplicationName: &request.App.Name,
@@ -246,7 +247,7 @@ func getArgoSettings(ctx context.Context, request checks.Request) (*settings.Set
 	defer span.End()
 
 	settingsCloser, settingsClient := request.Container.ArgoClient.GetSettingsClient()
-	defer settingsCloser.Close()
+	defer pkg.WithErrorLogging(settingsCloser.Close, "failed to close connection")
 
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
@@ -301,7 +302,7 @@ func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructu
 	objByKey := make(map[kube.ResourceKey]*unstructured.Unstructured)
 	for i := range localObs {
 		obj := localObs[i]
-		if !(hook.IsHook(obj) || ignore.Ignore(obj)) {
+		if !hook.IsHook(obj) && !ignore.Ignore(obj) {
 			objByKey[kube.GetResourceKey(obj)] = obj
 		}
 	}

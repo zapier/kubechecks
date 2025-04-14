@@ -1,8 +1,6 @@
 module github.com/zapier/kubechecks
 
-go 1.22.0
-
-toolchain go1.22.7
+go 1.24
 
 require (
 	github.com/argoproj/argo-cd/v2 v2.13.1

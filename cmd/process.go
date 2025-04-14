@@ -7,9 +7,10 @@ import (
 	"github.com/argoproj/argo-cd/v2/common"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/zapier/kubechecks/pkg/container"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/server"
 )
 
@@ -24,9 +25,7 @@ var processCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal().Err(err).Msg("fail to create ssh data dir")
 		}
-		defer func() {
-			os.RemoveAll(tempPath)
-		}()
+		defer pkg.WithErrorLogging(func() error { return os.RemoveAll(tempPath) }, "failed to remove temp directory")
 
 		// symlink local ssh known hosts to argocd ssh known hosts
 		homeDir, err := os.UserHomeDir()

@@ -110,7 +110,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	// 3. ref sources that match the pull requests' repo and target branch need to have their target branch swapped to the head branch of the pull request
 
 	clusterCloser, clusterClient := a.GetClusterClient()
-	defer clusterCloser.Close()
+	defer pkg.WithErrorLogging(clusterCloser.Close, "failed to close connection")
 
 	clusterData, err := clusterClient.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
 	if err != nil {
@@ -119,7 +119,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	}
 
 	settingsCloser, settingsClient := a.GetSettingsClient()
-	defer settingsCloser.Close()
+	defer pkg.WithErrorLogging(settingsCloser.Close, "failed to close connection")
 
 	log.Info().Msg("get settings")
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
@@ -174,7 +174,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get project client")
 	}
-	defer closer.Close()
+	defer pkg.WithErrorLogging(closer.Close, "failed to close connection")
 
 	proj, err := projectClient.Get(ctx, &project.ProjectQuery{Name: app.Spec.Project})
 	if err != nil {
@@ -240,19 +240,14 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating repo client")
 	}
-	defer conn.Close()
+	defer pkg.WithErrorLogging(conn.Close, "failed to close connection")
 
 	log.Info().Msg("generating manifest with files")
 	stream, err := repoClient.GenerateManifestWithFiles(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get manifests with files")
 	}
-	defer func() {
-		err := stream.CloseSend()
-		if err != nil {
-			log.Error().Err(err).Msg("failed to close stream")
-		}
-	}()
+	defer pkg.WithErrorLogging(stream.CloseSend, "failed to close stream")
 
 	log.Info().Msg("sending request")
 	if err := stream.Send(&repoapiclient.ManifestRequestWithFiles{
@@ -340,7 +335,7 @@ func copyFile(srcpath, dstpath string) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close() // ignore error: file was opened read-only.
+	defer pkg.WithErrorLogging(r.Close, "failed to close file")
 
 	w, err := os.Create(dstpath)
 	if err != nil {
@@ -414,6 +409,8 @@ func parseChartYAML(chartPath string) ([]struct {
 	return chart.Dependencies, nil
 }
 
+// packageApp packages an Argo CD application source and its dependencies into a temporary directory.
+// It copies the source files and processes both Kustomize and Helm dependencies.
 func packageApp(
 	ctx context.Context,
 	source v1alpha1.ApplicationSource,
@@ -516,6 +513,8 @@ func packageApp(
 	return destDir, nil
 }
 
+// processValueReference processes a Helm value file reference that starts with '$' and points to another source.
+// It copies the referenced value file from the source repository to a temporary location and returns the relative path.
 func processValueReference(
 	ctx context.Context,
 	source v1alpha1.ApplicationSource,

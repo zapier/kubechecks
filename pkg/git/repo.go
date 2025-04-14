@@ -298,7 +298,7 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to create credentials file")
 	}
-	defer outfile.Close()
+	defer pkg.WithErrorLogging(outfile.Close, "failed to close output file")
 
 	cmd = execCommand(cfg, "echo", cloneUrl)
 	cmd.Stdout = outfile

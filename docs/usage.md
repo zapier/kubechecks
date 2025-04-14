@@ -51,17 +51,17 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|
 |`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
 |`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks.|`1.23.0`|
-|`KUBECHECKS_GENERATED_STORE`|URL for the kubepug generated store.|`https://kubepug.xyz/data/data.json`|
 |`KUBECHECKS_GITHUB_APP_ID`|Github App ID.|`0`|
 |`KUBECHECKS_GITHUB_INSTALLATION_ID`|Github Installation ID.|`0`|
 |`KUBECHECKS_GITHUB_PRIVATE_KEY`|Github App Private Key.||
 |`KUBECHECKS_IDENTIFIER`|Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.||
+|`KUBECHECKS_KUBEPUG_GENERATED_STORE`|URL for the kubepug generated store.|`https://kubepug.xyz/data/data.json`|
 |`KUBECHECKS_KUBERNETES_CLUSTERID`|Kubernetes Cluster ID, must be specified if kubernetes-type is eks.||
 |`KUBECHECKS_KUBERNETES_CONFIG`|Path to your kubernetes config file, used to monitor applications.||
 |`KUBECHECKS_KUBERNETES_TYPE`|Kubernetes Type One of eks, or local.|`local`|
 |`KUBECHECKS_LABEL_FILTER`|(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook.||
 |`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of error, warn, info, debug, trace.|`info`|
-|`KUBECHECKS_MAX_CONCURRENCT_CHECKS`|Number of concurrent checks to run.|`32`|
+|`KUBECHECKS_MAX_CONCURRENT_CHECKS`|Number of concurrent checks to run.|`32`|
 |`KUBECHECKS_MAX_QUEUE_SIZE`|Size of app diff check queue.|`1024`|
 |`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`true`|
 |`KUBECHECKS_OPENAI_API_TOKEN`|OpenAI API Token.||

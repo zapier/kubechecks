@@ -16,6 +16,10 @@ import (
 	"github.com/zapier/kubechecks/pkg/git"
 )
 
+// processLocations processes a list of locations, which can be either file paths or Git repository URLs.
+// For Git URLs, it clones the repository and updates the location to point to the local clone.
+// For file paths, it leaves them unchanged.
+// The function returns an error if any Git repository fails to clone.
 func processLocations(ctx context.Context, ctr container.Container, locations []string) error {
 	for index, location := range locations {
 		if newLocation, err := maybeCloneGitUrl(ctx, ctr.RepoManager, ctr.Config.RepoRefreshInterval, location, ctr.VcsClient.Username(), ctr.Config.RepoShallowClone); err != nil {

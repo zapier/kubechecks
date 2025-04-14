@@ -1,3 +1,4 @@
+version: "2"
 run:
   tests: false
 
@@ -6,10 +7,10 @@ linters:
     - bodyclose
     - durationcheck
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
+    - sloglint
     - unparam
     - unused
     - usestdlibvars

@@ -8,15 +8,26 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/git"
 	"sigs.k8s.io/yaml"
 )
 
+// AppSetDirectory manages the mapping between ApplicationSets and their associated directories and files.
+// It provides functionality to track which ApplicationSets are affected by changes in specific directories or files,
+// and maintains a collection of Argo CD ApplicationSets.
 type AppSetDirectory struct {
-	appSetDirs  map[string][]string // directory -> array of app names
-	appSetFiles map[string][]string // file path -> array of app names
+	// appSetDirs maps directory paths to the names of ApplicationSets that use those directories.
+	// This is used to quickly identify which ApplicationSets are affected when changes occur in a directory.
+	appSetDirs map[string][]string
 
-	appSetsMap map[string]v1alpha1.ApplicationSet // app name -> app stub
+	// appSetFiles maps file paths to the names of ApplicationSets that use those files.
+	// This is used to quickly identify which ApplicationSets are affected when specific files change.
+	appSetFiles map[string][]string
+
+	// appSetsMap stores the full Argo CD ApplicationSet definitions, indexed by ApplicationSet name.
+	// This serves as the source of truth for ApplicationSet configurations.
+	appSetsMap map[string]v1alpha1.ApplicationSet
 }
 
 func NewAppSetDirectory() *AppSetDirectory {
@@ -179,11 +190,7 @@ func containsKindApplicationSet(path string) bool {
 		log.Error().Err(err).Stack().Msgf("failed to open file %s: %v", path, err)
 		return false
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			log.Warn().Err(err).Stack().Msgf("failed to close file %s: %v", path, err)
-		}
-	}()
+	defer pkg.WithErrorLogging(file.Close, "failed to close file")
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

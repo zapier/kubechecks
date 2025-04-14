@@ -24,3 +24,10 @@ func WipeDir(dir string) {
 			Msg("failed to wipe path")
 	}
 }
+
+// WithErrorLogging returns a function that will execute the given function and log any errors that occur.
+func WithErrorLogging(f func() error, msg string) {
+	if err := f(); err != nil {
+		log.Error().Err(err).Msg(msg)
+	}
+}
