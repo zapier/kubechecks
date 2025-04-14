@@ -110,11 +110,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	// 3. ref sources that match the pull requests' repo and target branch need to have their target branch swapped to the head branch of the pull request
 
 	clusterCloser, clusterClient := a.GetClusterClient()
-	defer func() {
-		if err := clusterCloser.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close cluster connection")
-		}
-	}()
+	defer pkg.WithErrorLogging(clusterCloser.Close, "failed to close connection")
 
 	clusterData, err := clusterClient.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
 	if err != nil {
@@ -123,11 +119,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	}
 
 	settingsCloser, settingsClient := a.GetSettingsClient()
-	defer func() {
-		if err := settingsCloser.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close settings connection")
-		}
-	}()
+	defer pkg.WithErrorLogging(settingsCloser.Close, "failed to close connection")
 
 	log.Info().Msg("get settings")
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
@@ -182,11 +174,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get project client")
 	}
-	defer func() {
-		if err := closer.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close project client connection")
-		}
-	}()
+	defer pkg.WithErrorLogging(closer.Close, "failed to close connection")
 
 	proj, err := projectClient.Get(ctx, &project.ProjectQuery{Name: app.Spec.Project})
 	if err != nil {
@@ -252,23 +240,14 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating repo client")
 	}
-	defer func() {
-		if err := conn.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close connection")
-		}
-	}()
+	defer pkg.WithErrorLogging(conn.Close, "failed to close connection")
 
 	log.Info().Msg("generating manifest with files")
 	stream, err := repoClient.GenerateManifestWithFiles(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get manifests with files")
 	}
-	defer func() {
-		err := stream.CloseSend()
-		if err != nil {
-			log.Error().Err(err).Msg("failed to close stream")
-		}
-	}()
+	defer pkg.WithErrorLogging(stream.CloseSend, "failed to close stream")
 
 	log.Info().Msg("sending request")
 	if err := stream.Send(&repoapiclient.ManifestRequestWithFiles{
@@ -356,11 +335,7 @@ func copyFile(srcpath, dstpath string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := r.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close file")
-		}
-	}() // ignore error: file was opened read-only.
+	defer pkg.WithErrorLogging(r.Close, "failed to close file")
 
 	w, err := os.Create(dstpath)
 	if err != nil {

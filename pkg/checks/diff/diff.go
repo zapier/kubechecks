@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
@@ -225,11 +226,7 @@ func getResources(ctx context.Context, request checks.Request) ([]*argoappv1.Res
 	defer span.End()
 
 	closer, appClient := request.Container.ArgoClient.GetApplicationClient()
-	defer func() {
-		if err := closer.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close application connection")
-		}
-	}()
+	defer pkg.WithErrorLogging(closer.Close, "failed to close application connection")
 
 	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
 		ApplicationName: &request.App.Name,
@@ -250,11 +247,7 @@ func getArgoSettings(ctx context.Context, request checks.Request) (*settings.Set
 	defer span.End()
 
 	settingsCloser, settingsClient := request.Container.ArgoClient.GetSettingsClient()
-	defer func() {
-		if err := settingsCloser.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close settings connection")
-		}
-	}()
+	defer pkg.WithErrorLogging(settingsCloser.Close, "failed to close connection")
 
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {

@@ -38,17 +38,12 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 
 	// write manifests to temp file because kubepug can only read from file or STDIN
 	// Create a temporary directory
-	tempDir, err := os.MkdirTemp("/tmp", "kubechecks-kubepug")
+	tempDir, err := os.MkdirTemp("", "kubechecks-kubepug-*")
 	if err != nil {
-		logger.Error().Err(err).Msg("could not create temp directory to write manifests for kubepug check")
-		//return "", err
-		return msg.Result{}, err
+		log.Error().Err(err).Stack().Msgf("failed to create temporary directory: %v", err)
+		return msg.Result{}, fmt.Errorf("failed to create temporary directory: %w", err)
 	}
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			log.Error().Err(err).Msg("failed to remove temp directory")
-		}
-	}()
+	defer pkg.WithErrorLogging(func() error { return os.RemoveAll(tempDir) }, "failed to remove directory")
 
 	for i, manifest := range manifests {
 		tmpFile := fmt.Sprintf("%s/%b.yaml", tempDir, i)

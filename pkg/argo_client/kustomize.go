@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
+	"github.com/zapier/kubechecks/pkg"
 )
 
 // addFile copies a file from the repository to the temp directory to prepare to be sent to the ArgoCD API.
@@ -35,11 +35,7 @@ func addFile(repoRoot string, tempDir string, relPath string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := r.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close file")
-		}
-	}() // ignore error: file was opened read-only.
+	defer pkg.WithErrorLogging(r.Close, "failed to close file")
 
 	w, err := os.Create(tempPath)
 	if err != nil {
