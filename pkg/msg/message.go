@@ -127,7 +127,10 @@ func init() {
 	hostname, _ = os.Hostname()
 }
 
-func (m *Message) buildFooter(start time.Time, commitSHA, labelFilter string, showDebugInfo bool) string {
+func (m *Message) buildFooter(
+	start time.Time, commitSHA, labelFilter string, showDebugInfo bool,
+	appsChecked, totalChecked int,
+) string {
 	if !showDebugInfo {
 		return fmt.Sprintf("<small> _Done. CommitSHA: %s_ <small>\n", commitSHA)
 	}
@@ -138,11 +141,15 @@ func (m *Message) buildFooter(start time.Time, commitSHA, labelFilter string, sh
 	}
 	duration := time.Since(start)
 
-	return fmt.Sprintf("<small> _Done: Pod: %s, Dur: %v, SHA: %s%s_ <small>\n", hostname, duration, pkg.GitCommit, envStr)
+	return fmt.Sprintf("<small> _Done: Pod: %s, Dur: %v, SHA: %s%s_ <small>, Apps Checked: %d, Total Checks: %d\n",
+		hostname, duration.Round(time.Second), pkg.GitCommit, envStr, appsChecked, totalChecked)
 }
 
 // BuildComment iterates the map of all apps in this message, building a final comment from their current state
-func (m *Message) BuildComment(ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool, identifier string) string {
+func (m *Message) BuildComment(
+	ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool, identifier string,
+	appsChecked, totalChecked int,
+) string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
 
@@ -203,7 +210,7 @@ func (m *Message) BuildComment(ctx context.Context, start time.Time, commitSHA, 
 		sb.WriteString("No changes")
 	}
 
-	footer := m.buildFooter(start, commitSHA, labelFilter, showDebugInfo)
+	footer := m.buildFooter(start, commitSHA, labelFilter, showDebugInfo, appsChecked, totalChecked)
 	sb.WriteString(fmt.Sprintf("\n\n%s", footer))
 
 	return sb.String()
