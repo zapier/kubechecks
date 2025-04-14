@@ -325,7 +325,11 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	ce.logger.Info().Msg("Finished")
 
-	comment := ce.vcsNote.BuildComment(ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter, ce.ctr.Config.ShowDebugInfo, ce.ctr.Config.Identifier)
+	comment := ce.vcsNote.BuildComment(
+		ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter,
+		ce.ctr.Config.ShowDebugInfo, ce.ctr.Config.Identifier,
+		len(ce.addedAppsSet), int(ce.appsSent),
+	)
 
 	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
 		return errors.Wrap(err, "failed to push comment")
