@@ -9,7 +9,8 @@ updates:
     ignore:
       # projects that aren't at 1.0 yet tend to have breaking changes,
       # so we don't batch those up with this "stable small changes" group
-      - { versions: "<1" }
+      - dependency-name: "*"
+        versions: "<1"
     package-ecosystem: "gomod"
     schedule:
       interval: "weekly"
