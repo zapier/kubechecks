@@ -13,8 +13,3 @@ updates:
     package-ecosystem: "gomod"
     schedule:
       interval: "weekly"
-
-  - directory: "/"
-    package-ecosystem: "gomod"
-    schedule:
-      interval: "weekly"
