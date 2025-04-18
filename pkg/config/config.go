@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -90,38 +89,38 @@ type ServerConfig struct {
 	Identifier               string        `mapstructure:"identifier"`
 }
 
+func viperParser(in reflect.Type, out reflect.Type, value interface{}) (interface{}, error) {
+	if in.String() == "string" && out.String() == "zerolog.Level" {
+		input := value.(string)
+		return zerolog.ParseLevel(input)
+	}
+
+	if in.String() == "string" && out.String() == "pkg.CommitState" {
+		input := value.(string)
+		return pkg.ParseCommitState(input)
+	}
+
+	if in.String() == "string" && out.String() == "time.Duration" {
+		input := value.(string)
+		return time.ParseDuration(input)
+	}
+
+	if in.String() == "string" && out.String() == "[]string" {
+		input := value.(string)
+		ns := strings.Split(input, ",")
+		return ns, nil
+	}
+
+	return value, nil
+}
+
 func New() (ServerConfig, error) {
 	return NewWithViper(viper.GetViper())
 }
 
 func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	var cfg ServerConfig
-	if err := v.Unmarshal(&cfg, func(config *mapstructure.DecoderConfig) {
-		config.DecodeHook = func(in reflect.Type, out reflect.Type, value interface{}) (interface{}, error) {
-			if in.String() == "string" && out.String() == "zerolog.Level" {
-				input := value.(string)
-				return zerolog.ParseLevel(input)
-			}
-
-			if in.String() == "string" && out.String() == "pkg.CommitState" {
-				input := value.(string)
-				return pkg.ParseCommitState(input)
-			}
-
-			if in.String() == "string" && out.String() == "time.Duration" {
-				input := value.(string)
-				return time.ParseDuration(input)
-			}
-
-			if in.String() == "string" && out.String() == "[]string" {
-				input := value.(string)
-				ns := strings.Split(input, ",")
-				return ns, nil
-			}
-
-			return value, nil
-		}
-	}); err != nil {
+	if err := v.Unmarshal(&cfg, viper.DecodeHook(viperParser)); err != nil {
 		return cfg, errors.Wrap(err, "failed to read configuration")
 	}
 
