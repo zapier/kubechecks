@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -96,8 +95,7 @@ func New() (ServerConfig, error) {
 
 func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	var cfg ServerConfig
-	if err := v.Unmarshal(&cfg, func(config *mapstructure.DecoderConfig) {
-		config.DecodeHook = func(in reflect.Type, out reflect.Type, value interface{}) (interface{}, error) {
+	if err := v.Unmarshal(&cfg, viper.DecodeHook( func(in reflect.Type, out reflect.Type, value interface{}) (interface{}, error) {
 			if in.String() == "string" && out.String() == "zerolog.Level" {
 				input := value.(string)
 				return zerolog.ParseLevel(input)
@@ -120,8 +118,7 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 			}
 
 			return value, nil
-		}
-	}); err != nil {
+	})); err != nil {
 		return cfg, errors.Wrap(err, "failed to read configuration")
 	}
 
