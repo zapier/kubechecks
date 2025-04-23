@@ -1,11 +1,13 @@
 suite: basics
 
-templates: [configmap.yaml]
+templates:
+  - "*.yaml"
 
 values: [basics.min-values.yaml]
 
 tests:
   - it: should render
+    template: templates/configmap.yaml
     chart:
       version: 0.1.0
     set:
