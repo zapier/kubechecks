@@ -51,6 +51,9 @@ tests:
       - equal:
           path: metadata.annotations["fake-annotation.xyz/abc"]
           value: "123"
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: "8a52d531f4f29e96d26fda6e6df43727e780900d9f998b47dfed80a5bcf58926"
   - it: should allow configuration of resources
     template: templates/deployment.yaml
     set:
