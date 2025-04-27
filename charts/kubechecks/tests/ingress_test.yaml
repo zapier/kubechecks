@@ -1,17 +1,19 @@
 suite: basics
 
-templates: [ingress.yaml]
+templates:
+  - "*.yaml"
 
 values: [basics.min-values.yaml]
 
 tests:
   - it: should render
+    template: templates/ingress.yaml
     chart:
       version: 999.9.9
     release:
       name: kubechecks
     asserts:
-      - isKind: 
+      - isKind:
           of: Ingress
       - equal:
           path: spec.rules[0]
@@ -30,4 +32,3 @@ tests:
           path: metadata.annotations
           value:
             kubernetes.io/ingress.class: an-ingress-class
-

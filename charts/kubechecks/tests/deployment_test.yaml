@@ -1,11 +1,13 @@
 suite: basics
 
-templates: [deployment.yaml]
+templates:
+  - "*.yaml"
 
 values: [basics.min-values.yaml]
 
 tests:
   - it: defaults to latest image tag
+    template: templates/deployment.yaml
     asserts:
       - equal:
           path: metadata.labels["app.kubernetes.io/version"]
@@ -15,6 +17,7 @@ tests:
           value: ghcr.io/zapier/kubechecks:latest
 
   - it: should render
+    template: templates/deployment.yaml
     set:
       deployment:
         image:
@@ -39,6 +42,7 @@ tests:
             helm.sh/chart: kubechecks-0.1.0
 
   - it: should allow arbitrary annotations
+    template: templates/deployment.yaml
     set:
       deployment:
         annotations:
@@ -47,7 +51,11 @@ tests:
       - equal:
           path: metadata.annotations["fake-annotation.xyz/abc"]
           value: "123"
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: "8a52d531f4f29e96d26fda6e6df43727e780900d9f998b47dfed80a5bcf58926"
   - it: should allow configuration of resources
+    template: templates/deployment.yaml
     set:
       deployment:
         resources:
@@ -68,6 +76,7 @@ tests:
               memory: 128Mi
               cpu: 50m
   - it: should allow configuration of replicaCount
+    template: templates/deployment.yaml
     set:
       deployment:
         replicaCount: 2
@@ -76,6 +85,7 @@ tests:
           path: spec.replicas
           value: 2
   - it: should allow configuration of probes
+    template: templates/deployment.yaml
     set:
       deployment:
         startupProbe:
@@ -123,6 +133,7 @@ tests:
             timeoutSeconds: 5
 
   - it: should allow configuration of labels
+    template: templates/deployment.yaml
     set:
       commonLabels:
         team: "test"
@@ -131,6 +142,7 @@ tests:
           path: metadata.labels.team
           value: "test"
   - it: should allow configuration of args
+    template: templates/deployment.yaml
     set:
       deployment:
         args:
@@ -142,6 +154,7 @@ tests:
           path: spec.template.spec.containers[0].args
           value: [one, two, "123"]
   - it: can have volumes
+    template: templates/deployment.yaml
     set:
       deployment:
         volumes:
@@ -164,6 +177,7 @@ tests:
             - name: test-volume
               path: /ghi
   - it: can have new envFrom
+    template: templates/deployment.yaml
     set:
       deployment:
         envFrom:
@@ -182,6 +196,7 @@ tests:
             - secretMap:
                 name: new-secret
   - it: should render tag as annotation
+    template: templates/deployment.yaml
     chart:
       appVersion: 1.0.0
       version: 0.1.0
