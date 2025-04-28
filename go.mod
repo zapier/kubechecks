@@ -3,13 +3,13 @@ module github.com/zapier/kubechecks
 go 1.24
 
 require (
-	github.com/argoproj/argo-cd/v2 v2.14.10
+	github.com/argoproj/argo-cd/v2 v2.14.11
 	github.com/argoproj/gitops-engine v0.7.1-0.20250328191959-6d3cf122b03f
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/service/eks v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.19
-	github.com/aws/smithy-go v1.22.2
+	github.com/aws/smithy-go v1.22.3
 	github.com/bradleyfalzon/ghinstallation/v2 v2.15.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/chainguard-dev/git-urls v1.0.2
@@ -26,14 +26,13 @@ require (
 	github.com/labstack/echo-contrib v0.17.1
 	github.com/labstack/echo/v4 v4.13.3
 	github.com/masterminds/semver v1.5.0
-	github.com/mitchellh/mapstructure v1.5.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/open-policy-agent/conftest v0.49.1
 	github.com/pkg/errors v0.9.1
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/prometheus/client_golang v1.22.0
 	github.com/rs/zerolog v1.34.0
-	github.com/sashabaranov/go-openai v1.38.2
+	github.com/sashabaranov/go-openai v1.38.3
 	github.com/shurcooL/githubv4 v0.0.0-20231126234147-1cffa1f02456
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
