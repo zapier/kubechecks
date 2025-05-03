@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "kubechecks.fullname" . }}
+  namespace: {{ include "kubechecks.releaseNamespace" . }}
   {{- with .Values.deployment.annotations }}
   annotations: {{ toYaml . | nindent 4 }}
   {{- end}}

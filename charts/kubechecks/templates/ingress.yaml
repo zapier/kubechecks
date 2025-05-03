@@ -6,6 +6,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "kubechecks.fullname" . }}
+  namespace: {{ include "kubechecks.releaseNamespace" . }}
   annotations:
 {{ toYaml .Values.ingress.annotations | indent 4 }}
   labels:

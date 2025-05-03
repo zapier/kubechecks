@@ -67,3 +67,11 @@ Create the name of the secret file to use
 {{- define "kubechecks.secretsName" -}}
 {{- tpl .Values.secrets.name . }}
 {{- end -}}
+
+
+{{/*
+Returns namespace for kubechecks resources
+*/}}
+{{- define "kubechecks.releaseNamespace" -}}
+{{- default .Release.Namespace .Values.namespaceOverride }}
+{{- end -}}

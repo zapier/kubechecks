@@ -13,6 +13,7 @@ apiVersion: {{ $apiVersion }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "kubechecks.fullname" . }}
+  namespace: {{ include "kubechecks.releaseNamespace" . }}
   labels:
     {{- include "kubechecks.labels" . | nindent 4 }}
 spec:

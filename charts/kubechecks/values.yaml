@@ -1,4 +1,8 @@
 # Labels to apply to all resources created by this Helm chart
+
+# Overrides namespace for kubechecks resources. Otherwise defaults to ".Release.Namespace"
+namespaceOverride: ""
+
 argocd:
   namespace: argocd
 
