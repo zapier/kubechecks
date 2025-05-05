@@ -94,6 +94,7 @@ func TestRepoGetRemoteHead(t *testing.T) {
 
 	repo := New(cfg, "https://github.com/zapier/kubechecks.git", "")
 	repo.Shallow = true
+	repo.BranchName = "gh-pages"
 	err := repo.Clone(ctx)
 	require.NoError(t, err)
 
@@ -102,4 +103,7 @@ func TestRepoGetRemoteHead(t *testing.T) {
 	branch, err := repo.GetRemoteHead()
 	require.NoError(t, err)
 	assert.Equal(t, "main", branch)
+	currentBranch, err := repo.GetCurrentBranch()
+	require.NoError(t, err)
+	assert.Equal(t, "gh-pages", currentBranch)
 }
