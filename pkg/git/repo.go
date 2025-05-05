@@ -120,6 +120,16 @@ func (r *Repo) shallowClone(ctx context.Context) error {
 		return err
 	}
 
+	// Set all branches to be fetched to allow checking out any branch
+	// https://github.com/zapier/kubechecks/issues/407#issuecomment-2850431802
+	remoteSetBranchesArgs := []string{"remote", "set-branches", "origin", "*"}
+	cmd = r.execGitCommand(remoteSetBranchesArgs...)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		log.Error().Err(err).Msgf("unable to set remote branches, %s", out)
+		return err
+	}
+
 	if r.BranchName != "HEAD" {
 		// Fetch SHA
 		args = []string{"fetch", "origin", r.BranchName, "--depth", "1"}
