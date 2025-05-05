@@ -103,4 +103,7 @@ func TestRepoGetRemoteHead(t *testing.T) {
 	branch, err := repo.GetRemoteHead()
 	require.NoError(t, err)
 	assert.Equal(t, "main", branch)
+	currentBranch, err := repo.GetCurrentBranch()
+	require.NoError(t, err)
+	assert.Equal(t, "gh-pages", currentBranch)
 }

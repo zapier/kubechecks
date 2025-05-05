@@ -182,6 +182,18 @@ func (r *Repo) GetRemoteHead() (string, error) {
 	return branchName, nil
 }
 
+func (r *Repo) GetCurrentBranch() (string, error) {
+	cmd := r.execGitCommand("rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to determine which branch HEAD points to")
+	}
+
+	branchName := strings.TrimSpace(string(out))
+
+	return branchName, nil
+}
+
 func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 	// Merge the last commit into a tmp branch off of the target branch
 	_, span := tracer.Start(ctx, "Repo - RepoMergeIntoTarget",
