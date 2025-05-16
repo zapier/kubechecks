@@ -120,6 +120,16 @@ func (r *Repo) shallowClone(ctx context.Context) error {
 		return err
 	}
 
+	// Set all branches to be fetched to allow checking out any branch
+	// https://github.com/zapier/kubechecks/issues/407#issuecomment-2850431802
+	remoteSetBranchesArgs := []string{"remote", "set-branches", "origin", "*"}
+	cmd = r.execGitCommand(remoteSetBranchesArgs...)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		log.Error().Err(err).Msgf("unable to set remote branches, %s", out)
+		return err
+	}
+
 	if r.BranchName != "HEAD" {
 		// Fetch SHA
 		args = []string{"fetch", "origin", r.BranchName, "--depth", "1"}
@@ -168,6 +178,18 @@ func (r *Repo) GetRemoteHead() (string, error) {
 
 	branchName := strings.TrimSpace(string(out))
 	branchName = strings.TrimPrefix(branchName, "origin/")
+
+	return branchName, nil
+}
+
+func (r *Repo) GetCurrentBranch() (string, error) {
+	cmd := r.execGitCommand("rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to determine which branch HEAD points to")
+	}
+
+	branchName := strings.TrimSpace(string(out))
 
 	return branchName, nil
 }
