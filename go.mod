@@ -3,8 +3,8 @@ module github.com/zapier/kubechecks
 go 1.24
 
 require (
-	github.com/argoproj/argo-cd/v2 v2.14.12
-	github.com/argoproj/gitops-engine v0.7.1-0.20250328191959-6d3cf122b03f
+	github.com/argoproj/argo-cd/v2 v2.14.13
+	github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/service/eks v1.64.0
