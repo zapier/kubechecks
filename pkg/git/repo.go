@@ -330,7 +330,15 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to create credentials file")
 	}
+<<<<<<< HEAD
 	defer pkg.WithErrorLogging(outfile.Close, "failed to close output file")
+=======
+	defer func() {
+		if closeErr := outfile.Close(); closeErr != nil {
+			log.Warn().Err(closeErr).Msg("failed to close credentials file")
+		}
+	}()
+>>>>>>> 8ae00f1 (fix golang ci errors)
 
 	cmd = execCommand(cfg, "echo", cloneUrl)
 	cmd.Stdout = outfile
@@ -388,7 +396,11 @@ func getCloneUrl(user string, cfg config.ServerConfig, httpClient HTTPClient) (s
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to get response")
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				log.Warn().Err(closeErr).Msg("failed to close response body")
+			}
+		}()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
