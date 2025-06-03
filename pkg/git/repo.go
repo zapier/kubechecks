@@ -3,14 +3,18 @@ package git
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -22,6 +26,11 @@ import (
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
+
+// HTTPClient interface for HTTP operations to enable testing
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
 
 type Repo struct {
 	// informational
@@ -305,16 +314,17 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 		return errors.Wrap(err, "failed to set git user name")
 	}
 
-	cloneUrl, err := getCloneUrl(username, cfg)
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	cloneUrl, err := getCloneUrl(username, cfg, httpClient)
 	if err != nil {
 		return errors.Wrap(err, "failed to get clone url")
 	}
 
 	homedir, err := os.UserHomeDir()
 	if err != nil {
-		if err != nil {
-			return errors.Wrap(err, "unable to get home directory")
-		}
+		return errors.Wrap(err, "unable to get home directory")
 	}
 	outfile, err := os.Create(fmt.Sprintf("%s/.git-credentials", homedir))
 	if err != nil {
@@ -339,7 +349,7 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 	return nil
 }
 
-func getCloneUrl(user string, cfg config.ServerConfig) (string, error) {
+func getCloneUrl(user string, cfg config.ServerConfig, httpClient HTTPClient) (string, error) {
 	vcsBaseUrl := cfg.VcsBaseUrl
 	vcsType := cfg.VcsType
 	vcsToken := cfg.VcsToken
@@ -357,6 +367,52 @@ func getCloneUrl(user string, cfg config.ServerConfig) (string, error) {
 		}
 		hostname = parts.Host
 		scheme = parts.Scheme
+	}
+
+	if cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != "" {
+		stringAppId := fmt.Sprintf("%d", cfg.GithubAppID)
+		jwt, err := pkg.CreateJWT(cfg.GithubPrivateKey, stringAppId)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to create jwt")
+		}
+		url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", cfg.GithubInstallationID)
+
+		req, err := http.NewRequest(http.MethodPost, url, nil)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to create request")
+		}
+		req.Header.Add("Accept", "application/vnd.github.v3+json")
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", jwt))
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to get response")
+		}
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				log.Warn().Err(closeErr).Msg("failed to close response body")
+			}
+		}()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to read response")
+		}
+
+		var result interface{}
+		err = json.Unmarshal(body, &result)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to unmarshal response")
+		}
+
+		data, ok := result.(map[string]interface{})
+		if !ok {
+			return "", errors.New("failed to convert response to map")
+		}
+
+		if token, exists := data["token"]; exists {
+			user = fmt.Sprintf("x-access-token:%s", token.(string))
+		}
 	}
 
 	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, vcsToken, hostname), nil
