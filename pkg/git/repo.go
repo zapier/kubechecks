@@ -425,7 +425,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 
 	var fileList []string
 
-	cmd := r.execGitCommand("diff", "--name-only", fmt.Sprintf("%s/%s", "origin", r.BranchName))
+	cmd := r.execGitCommand("diff", "--name-only", fmt.Sprintf("origin/%s...HEAD", r.BranchName))
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
 	scanner := bufio.NewScanner(pipe)
