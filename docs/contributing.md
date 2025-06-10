@@ -69,36 +69,38 @@ To get started do the following:
 
 * Copy the `.secret.example` and set required values.
 
-    ```
+    ```sh
     cp .secret.example .secret
     ```
-  You will need to fill in either `GITLAB_TOKEN` or `GITLAB_TOKEN`  
-  If you are testing with GITHUB, please set the tilt_config.json file to specify the vcs-type as the default is `gitlab`.  
-  The token you specify must have ability to get repositories, add/delete comment and webhooks.  
-    ```
-    {
-      "vcs-type": "github"
-    }
-    ```
+
+    You will need to fill in either `GITLAB_TOKEN` or `GITLAB_TOKEN`  
+    If you are testing with GITHUB, please set the tilt_config.json file to specify the vcs-type as the default is `gitlab`:
+
+      ```json title="tilt_config.json"
+      {
+        "vcs-type": "github"
+      }
+      ```
+
+    The token you specify must have ability to get repositories, add/delete comment and webhooks.
 
 * From the root directory of this repo:
 
-    ```
+    ```sh
     tilt up
     ```
 
 You should see output like:
 
-    ```
-    Tilt started on http://localhost:10350/
-    v0.30.13, built 2022-12-05
+```
+Tilt started on http://localhost:10350/
+v0.30.13, built 2022-12-05
 
-    (space) to open the browser
-    (s) to stream logs (--stream=true)
-    (t) to open legacy terminal mode (--legacy=true)
-    (ctrl-c) to exit
-
-    ```
+(space) to open the browser
+(s) to stream logs (--stream=true)
+(t) to open legacy terminal mode (--legacy=true)
+(ctrl-c) to exit
+```
 
 In the background Tilt has started building and deploying resources.
 
