@@ -410,8 +410,9 @@ func getCloneUrl(user string, cfg config.ServerConfig, httpClient HTTPClient) (s
 			return "", errors.New("failed to convert response to map")
 		}
 
-		if token, exists := data["token"]; exists {
-			user = fmt.Sprintf("x-access-token:%s", token.(string))
+		if token, ok := data["token"].(string); ok {
+			user = "x-access-token"
+			vcsToken = token
 		}
 	}
 
