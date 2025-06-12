@@ -38,6 +38,7 @@ type Client interface {
 	LoadHook(ctx context.Context, repoAndId string) (PullRequest, error)
 
 	Username() string
+	CloneUsername() string
 	Email() string
 	ToEmoji(pkg.CommitState) string
 }

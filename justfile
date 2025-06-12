@@ -67,5 +67,8 @@ unit_test_race:
 rebuild_docs:
     ./earthly.sh +rebuild-docs
 
+rebuild_mocks:
+    go run github.com/vektra/mockery/v3@v3.3.4
+
 ci-golang:
     ./earthly.sh +ci-golang

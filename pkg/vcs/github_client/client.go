@@ -107,7 +107,7 @@ func CreateGithubClient(cfg config.ServerConfig) (*Client, error) {
 
 func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, error) {
 	// Initialize the GitHub client with app key if provided
-	if cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != "" {
+	if cfg.IsGithubApp() {
 		appTransport, err := ghinstallation.New(
 			http.DefaultTransport, cfg.GithubAppID, cfg.GithubInstallationID, []byte(cfg.GithubPrivateKey),
 		)
@@ -135,6 +135,14 @@ func (c *Client) Username() string { return c.username }
 func (c *Client) Email() string    { return c.email }
 func (c *Client) GetName() string {
 	return "github"
+}
+
+func (c *Client) CloneUsername() string {
+	if c.cfg.IsGithubApp() {
+		return "x-access-token"
+	} else {
+		return c.username
+	}
 }
 
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {

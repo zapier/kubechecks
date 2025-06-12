@@ -185,7 +185,7 @@ func TestGetCloneUrl(t *testing.T) {
 		},
 		{
 			name: "GitHub App authentication - success",
-			user: "testuser",
+			user: "x-access-token",
 			cfg: config.ServerConfig{
 				VcsBaseUrl:           "",
 				VcsType:              "github",

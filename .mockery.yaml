@@ -1,14 +1,18 @@
-with-expecter: true
-dir: "mocks/{{.PackageName}}/mocks"
+dir: "mocks/{{.SrcPackageName}}/mocks"
+filename: "mock_{{.StructName}}.go"
 packages:
+  github.com/zapier/kubechecks/pkg/affected_apps:
+    config:
+      all: true
+  github.com/zapier/kubechecks/pkg/generator:
+    config:
+      all: true
   github.com/zapier/kubechecks/pkg/vcs:
     config:
       all: true
   github.com/zapier/kubechecks/pkg/vcs/github_client:
-    # place your package-specific config here
     config:
       all: true
   github.com/zapier/kubechecks/pkg/vcs/gitlab_client:
-    # place your package-specific config here
     config:
       all: true
