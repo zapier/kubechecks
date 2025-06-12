@@ -2,17 +2,18 @@ dir: "mocks/{{.SrcPackageName}}/mocks"
 filename: "mock_{{.StructName}}.go"
 packages:
   github.com/zapier/kubechecks/pkg/affected_apps:
-    config:
-      all: true
+    interfaces:
+      Matcher: {}
   github.com/zapier/kubechecks/pkg/generator:
-    config:
-      all: true
+    interfaces:
+      AppsGenerator: {}
   github.com/zapier/kubechecks/pkg/vcs:
-    config:
-      all: true
+    interfaces:
+      Client: {}
   github.com/zapier/kubechecks/pkg/vcs/github_client:
-    config:
-      all: true
+    interfaces:
+      RepositoriesServices: {}
+      PullRequestsServices: {}
   github.com/zapier/kubechecks/pkg/vcs/gitlab_client:
-    config:
-      all: true
+    interfaces:
+      ProjectsServices: {}
