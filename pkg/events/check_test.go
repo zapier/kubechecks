@@ -35,6 +35,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 	t.Run("empty branch name", func(t *testing.T) {
 		vcsClient := new(vcsmocks.MockClient)
 		vcsClient.EXPECT().Username().Return("username")
+		vcsClient.EXPECT().CloneUsername().Return("clone-username")
 
 		ce := CheckEvent{
 			clonedRepos: make(map[repoKey]*git.Repo),
@@ -53,6 +54,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 	t.Run("branch is HEAD", func(t *testing.T) {
 		vcsClient := new(vcsmocks.MockClient)
 		vcsClient.EXPECT().Username().Return("username")
+		vcsClient.EXPECT().CloneUsername().Return("clone-username")
 
 		ce := CheckEvent{
 			clonedRepos: make(map[repoKey]*git.Repo),
@@ -71,6 +73,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 	t.Run("branch is the same as HEAD", func(t *testing.T) {
 		vcsClient := new(vcsmocks.MockClient)
 		vcsClient.EXPECT().Username().Return("username")
+		vcsClient.EXPECT().CloneUsername().Return("clone-username")
 
 		ce := CheckEvent{
 			clonedRepos: make(map[repoKey]*git.Repo),
@@ -89,6 +92,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 	t.Run("branch is not the same as HEAD", func(t *testing.T) {
 		vcsClient := new(vcsmocks.MockClient)
 		vcsClient.EXPECT().Username().Return("username")
+		vcsClient.EXPECT().CloneUsername().Return("clone-username")
 
 		ce := CheckEvent{
 			clonedRepos: make(map[repoKey]*git.Repo),

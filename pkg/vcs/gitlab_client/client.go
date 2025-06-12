@@ -84,11 +84,10 @@ func CreateGitlabClient(cfg config.ServerConfig) (*Client, error) {
 	return client, nil
 }
 
-func (c *Client) Email() string    { return c.email }
-func (c *Client) Username() string { return c.username }
-func (c *Client) GetName() string {
-	return "gitlab"
-}
+func (c *Client) Email() string         { return c.email }
+func (c *Client) Username() string      { return c.username }
+func (c *Client) CloneUsername() string { return c.username }
+func (c *Client) GetName() string       { return "gitlab" }
 
 // VerifyHook returns an err if the webhook isn't valid
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {

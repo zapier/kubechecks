@@ -89,6 +89,10 @@ type ServerConfig struct {
 	Identifier               string        `mapstructure:"identifier"`
 }
 
+func (cfg ServerConfig) IsGithubApp() bool {
+	return cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != ""
+}
+
 func New() (ServerConfig, error) {
 	return NewWithViper(viper.GetViper())
 }

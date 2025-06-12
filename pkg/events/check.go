@@ -180,7 +180,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse clone url")
 	}
-	cloneURL = parsed.CloneURL(ce.ctr.VcsClient.Username())
+	cloneURL = parsed.CloneURL(ce.ctr.VcsClient.CloneUsername())
 
 	branchName = strings.TrimSpace(branchName)
 	if branchName == "" {

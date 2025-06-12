@@ -301,6 +301,7 @@ func censorVcsToken(cfg config.ServerConfig, args []string) []string {
 func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 	email := vcsClient.Email()
 	username := vcsClient.Username()
+	cloneUsername := vcsClient.CloneUsername()
 
 	cmd := execCommand(cfg, "git", "config", "--global", "user.email", email)
 	err := cmd.Run()
@@ -317,7 +318,7 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 	}
-	cloneUrl, err := getCloneUrl(username, cfg, httpClient)
+	cloneUrl, err := getCloneUrl(cloneUsername, cfg, httpClient)
 	if err != nil {
 		return errors.Wrap(err, "failed to get clone url")
 	}
@@ -369,7 +370,7 @@ func getCloneUrl(user string, cfg config.ServerConfig, httpClient HTTPClient) (s
 		scheme = parts.Scheme
 	}
 
-	if cfg.GithubAppID != 0 && cfg.GithubInstallationID != 0 && cfg.GithubPrivateKey != "" {
+	if cfg.IsGithubApp() {
 		stringAppId := fmt.Sprintf("%d", cfg.GithubAppID)
 		jwt, err := pkg.CreateJWT(cfg.GithubPrivateKey, stringAppId)
 		if err != nil {
@@ -410,8 +411,8 @@ func getCloneUrl(user string, cfg config.ServerConfig, httpClient HTTPClient) (s
 			return "", errors.New("failed to convert response to map")
 		}
 
-		if token, exists := data["token"]; exists {
-			user = fmt.Sprintf("x-access-token:%s", token.(string))
+		if token, ok := data["token"].(string); ok {
+			vcsToken = token
 		}
 	}
 
@@ -425,7 +426,7 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 
 	var fileList []string
 
-	cmd := r.execGitCommand("diff", "--name-only", fmt.Sprintf("%s/%s", "origin", r.BranchName))
+	cmd := r.execGitCommand("diff", "--name-only", fmt.Sprintf("origin/%s...HEAD", r.BranchName))
 	pipe, _ := cmd.StdoutPipe()
 	var wg sync.WaitGroup
 	scanner := bufio.NewScanner(pipe)

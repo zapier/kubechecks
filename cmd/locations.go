@@ -22,7 +22,7 @@ import (
 // The function returns an error if any Git repository fails to clone.
 func processLocations(ctx context.Context, ctr container.Container, locations []string) error {
 	for index, location := range locations {
-		if newLocation, err := maybeCloneGitUrl(ctx, ctr.RepoManager, ctr.Config.RepoRefreshInterval, location, ctr.VcsClient.Username(), ctr.Config.RepoShallowClone); err != nil {
+		if newLocation, err := maybeCloneGitUrl(ctx, ctr.RepoManager, ctr.Config.RepoRefreshInterval, location, ctr.VcsClient.CloneUsername(), ctr.Config.RepoShallowClone); err != nil {
 			return errors.Wrapf(err, "failed to clone %q", location)
 		} else if newLocation != "" {
 			locations[index] = newLocation
