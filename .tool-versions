@@ -4,7 +4,7 @@ golangci-lint 2.1.6
 helm 3.16.3
 helm-cr 1.6.1
 helm-ct 3.11.0
-kubeconform 0.6.7
+kubeconform 0.7.0
 kustomize 5.6.0
 mockery 3.3.4
 tilt 0.33.2
