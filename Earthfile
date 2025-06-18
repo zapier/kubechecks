@@ -177,7 +177,7 @@ test-helm:
     FROM quay.io/helmpack/chart-testing:v${CHART_TESTING_VERSION}
 
     # install kubeconform
-    ARG KUBECONFORM_VERSION="0.6.4"
+    ARG KUBECONFORM_VERSION="0.7.0"
     RUN FILE=kubeconform.tgz \
         && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-${USERARCH}.tar.gz \
         && wget ${URL} \
