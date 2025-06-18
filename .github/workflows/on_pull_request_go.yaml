@@ -12,6 +12,10 @@ jobs:
   ci-golang:
     runs-on: ubuntu-22.04
     steps:
+      - uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+
       - uses: actions/checkout@v3
 
       - uses: djeebus/parse-tool-versions@v2.1
