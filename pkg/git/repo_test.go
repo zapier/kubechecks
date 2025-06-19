@@ -2,13 +2,6 @@ package git
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
-	"errors"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -115,163 +108,37 @@ func TestRepoGetRemoteHead(t *testing.T) {
 	assert.Equal(t, "gh-pages", currentBranch)
 }
 
-func TestGetCloneUrl(t *testing.T) {
-	tests := []struct {
-		name           string
-		user           string
-		cfg            config.ServerConfig
-		httpClient     HTTPClient
-		expectedResult string
-		expectError    bool
+func TestBuildCloneURL(t *testing.T) {
+	tests := map[string]struct {
+		VcsBaseUrl, VcsUsername, VcsToken string
+		expectedResult                    string
+		expectError                       bool
 	}{
-		{
-			name: "basic case with default hostname - github",
-			user: "testuser",
-			cfg: config.ServerConfig{
-				VcsBaseUrl: "",
-				VcsType:    "github",
-				VcsToken:   "token123",
-			},
-			httpClient:     nil, // not needed for this case
-			expectedResult: "https://testuser:token123@github.com",
-			expectError:    false,
-		},
-		{
-			name: "basic case with default hostname - gitlab",
-			user: "testuser",
-			cfg: config.ServerConfig{
-				VcsBaseUrl: "",
-				VcsType:    "gitlab",
-				VcsToken:   "glpat-token123",
-			},
-			httpClient:     nil,
-			expectedResult: "https://testuser:glpat-token123@gitlab.com",
-			expectError:    false,
-		},
-		{
-			name: "custom VcsBaseUrl",
-			user: "testuser",
-			cfg: config.ServerConfig{
-				VcsBaseUrl: "https://git.example.com",
-				VcsType:    "github",
-				VcsToken:   "token123",
-			},
-			httpClient:     nil,
+		"custom VcsBaseUrl": {
+			VcsBaseUrl:     "https://git.example.com",
+			VcsToken:       "token123",
+			VcsUsername:    "testuser",
 			expectedResult: "https://testuser:token123@git.example.com",
 			expectError:    false,
 		},
-		{
-			name: "custom VcsBaseUrl with http scheme",
-			user: "testuser",
-			cfg: config.ServerConfig{
-				VcsBaseUrl: "http://git.internal.com",
-				VcsType:    "github",
-				VcsToken:   "token123",
-			},
-			httpClient:     nil,
+		"custom VcsBaseUrl with http scheme": {
+			VcsBaseUrl:     "http://git.internal.com",
+			VcsToken:       "token123",
+			VcsUsername:    "testuser",
 			expectedResult: "http://testuser:token123@git.internal.com",
 			expectError:    false,
 		},
-		{
-			name: "invalid VcsBaseUrl",
-			user: "testuser",
-			cfg: config.ServerConfig{
-				VcsBaseUrl: "://invalid-url",
-				VcsType:    "github",
-				VcsToken:   "token123",
-			},
-			httpClient:  nil,
-			expectError: true,
-		},
-		{
-			name: "GitHub App authentication - success",
-			user: "x-access-token",
-			cfg: config.ServerConfig{
-				VcsBaseUrl:           "",
-				VcsType:              "github",
-				VcsToken:             "token123",
-				GithubAppID:          123,
-				GithubInstallationID: 456,
-				GithubPrivateKey:     generateTestRSAPrivateKey(t),
-			},
-			httpClient: &mockHTTPClient{
-				doFunc: func(req *http.Request) (*http.Response, error) {
-					// Verify the request
-					assert.Equal(t, "POST", req.Method)
-					assert.Equal(t, "https://api.github.com/app/installations/456/access_tokens", req.URL.String())
-					assert.Equal(t, "application/vnd.github.v3+json", req.Header.Get("Accept"))
-					assert.Contains(t, req.Header.Get("Authorization"), "Bearer ")
-
-					// Return a mock response
-					body := `{"token": "ghs_access_token_123"}`
-					return &http.Response{
-						StatusCode: 200,
-						Body:       io.NopCloser(strings.NewReader(body)),
-					}, nil
-				},
-			},
-			expectedResult: "https://x-access-token:ghs_access_token_123@github.com",
-			expectError:    false,
-		},
-		{
-			name: "GitHub App authentication - HTTP error",
-			user: "testuser",
-			cfg: config.ServerConfig{
-				VcsBaseUrl:           "",
-				VcsType:              "github",
-				VcsToken:             "token123",
-				GithubAppID:          123,
-				GithubInstallationID: 456,
-				GithubPrivateKey:     generateTestRSAPrivateKey(t),
-			},
-			httpClient: &mockHTTPClient{
-				doFunc: func(req *http.Request) (*http.Response, error) {
-					return nil, errors.New("network error")
-				},
-			},
-			expectError: true,
-		},
-		{
-			name: "GitHub App authentication - invalid response body",
-			user: "testuser",
-			cfg: config.ServerConfig{
-				VcsBaseUrl:           "",
-				VcsType:              "github",
-				VcsToken:             "token123",
-				GithubAppID:          123,
-				GithubInstallationID: 456,
-				GithubPrivateKey:     generateTestRSAPrivateKey(t),
-			},
-			httpClient: &mockHTTPClient{
-				doFunc: func(req *http.Request) (*http.Response, error) {
-					body := `{"invalid": json`
-					return &http.Response{
-						StatusCode: 200,
-						Body:       io.NopCloser(strings.NewReader(body)),
-					}, nil
-				},
-			},
-			expectError: true,
-		},
-		{
-			name: "GitHub App authentication - invalid private key",
-			user: "testuser",
-			cfg: config.ServerConfig{
-				VcsBaseUrl:           "",
-				VcsType:              "github",
-				VcsToken:             "token123",
-				GithubAppID:          123,
-				GithubInstallationID: 456,
-				GithubPrivateKey:     "invalid-private-key",
-			},
-			httpClient:  nil,
+		"invalid VcsBaseUrl": {
+			VcsBaseUrl:  "://invalid-url",
+			VcsToken:    "token123",
+			VcsUsername: "testuser",
 			expectError: true,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := getCloneUrl(tt.user, tt.cfg, tt.httpClient)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := BuildCloneURL(tt.VcsBaseUrl, tt.VcsUsername, tt.VcsToken)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -281,29 +148,4 @@ func TestGetCloneUrl(t *testing.T) {
 			}
 		})
 	}
-}
-
-// mockHTTPClient is a mock implementation of HTTPClient for testing
-type mockHTTPClient struct {
-	doFunc func(req *http.Request) (*http.Response, error)
-}
-
-func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	return m.doFunc(req)
-}
-
-// generateTestRSAPrivateKey generates a test RSA private key for testing
-func generateTestRSAPrivateKey(t *testing.T) string {
-	// Generate a test RSA private key
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-
-	// Encode the private key in PEM format
-	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
-	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: privateKeyBytes,
-	})
-
-	return string(privateKeyPEM)
 }

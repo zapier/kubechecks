@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -124,6 +125,10 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 			return value, nil
 	})); err != nil {
 		return cfg, errors.Wrap(err, "failed to read configuration")
+	}
+
+	if cfg.VcsBaseUrl == "" {
+		cfg.VcsBaseUrl = fmt.Sprintf("https://%s.com", cfg.VcsType)
 	}
 
 	log.Info().Msg("Server Configuration: ")

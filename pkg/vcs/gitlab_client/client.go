@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
+	"github.com/zapier/kubechecks/pkg/git"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
@@ -37,11 +38,16 @@ type GLClient struct {
 	Commits         CommitsServices
 }
 
-func CreateGitlabClient(cfg config.ServerConfig) (*Client, error) {
+var ErrNoToken = errors.New("gitlab token needs to be set")
+
+func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
+	_, span := tracer.Start(ctx, "CreateGitlabClient")
+	defer span.End()
+
 	// Initialize the GitLab client with access token
 	gitlabToken := cfg.VcsToken
 	if gitlabToken == "" {
-		log.Fatal().Msg("gitlab token needs to be set")
+		return nil, ErrNoToken
 	}
 	log.Debug().Msgf("Token Length - %d", len(gitlabToken))
 
@@ -54,7 +60,7 @@ func CreateGitlabClient(cfg config.ServerConfig) (*Client, error) {
 
 	c, err := gitlab.NewClient(gitlabToken, gitlabOptions...)
 	if err != nil {
-		log.Fatal().Err(err).Msg("could not create Gitlab client")
+		return nil, errors.Wrapf(err, "could not create Gitlab client")
 	}
 
 	user, _, err := c.Users.CurrentUser()
@@ -81,6 +87,16 @@ func CreateGitlabClient(cfg config.ServerConfig) (*Client, error) {
 	if client.email == "" {
 		client.email = vcs.DefaultVcsEmail
 	}
+
+	cloneURL, err := git.BuildCloneURL(cfg.VcsBaseUrl, client.username, gitlabToken)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to build clone url")
+	}
+
+	if err = git.SetCredentials(ctx, cfg, client.email, client.username, cloneURL); err != nil {
+		return nil, errors.Wrap(err, "failed to set git credentials")
+	}
+
 	return client, nil
 }
 

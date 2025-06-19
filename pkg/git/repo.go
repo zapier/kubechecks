@@ -3,9 +3,7 @@ package git
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -14,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -23,7 +20,6 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
-	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
@@ -213,7 +209,7 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 			attribute.String("sha", ref),
 		))
 	defer span.End()
-	merge_command := []string{"merge", ref}
+	mergeCommand := []string{"merge", ref}
 	// For shallow clones, we need to pull the ref into the repo
 	if r.Shallow {
 		ref = strings.TrimPrefix(ref, "origin/")
@@ -227,10 +223,10 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 		// When merging shallow clones, we need to allow unrelated histories
 		// and use the "theirs" strategy to avoid conflicts
 		// cons of this is that it may not be entirely accurate and may overwrite changes in the target branch
-		merge_command = []string{"merge", ref, "--allow-unrelated-histories", "-X", "theirs"}
+		mergeCommand = []string{"merge", ref, "--allow-unrelated-histories", "-X", "theirs"}
 	}
 
-	cmd := r.execGitCommand(merge_command...)
+	cmd := r.execGitCommand(mergeCommand...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		telemetry.SetError(span, err, "merge commit into branch")
@@ -298,10 +294,9 @@ func censorVcsToken(cfg config.ServerConfig, args []string) []string {
 }
 
 // SetCredentials ensures Git auth is set up for cloning
-func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
-	email := vcsClient.Email()
-	username := vcsClient.Username()
-	cloneUsername := vcsClient.CloneUsername()
+func SetCredentials(ctx context.Context, cfg config.ServerConfig, email, username, cloneUrl string) error {
+	_, span := tracer.Start(ctx, "SetCredentials")
+	defer span.End()
 
 	cmd := execCommand(cfg, "git", "config", "--global", "user.email", email)
 	err := cmd.Run()
@@ -313,14 +308,6 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrap(err, "failed to set git user name")
-	}
-
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-	cloneUrl, err := getCloneUrl(cloneUsername, cfg, httpClient)
-	if err != nil {
-		return errors.Wrap(err, "failed to get clone url")
 	}
 
 	homedir, err := os.UserHomeDir()
@@ -350,73 +337,17 @@ func SetCredentials(cfg config.ServerConfig, vcsClient vcs.Client) error {
 	return nil
 }
 
-func getCloneUrl(user string, cfg config.ServerConfig, httpClient HTTPClient) (string, error) {
-	vcsBaseUrl := cfg.VcsBaseUrl
-	vcsType := cfg.VcsType
-	vcsToken := cfg.VcsToken
-
+func BuildCloneURL(baseURL, user, password string) (string, error) {
 	var hostname, scheme string
 
-	if vcsBaseUrl == "" {
-		// hack: but it does happen to work for now
-		hostname = fmt.Sprintf("%s.com", vcsType)
-		scheme = "https"
-	} else {
-		parts, err := url.Parse(vcsBaseUrl)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to parse %q", vcsBaseUrl)
-		}
-		hostname = parts.Host
-		scheme = parts.Scheme
+	parts, err := url.Parse(baseURL)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to parse %q", baseURL)
 	}
+	hostname = parts.Host
+	scheme = parts.Scheme
 
-	if cfg.IsGithubApp() {
-		stringAppId := fmt.Sprintf("%d", cfg.GithubAppID)
-		jwt, err := pkg.CreateJWT(cfg.GithubPrivateKey, stringAppId)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to create jwt")
-		}
-		url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", cfg.GithubInstallationID)
-
-		req, err := http.NewRequest(http.MethodPost, url, nil)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to create request")
-		}
-		req.Header.Add("Accept", "application/vnd.github.v3+json")
-		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", jwt))
-
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to get response")
-		}
-		defer func() {
-			if closeErr := resp.Body.Close(); closeErr != nil {
-				log.Warn().Err(closeErr).Msg("failed to close response body")
-			}
-		}()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to read response")
-		}
-
-		var result interface{}
-		err = json.Unmarshal(body, &result)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to unmarshal response")
-		}
-
-		data, ok := result.(map[string]interface{})
-		if !ok {
-			return "", errors.New("failed to convert response to map")
-		}
-
-		if token, ok := data["token"].(string); ok {
-			vcsToken = token
-		}
-	}
-
-	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, vcsToken, hostname), nil
+	return fmt.Sprintf("%s://%s:%s@%s", scheme, user, password, hostname), nil
 }
 
 // GetListOfChangedFiles returns a list of files that have changed between the current branch and the target branch
