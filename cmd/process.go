@@ -57,11 +57,6 @@ var processCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to create clients")
 		}
 
-		log.Info().Msg("initializing git settings")
-		if err = initializeGit(ctr); err != nil {
-			log.Fatal().Err(err).Msg("failed to initialize git settings")
-		}
-
 		repo, err := ctr.VcsClient.LoadHook(ctx, args[0])
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to load hook")

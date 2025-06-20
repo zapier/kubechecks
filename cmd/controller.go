@@ -18,7 +18,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
-	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/server"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -64,11 +63,6 @@ var ControllerCmd = &cobra.Command{
 			log.Info().Msgf("not monitoring applications, MonitorAllApplications: %+v", cfg.MonitorAllApplications)
 		}
 
-		log.Info().Msg("initializing git settings")
-		if err = initializeGit(ctr); err != nil {
-			log.Fatal().Err(err).Msg("failed to initialize git settings")
-		}
-
 		log.Info().Strs("locations", cfg.PoliciesLocation).Msg("processing policies locations")
 		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
 			log.Fatal().Err(err).Msg("failed to process policy locations")
@@ -111,14 +105,6 @@ func initTelemetry(ctx context.Context, cfg config.ServerConfig) (*telemetry.Ope
 func startWebserver(ctx context.Context, ctr container.Container, processors []checks.ProcessorEntry) {
 	srv := server.NewServer(ctr, processors)
 	go srv.Start(ctx)
-}
-
-func initializeGit(ctr container.Container) error {
-	if err := git.SetCredentials(ctr.Config, ctr.VcsClient); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func waitForPendingRequest() {

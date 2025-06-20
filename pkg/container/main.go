@@ -9,6 +9,7 @@ import (
 	client "github.com/zapier/kubechecks/pkg/kubernetes"
 	"github.com/zapier/kubechecks/pkg/vcs/github_client"
 	"github.com/zapier/kubechecks/pkg/vcs/gitlab_client"
+	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg/appdir"
 	"github.com/zapier/kubechecks/pkg/argo_client"
@@ -16,6 +17,8 @@ import (
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
+
+var tracer = otel.Tracer("pkg/container")
 
 type Container struct {
 	ArgoClient *argo_client.ArgoClient
@@ -36,6 +39,9 @@ type ReposCache interface {
 }
 
 func New(ctx context.Context, cfg config.ServerConfig) (Container, error) {
+	ctx, span := tracer.Start(ctx, "New")
+	defer span.End()
+
 	var err error
 
 	var ctr = Container{
@@ -46,9 +52,9 @@ func New(ctx context.Context, cfg config.ServerConfig) (Container, error) {
 	// create vcs client
 	switch cfg.VcsType {
 	case "gitlab":
-		ctr.VcsClient, err = gitlab_client.CreateGitlabClient(cfg)
+		ctr.VcsClient, err = gitlab_client.CreateGitlabClient(ctx, cfg)
 	case "github":
-		ctr.VcsClient, err = github_client.CreateGithubClient(cfg)
+		ctr.VcsClient, err = github_client.CreateGithubClient(ctx, cfg)
 	default:
 		err = fmt.Errorf("unknown vcs-type: %q", cfg.VcsType)
 	}
