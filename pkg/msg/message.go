@@ -146,17 +146,89 @@ func (m *Message) buildFooter(
 }
 
 // BuildComment iterates the map of all apps in this message, building a final comment from their current state
+//
+// This function is responsible for generating the VCS comment(s) for a PR/MR, handling:
+//   - Character limits (splitting into multiple comments if needed)
+//   - Appending headers, footers, and split warnings
+//   - Skipping apps with only NoChangesDetected or StateSkip
+//   - Formatting summaries and details for each app's results
+//   - Ensuring correct emoji/state display for each app/result
+//
+// COMMENT SPLITTING LOGIC:
+// The function implements a sophisticated comment splitting strategy to handle VCS character limits:
+//
+//  1. PRE-SPLIT DETECTION: Before writing any content, check if adding the next piece (app header, summary, etc.)
+//     would exceed the chunk limit. If so, finalize current chunk and start a new one with continuedHeader.
+//
+// 2. MID-CONTENT SPLITTING: For large details blocks that exceed available space:
+//   - Calculate availableSpace = maxContentLength - currentLength - splitCommentFooter length
+//   - If content fits entirely, write it all
+//   - If content exceeds available space, write as much as possible, add split warning, then continue in next chunk
+//   - This ensures no content is lost and users are warned about the split
+//
+// 3. CHUNK MANAGEMENT: Each chunk includes:
+//
+//   - First chunk: header from pkg.GetMessageHeader()
+//
+//   - Subsequent chunks: continuedHeader with link to previous comment
+//
+//   - All chunks: footer with timing/debug info
+//
+//     4. SPLIT WARNINGS: When content is split mid-details, a warning message is added to inform users
+//     that the output continues in the next comment, with a link to the previous comment.
+//
+//     5. FINAL VALIDATION: After building the complete comment, if it still exceeds maxCommentLength,
+//     truncate it to the limit and return as a single chunk.
+//
+// The output is a slice of strings, each representing a comment chunk to be posted.
 func (m *Message) BuildComment(
 	ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool, identifier string,
-	appsChecked, totalChecked int,
-) string {
+	appsChecked, totalChecked int, maxCommentLength int, prLinkTemplate string,
+) []string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
 
+	// Get sorted app names for deterministic output
 	names := getSortedKeys(m.apps)
 
+	// Header for the first comment
+	header := pkg.GetMessageHeader(identifier)
+	// Footer warning for split comments
+	splitCommentFooter := "\n\n> **Warning**: Output length greater than maximum allowed comment size. Continued in next comment"
+	// Header for continued comments
+	continuedHeader := fmt.Sprintf("%s> Continued from previous [comment](%s)\n\n", header, prLinkTemplate)
+	// Max content length for each chunk (accounting for continuedHeader)
+	maxContentLength := maxCommentLength - len(continuedHeader)
+	contentLength := 0
+
+	comments := []string{}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# Kubechecks %s Report\n", identifier))
+	sb.WriteString(header)
+	contentLength = len(header)
+
+	// Helper to finalize and append a chunk, always ending with a splitCommentFooter
+	// and starting new chunks with continuedHeader after the first
+	appendChunk := func() {
+		if sb.Len() > 0 {
+			currentContent := sb.String()
+			// Only add splitCommentFooter if there's enough space
+			if len(currentContent)+len(splitCommentFooter) <= maxContentLength {
+				sb.WriteString(splitCommentFooter)
+			} else {
+				// Create a truncated copy of splitCommentFooter to make room for it
+				availableSpace := maxContentLength - len(currentContent)
+				if availableSpace > 0 {
+					truncatedFooter := splitCommentFooter[:availableSpace]
+					sb.WriteString(truncatedFooter)
+				}
+			}
+			comments = append(comments, sb.String())
+			sb.Reset()
+			sb.WriteString(header)
+			contentLength = len(continuedHeader)
+		}
+	}
 
 	updateWritten := false
 	for _, appName := range names {
@@ -164,56 +236,170 @@ func (m *Message) BuildComment(
 			continue
 		}
 
-		var checkStrings []string
 		results := m.apps[appName]
 
-		appState := pkg.StateSuccess
-		noChangesDetected := false
-
+		// Skip app if all results are StateSkip or NoChangesDetected
+		skipApp := true
+		// Determine worst state for the app (for emoji in header)
+		appState := pkg.StateNone
 		for _, check := range results.results {
-			if check.NoChangesDetected {
-				noChangesDetected = true
-				continue
+			if !check.NoChangesDetected && check.State != pkg.StateSkip {
+				skipApp = false
+				appState = pkg.WorstState(appState, check.State)
 			}
-
-			if check.State == pkg.StateSkip {
-				continue
-			}
-
-			var summary string
-			if check.State == pkg.StateNone {
-				summary = check.Summary
-			} else {
-				summary = fmt.Sprintf("%s %s %s", check.Summary, check.State.BareString(), m.vcs.ToEmoji(check.State))
-			}
-
-			msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
-			checkStrings = append(checkStrings, msg)
-			appState = pkg.WorstState(appState, check.State)
 		}
-
-		if noChangesDetected {
+		if skipApp {
 			continue
 		}
 
-		sb.WriteString("<details>\n")
-		sb.WriteString("<summary>\n\n")
-		sb.WriteString(fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, m.vcs.ToEmoji(appState)))
-		sb.WriteString("</summary>\n\n")
-		sb.WriteString(strings.Join(checkStrings, "\n\n---\n\n"))
+		// App header: show emoji only if state is not None
+		appHeader := "\n---\n\n<details>\n<summary>\n\n"
+		if appState == pkg.StateNone {
+			appHeader += fmt.Sprintf("## ArgoCD Application Checks: `%s`\n", appName)
+		} else {
+			appHeader += fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, m.vcs.ToEmoji(appState))
+		}
+		appHeader += "</summary>\n\n"
+
+		// Only split if adding the app header would exceed the chunk limit
+		if contentLength+len(appHeader) > maxContentLength {
+			appendChunk()
+		}
+		sb.WriteString(appHeader)
+		contentLength += len(appHeader)
+
+		// Write each result for the app
+		for _, check := range results.results {
+			if check.NoChangesDetected || check.State == pkg.StateSkip {
+				continue
+			}
+
+			// Summary formatting:
+			// - For StateNone: just summary text or 'Success' (no emoji, no state string)
+			// - For others: if summary/details are empty, 'Success <emoji>' (no state string)
+			var summary string
+			if check.State == pkg.StateNone {
+				if check.Summary == "" && check.Details == "" {
+					summary = "Success"
+				} else {
+					summary = check.Summary
+				}
+			} else {
+				if check.Summary == "" && check.Details == "" {
+					summary = "Success " + m.vcs.ToEmoji(check.State)
+				} else {
+					summary = fmt.Sprintf("%s %s %s", check.Summary, check.State.BareString(), m.vcs.ToEmoji(check.State))
+				}
+			}
+
+			// Only split if adding the summary would exceed the chunk limit (not if it equals)
+			if contentLength+len(summary) > maxContentLength {
+				appendChunk()
+			}
+			sb.WriteString(summary)
+			contentLength += len(summary)
+
+			// Details block (may need to split across chunks)
+			msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
+			for len(msg) > 0 {
+				availableSpace := maxContentLength - contentLength - len(splitCommentFooter)
+				if availableSpace <= 0 {
+					appendChunk()
+					availableSpace = maxContentLength - contentLength - len(splitCommentFooter)
+				}
+				if availableSpace > len(msg) {
+					availableSpace = len(msg)
+				}
+				if availableSpace > 0 && availableSpace < len(msg) {
+					// Split content while preserving code blocks
+					firstPart, secondPart := splitContentPreservingCodeBlocks(msg, availableSpace)
+					sb.WriteString(firstPart)
+					sb.WriteString(splitCommentFooter)
+					comments = append(comments, sb.String())
+					sb.Reset()
+					contentLength = len(continuedHeader)
+					msg = secondPart
+				} else {
+					sb.WriteString(msg)
+					contentLength += len(msg)
+					msg = ""
+				}
+			}
+		}
+
+		// Close the app details block
 		sb.WriteString("</details>")
+		contentLength += len("</details>")
 
 		updateWritten = true
 	}
 
+	// If no apps were written, output 'No changes'
+	// we don't need to split this because it's a small output
 	if !updateWritten {
 		sb.WriteString("No changes")
+		contentLength += len("No changes")
 	}
 
+	// Add the footer (with debug info if requested)
 	footer := m.buildFooter(start, commitSHA, labelFilter, showDebugInfo, appsChecked, totalChecked)
 	sb.WriteString(fmt.Sprintf("\n\n%s", footer))
 
-	return sb.String()
+	// Only split if content exceeds the max length
+	if len(sb.String()) > maxCommentLength {
+		comments = append(comments, sb.String()[:maxCommentLength])
+	} else {
+		comments = append(comments, sb.String())
+	}
+
+	return comments
+}
+
+// splitContentPreservingCodeBlocks splits content at a given position while preserving code blocks and their types.
+// If the split position is inside a code block, it will close the code block in the first part
+// and open a new one in the second part, preserving the code block type (e.g., ```diff).
+func splitContentPreservingCodeBlocks(content string, splitPos int) (string, string) {
+	_, span := tracer.Start(context.Background(), "splitContentPreservingCodeBlocks")
+	defer span.End()
+
+	if splitPos >= len(content) {
+		return content, ""
+	}
+	if splitPos <= 0 {
+		return "", content
+	}
+
+	firstPart := content[:splitPos]
+	secondPart := content[splitPos:]
+
+	// Count the number of code block markers (```) in the first part
+	codeBlockMarkers := strings.Count(firstPart, "```")
+
+	// If the number of markers is odd, we're inside a code block
+	if codeBlockMarkers%2 == 1 {
+		// Find the last opening code block and extract the type (if any)
+		lastIdx := strings.LastIndex(firstPart, "```")
+		codeBlockType := ""
+		if lastIdx != -1 {
+			// Look for the type after the opening backticks, up to the next newline or end
+			typeStart := lastIdx + 3
+			typeEnd := typeStart
+			for typeEnd < len(firstPart) && firstPart[typeEnd] != '\n' && firstPart[typeEnd] != '\r' && firstPart[typeEnd] != '`' {
+				typeEnd++
+			}
+			codeBlockType = strings.TrimSpace(firstPart[typeStart:typeEnd])
+		}
+		// Close the code block in the first part
+		if codeBlockType != "" {
+			firstPart += "\n```"
+			secondPart = "```" + codeBlockType + "\n" + secondPart
+		} else {
+			firstPart += "\n```"
+			secondPart = "```\n" + secondPart
+		}
+	}
+
+	return firstPart, secondPart
 }
 
 func getSortedKeys[K constraints.Ordered, V any](m map[K]V) []K {
