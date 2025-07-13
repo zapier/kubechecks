@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/google/go-github/v74/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -16,20 +17,24 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-const MaxCommentLength = 64 * 10
+const MaxCommentLength = 64 * 1024
 
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
 	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
 	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
-	comment, _, err := c.googleClient.Issues.CreateComment(
-		ctx,
-		pr.Owner,
-		pr.Name,
-		pr.CheckID,
-		&github.IssueComment{Body: &message},
-	)
+
+	comment, err := backoff.Retry(context.TODO(), func() (*github.IssueComment, error) {
+		cm, _, err := c.googleClient.Issues.CreateComment(
+			ctx,
+			pr.Owner,
+			pr.Name,
+			pr.CheckID,
+			&github.IssueComment{Body: &message},
+		)
+		return cm, err
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
 
 	if err != nil {
 		telemetry.SetError(span, err, "Create Pull Request comment")
@@ -47,14 +52,21 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 
 	for i, msg := range messages {
 		if i == 0 {
+			var comment *github.IssueComment
+			var resp *github.Response
+			var err error
+
 			repoNameComponents := strings.Split(m.Name, "/")
-			comment, resp, err := c.googleClient.Issues.EditComment(
-				ctx,
-				repoNameComponents[0],
-				repoNameComponents[1],
-				int64(m.NoteID),
-				&github.IssueComment{Body: &msg},
-			)
+			resp, err = backoff.Retry(context.TODO(), func() (*github.Response, error) {
+				comment, resp, err = c.googleClient.Issues.EditComment(
+					ctx,
+					repoNameComponents[0],
+					repoNameComponents[1],
+					int64(m.NoteID),
+					&github.IssueComment{Body: &msg},
+				)
+				return resp, err
+			}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
 
 			if err != nil {
 				telemetry.SetError(span, err, "Update Pull Request comment")
