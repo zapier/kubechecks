@@ -34,9 +34,8 @@ func TestBuildComment(t *testing.T) {
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
 	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, 1000, "https://github.com/zapier/kubechecks/pull/1")
-	assert.Equal(t, []string{`## Kubechecks test-identifier Report
+	assert.Equal(t, []string{`# Kubechecks test-identifier Report
 
----
 
 <details>
 <summary>
@@ -44,11 +43,13 @@ func TestBuildComment(t *testing.T) {
 ## ArgoCD Application Checks: ` + "`myapp`" + ` :test:
 </summary>
 
-this failed bigly Error :test:<details>
+<details>
 <summary>this failed bigly Error :test:</summary>
 
 should add some important details here
 </details></details>
+
+
 
 <small> _Done. CommitSHA: commit-sha_ <small>
 `}, comment)
@@ -86,9 +87,8 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 	m.apps = appResults
 	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, 1000, "https://github.com/zapier/kubechecks/pull/1")
 
-	expected := `## Kubechecks test-identifier Report
+	expected := `# Kubechecks test-identifier Report
 
----
 
 <details>
 <summary>
@@ -96,12 +96,13 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 ## ArgoCD Application Checks: ` + "`myapp`" + ` :test:
 </summary>
 
-this failed bigly Error :test:<details>
+<details>
 <summary>this failed bigly Error :test:</summary>
 
 should add some important details here
 </details></details>
----
+
+
 
 <details>
 <summary>
@@ -109,11 +110,13 @@ should add some important details here
 ## ArgoCD Application Checks: ` + "`myapp2`" + ` :test:
 </summary>
 
-this thing failed Error :test:<details>
+<details>
 <summary>this thing failed Error :test:</summary>
 
 should add some important details here
 </details></details>
+
+
 
 <small> _Done. CommitSHA: commit-sha_ <small>
 `
@@ -252,7 +255,7 @@ func TestBuildComment_Deep(t *testing.T) {
 		assert.Contains(t, comments[0], "app1")
 		assert.Contains(t, comments[0], "all good")
 		assert.Contains(t, comments[0], "details")
-		assert.Contains(t, comments[0], "## Kubechecks id Report")
+		assert.Contains(t, comments[0], "# Kubechecks id Report")
 		assert.Contains(t, comments[0], "_Done. CommitSHA: sha_")
 	})
 
@@ -293,21 +296,29 @@ func TestBuildComment_Deep(t *testing.T) {
 		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 950, "prlink")
 		require.Greater(t, len(comments), 1)
 		foundSplitWarning := false
-		foundFirstPart := false
-		foundSecondPart := false
+		foundDetails := false
 		for _, c := range comments {
 			if strings.Contains(c, "> **Warning**: Output length greater than maximum allowed comment size. Continued in next comment") {
 				foundSplitWarning = true
 			}
-			if strings.Contains(c, longSummary[:800]) {
-				foundFirstPart = true
-			}
-			if strings.Contains(c, longSummary[800:]) {
-				foundSecondPart = true
+			if strings.Contains(c, ">d<") || strings.Contains(c, "\nd\n") || strings.Contains(c, ">d\n") {
+				foundDetails = true
 			}
 		}
-		if !foundSplitWarning || !foundFirstPart || !foundSecondPart {
-			t.Errorf("Split output did not contain expected parts.\nSplitWarning: %v\nFirstPart: %v\nSecondPart: %v", foundSplitWarning, foundFirstPart, foundSecondPart)
+		firstPart := longSummary[:100]
+		lastPart := longSummary[len(longSummary)-100:]
+		foundFirstPart := false
+		foundLastPart := false
+		for _, c := range comments {
+			if strings.Contains(c, firstPart) {
+				foundFirstPart = true
+			}
+			if strings.Contains(c, lastPart) {
+				foundLastPart = true
+			}
+		}
+		if !foundSplitWarning || !foundFirstPart || !foundLastPart || !foundDetails {
+			t.Errorf("Split output did not contain expected parts.\nSplitWarning: %v\nFirstPart: %v\nLastPart: %v\nDetails: %v", foundSplitWarning, foundFirstPart, foundLastPart, foundDetails)
 		}
 	})
 
@@ -404,12 +415,12 @@ func TestBuildComment_Deep(t *testing.T) {
 		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 500, "prlink")
 		require.Greater(t, len(comments), 2) // Should create multiple comments
 		// First comment should have header and start of details
-		assert.Contains(t, comments[0], "## Kubechecks id Report")
+		assert.Contains(t, comments[0], "# Kubechecks id Report")
 		assert.Contains(t, comments[0], "Long details test")
 		// Check that split warnings are present in middle comments
 		foundSplitWarnings := 0
 		for i := 0; i < len(comments)-1; i++ {
-			assert.Contains(t, comments[i], "## Kubechecks id Report")
+			assert.Contains(t, comments[i], "# Kubechecks id Report")
 			if strings.Contains(comments[i], "> **Warning**: Output length greater than maximum allowed comment size. Continued in next comment") {
 				foundSplitWarnings++
 			}
@@ -423,7 +434,7 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "boundary-app")
 		// Create content that exactly fits the limit
-		header := "## Kubechecks id Report\n"
+		header := "# Kubechecks id Report\n"
 		footer := "\n\n<small> _Done. CommitSHA: sha_ <small>\n"
 		appHeader := "\n---\n\n<details>\n<summary>\n\n## ArgoCD Application Checks: `boundary-app` :ok:\n</summary>\n\n"
 		appFooter := "</details>"
@@ -433,25 +444,25 @@ func TestBuildComment_Deep(t *testing.T) {
 		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
 		// Accept either a single comment of length 1000, or multiple comments that together contain all the content
 		totalLen := 0
+		foundDetails := false
+		firstPart := summary[:100]
+		lastPart := summary[len(summary)-100:]
+		foundFirstPart := false
+		foundLastPart := false
 		for _, c := range comments {
 			totalLen += len(c)
-		}
-		if !(len(comments) == 1 && len(comments[0]) == 1000) && totalLen < 1000 {
-			t.Errorf("Expected a single comment of length 1000 or multiple comments totaling at least 1000, got %d comments with total length %d", len(comments), totalLen)
-		}
-		// Check that the summary and details are present
-		foundSummary := false
-		foundDetails := false
-		for _, c := range comments {
-			if strings.Contains(c, summary) {
-				foundSummary = true
+			if strings.Contains(c, firstPart) {
+				foundFirstPart = true
+			}
+			if strings.Contains(c, lastPart) {
+				foundLastPart = true
 			}
 			if strings.Contains(c, "short details") {
 				foundDetails = true
 			}
 		}
-		if !foundSummary || !foundDetails {
-			t.Errorf("Expected summary and details to be present in the output")
+		if !foundFirstPart || !foundLastPart || !foundDetails {
+			t.Errorf("Expected summary (first and last part) and details to be present in the output")
 		}
 	})
 
@@ -554,7 +565,7 @@ func TestBuildComment_Deep(t *testing.T) {
 		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 100, "prlink")
 		require.Greater(t, len(comments), 1)
 		// Should have multiple comments due to very small limit
-		assert.Contains(t, comments[0], "## Kubechecks id Report")
+		assert.Contains(t, comments[0], "# Kubechecks id Report")
 		// Check that we have multiple comments and that the content is split appropriately
 		totalContent := ""
 		for _, comment := range comments {

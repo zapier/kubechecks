@@ -13,22 +13,22 @@ func TestGetMessageHeader(t *testing.T) {
 		{
 			name:       "empty identifier",
 			identifier: "",
-			want:       "## Kubechecks  Report\n",
+			want:       "# Kubechecks  Report\n",
 		},
 		{
 			name:       "with identifier",
 			identifier: "test-instance",
-			want:       "## Kubechecks test-instance Report\n",
+			want:       "# Kubechecks test-instance Report\n",
 		},
 		{
 			name:       "with special characters",
 			identifier: "test-instance-123!@#",
-			want:       "## Kubechecks test-instance-123!@# Report\n",
+			want:       "# Kubechecks test-instance-123!@# Report\n",
 		},
 		{
 			name:       "with spaces",
 			identifier: "test instance",
-			want:       "## Kubechecks test instance Report\n",
+			want:       "# Kubechecks test instance Report\n",
 		},
 	}
 

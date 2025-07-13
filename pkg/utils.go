@@ -34,5 +34,5 @@ func WithErrorLogging(f func() error, msg string) {
 }
 
 func GetMessageHeader(identifier string) string {
-	return fmt.Sprintf("## Kubechecks %s Report\n", identifier)
+	return fmt.Sprintf("# Kubechecks %s Report\n", identifier)
 }
