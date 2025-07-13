@@ -335,6 +335,50 @@ func (_c *MockClient_GetHookByUrl_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
+// GetMaxCommentLength provides a mock function for the type MockClient
+func (_mock *MockClient) GetMaxCommentLength() int {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetMaxCommentLength")
+	}
+
+	var r0 int
+	if returnFunc, ok := ret.Get(0).(func() int); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	return r0
+}
+
+// MockClient_GetMaxCommentLength_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetMaxCommentLength'
+type MockClient_GetMaxCommentLength_Call struct {
+	*mock.Call
+}
+
+// GetMaxCommentLength is a helper method to define mock.On call
+func (_e *MockClient_Expecter) GetMaxCommentLength() *MockClient_GetMaxCommentLength_Call {
+	return &MockClient_GetMaxCommentLength_Call{Call: _e.mock.On("GetMaxCommentLength")}
+}
+
+func (_c *MockClient_GetMaxCommentLength_Call) Run(run func()) *MockClient_GetMaxCommentLength_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockClient_GetMaxCommentLength_Call) Return(n int) *MockClient_GetMaxCommentLength_Call {
+	_c.Call.Return(n)
+	return _c
+}
+
+func (_c *MockClient_GetMaxCommentLength_Call) RunAndReturn(run func() int) *MockClient_GetMaxCommentLength_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetName provides a mock function for the type MockClient
 func (_mock *MockClient) GetName() string {
 	ret := _mock.Called()
@@ -375,6 +419,57 @@ func (_c *MockClient_GetName_Call) Return(s string) *MockClient_GetName_Call {
 }
 
 func (_c *MockClient_GetName_Call) RunAndReturn(run func() string) *MockClient_GetName_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetPrCommentLinkTemplate provides a mock function for the type MockClient
+func (_mock *MockClient) GetPrCommentLinkTemplate(pullRequest vcs.PullRequest) string {
+	ret := _mock.Called(pullRequest)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPrCommentLinkTemplate")
+	}
+
+	var r0 string
+	if returnFunc, ok := ret.Get(0).(func(vcs.PullRequest) string); ok {
+		r0 = returnFunc(pullRequest)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	return r0
+}
+
+// MockClient_GetPrCommentLinkTemplate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPrCommentLinkTemplate'
+type MockClient_GetPrCommentLinkTemplate_Call struct {
+	*mock.Call
+}
+
+// GetPrCommentLinkTemplate is a helper method to define mock.On call
+//   - pullRequest vcs.PullRequest
+func (_e *MockClient_Expecter) GetPrCommentLinkTemplate(pullRequest interface{}) *MockClient_GetPrCommentLinkTemplate_Call {
+	return &MockClient_GetPrCommentLinkTemplate_Call{Call: _e.mock.On("GetPrCommentLinkTemplate", pullRequest)}
+}
+
+func (_c *MockClient_GetPrCommentLinkTemplate_Call) Run(run func(pullRequest vcs.PullRequest)) *MockClient_GetPrCommentLinkTemplate_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 vcs.PullRequest
+		if args[0] != nil {
+			arg0 = args[0].(vcs.PullRequest)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_GetPrCommentLinkTemplate_Call) Return(s string) *MockClient_GetPrCommentLinkTemplate_Call {
+	_c.Call.Return(s)
+	return _c
+}
+
+func (_c *MockClient_GetPrCommentLinkTemplate_Call) RunAndReturn(run func(pullRequest vcs.PullRequest) string) *MockClient_GetPrCommentLinkTemplate_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -700,16 +795,16 @@ func (_c *MockClient_ToEmoji_Call) RunAndReturn(run func(commitState pkg.CommitS
 }
 
 // UpdateMessage provides a mock function for the type MockClient
-func (_mock *MockClient) UpdateMessage(context1 context.Context, message *msg.Message, s string) error {
-	ret := _mock.Called(context1, message, s)
+func (_mock *MockClient) UpdateMessage(context1 context.Context, pullRequest vcs.PullRequest, message *msg.Message, strings []string) error {
+	ret := _mock.Called(context1, pullRequest, message, strings)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateMessage")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *msg.Message, string) error); ok {
-		r0 = returnFunc(context1, message, s)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest, *msg.Message, []string) error); ok {
+		r0 = returnFunc(context1, pullRequest, message, strings)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -723,30 +818,36 @@ type MockClient_UpdateMessage_Call struct {
 
 // UpdateMessage is a helper method to define mock.On call
 //   - context1 context.Context
+//   - pullRequest vcs.PullRequest
 //   - message *msg.Message
-//   - s string
-func (_e *MockClient_Expecter) UpdateMessage(context1 interface{}, message interface{}, s interface{}) *MockClient_UpdateMessage_Call {
-	return &MockClient_UpdateMessage_Call{Call: _e.mock.On("UpdateMessage", context1, message, s)}
+//   - strings []string
+func (_e *MockClient_Expecter) UpdateMessage(context1 interface{}, pullRequest interface{}, message interface{}, strings interface{}) *MockClient_UpdateMessage_Call {
+	return &MockClient_UpdateMessage_Call{Call: _e.mock.On("UpdateMessage", context1, pullRequest, message, strings)}
 }
 
-func (_c *MockClient_UpdateMessage_Call) Run(run func(context1 context.Context, message *msg.Message, s string)) *MockClient_UpdateMessage_Call {
+func (_c *MockClient_UpdateMessage_Call) Run(run func(context1 context.Context, pullRequest vcs.PullRequest, message *msg.Message, strings []string)) *MockClient_UpdateMessage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *msg.Message
+		var arg1 vcs.PullRequest
 		if args[1] != nil {
-			arg1 = args[1].(*msg.Message)
+			arg1 = args[1].(vcs.PullRequest)
 		}
-		var arg2 string
+		var arg2 *msg.Message
 		if args[2] != nil {
-			arg2 = args[2].(string)
+			arg2 = args[2].(*msg.Message)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -757,7 +858,7 @@ func (_c *MockClient_UpdateMessage_Call) Return(err error) *MockClient_UpdateMes
 	return _c
 }
 
-func (_c *MockClient_UpdateMessage_Call) RunAndReturn(run func(context1 context.Context, message *msg.Message, s string) error) *MockClient_UpdateMessage_Call {
+func (_c *MockClient_UpdateMessage_Call) RunAndReturn(run func(context1 context.Context, pullRequest vcs.PullRequest, message *msg.Message, strings []string) error) *MockClient_UpdateMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }

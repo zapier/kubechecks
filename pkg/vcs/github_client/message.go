@@ -16,16 +16,11 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-const MaxCommentLength = 64 * 1024
+const MaxCommentLength = 64 * 10
 
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
 	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
-
-	if len(message) > MaxCommentLength {
-		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
-		message = message[:MaxCommentLength]
-	}
 
 	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
 	comment, _, err := c.googleClient.Issues.CreateComment(
@@ -44,34 +39,46 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c), nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) error {
+func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, messages []string) error {
 	_, span := tracer.Start(ctx, "UpdateMessage")
 	defer span.End()
 
-	if len(msg) > MaxCommentLength {
-		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
-		msg = msg[:MaxCommentLength]
-	}
-
 	log.Info().Msgf("Updating message for PR %d in repo %s", m.CheckID, m.Name)
 
-	repoNameComponents := strings.Split(m.Name, "/")
-	comment, resp, err := c.googleClient.Issues.EditComment(
-		ctx,
-		repoNameComponents[0],
-		repoNameComponents[1],
-		int64(m.NoteID),
-		&github.IssueComment{Body: &msg},
-	)
+	for i, msg := range messages {
+		if i == 0 {
+			repoNameComponents := strings.Split(m.Name, "/")
+			comment, resp, err := c.googleClient.Issues.EditComment(
+				ctx,
+				repoNameComponents[0],
+				repoNameComponents[1],
+				int64(m.NoteID),
+				&github.IssueComment{Body: &msg},
+			)
 
-	if err != nil {
-		telemetry.SetError(span, err, "Update Pull Request comment")
-		log.Error().Err(err).Msgf("could not update message to PR, msg: %s, response: %+v", msg, resp)
-		return err
+			if err != nil {
+				telemetry.SetError(span, err, "Update Pull Request comment")
+				log.Error().Err(err).Msgf("could not update message to PR, msg: %s, response: %+v", msg, resp)
+				return err
+			}
+
+			// update note id just in case it changed
+			m.NoteID = int(*comment.ID)
+		} else {
+			continuedHeader := fmt.Sprintf(
+				"> Continued from previous [comment](%s)\n",
+				fmt.Sprintf("https://github.com/%s/%s/pull/%d#issuecomment-%d", pr.Owner, pr.Name, pr.CheckID, m.NoteID),
+			)
+
+			msg = fmt.Sprintf("%s\n\n%s", continuedHeader, msg)
+			n, err := c.PostMessage(ctx, pr, msg)
+			if err != nil {
+				log.Error().Err(err).Msg("could not post message to PR")
+				return err
+			}
+			m.NoteID = n.NoteID
+		}
 	}
-
-	// update note id just in case it changed
-	m.NoteID = int(*comment.ID)
 
 	return nil
 }
@@ -79,7 +86,8 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) 
 // Pull all comments for the specified PR, and delete any comments that already exist from the bot
 // This is different from updating an existing message, as this will delete comments from previous runs of the bot
 // Whereas updates occur mid-execution
-func (c *Client) pruneOldComments(ctx context.Context, pr vcs.PullRequest, comments []*github.IssueComment) error {
+func (c *Client) pruneOldComments(
+	ctx context.Context, pr vcs.PullRequest, comments []*github.IssueComment) error {
 	_, span := tracer.Start(ctx, "pruneOldComments")
 	defer span.End()
 
@@ -158,4 +166,12 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 		return c.pruneOldComments(ctx, pr, allComments)
 	}
 	return c.hideOutdatedMessages(ctx, pr, allComments)
+}
+
+func (c *Client) GetMaxCommentLength() int {
+	return MaxCommentLength
+}
+
+func (c *Client) GetPrCommentLinkTemplate(pr vcs.PullRequest) string {
+	return fmt.Sprintf("https://github.com/%s/%s/pull/%d#issuecomment-0000000000", pr.Owner, pr.Name, pr.CheckID)
 }

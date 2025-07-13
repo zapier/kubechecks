@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/rs/zerolog/log"
@@ -30,4 +31,8 @@ func WithErrorLogging(f func() error, msg string) {
 	if err := f(); err != nil {
 		log.Error().Err(err).Msg(msg)
 	}
+}
+
+func GetMessageHeader(identifier string) string {
+	return fmt.Sprintf("## Kubechecks %s Report\n", identifier)
 }
