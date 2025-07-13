@@ -409,6 +409,7 @@ func TestBuildComment_Deep(t *testing.T) {
 		// Check that split warnings are present in middle comments
 		foundSplitWarnings := 0
 		for i := 0; i < len(comments)-1; i++ {
+			assert.Contains(t, comments[i], "## Kubechecks id Report")
 			if strings.Contains(comments[i], "> **Warning**: Output length greater than maximum allowed comment size. Continued in next comment") {
 				foundSplitWarnings++
 			}

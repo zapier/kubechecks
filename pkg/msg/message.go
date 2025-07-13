@@ -227,6 +227,7 @@ func (m *Message) BuildComment(
 			sb.Reset()
 			sb.WriteString(header)
 			contentLength = len(continuedHeader)
+
 		}
 	}
 
@@ -317,6 +318,7 @@ func (m *Message) BuildComment(
 					sb.WriteString(splitCommentFooter)
 					comments = append(comments, sb.String())
 					sb.Reset()
+					sb.WriteString(header)
 					contentLength = len(continuedHeader)
 					msg = secondPart
 				} else {
