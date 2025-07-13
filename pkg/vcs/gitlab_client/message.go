@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cenkalti/backoff/v5"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
@@ -22,23 +22,24 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	_, span := tracer.Start(ctx, "PostMessage")
 	defer span.End()
 
-	exponentialBackOff := getBackOff()
+	var note *gitlab.Note
 
-	n, err := backoff.Retry(ctx, func() (*gitlab.Note, error) {
-		n, _, err := c.c.Notes.CreateMergeRequestNote(
+	err := backoff.Retry(func() error {
+		n, resp, err := c.c.Notes.CreateMergeRequestNote(
 			pr.FullName, pr.CheckID,
 			&gitlab.CreateMergeRequestNoteOptions{
 				Body: pkg.Pointer(message),
 			})
-		return n, err
-	}, backoff.WithBackOff(exponentialBackOff))
+		note = n
+		return checkReturnForBackoff(resp, err)
+	}, getBackOff())
 
 	if err != nil {
 		telemetry.SetError(span, err, "Create Merge Request Note")
 		return nil, errors.Wrap(err, "could not post message to MR")
 	}
 
-	return msg.NewMessage(pr.FullName, pr.CheckID, n.ID, c), nil
+	return msg.NewMessage(pr.FullName, pr.CheckID, note.ID, c), nil
 }
 
 func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
@@ -88,21 +89,22 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 
 	for i, msg := range messages {
 		if i == 0 {
-			exponentialBackOff := getBackOff()
+			var note *gitlab.Note
 
-			n, err := backoff.Retry(ctx, func() (*gitlab.Note, error) {
-				n, _, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
+			err := backoff.Retry(func() error {
+				n, resp, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
 					Body: pkg.Pointer(msg),
 				})
-				return n, err
-			}, backoff.WithBackOff(exponentialBackOff))
+				note = n
+				return checkReturnForBackoff(resp, err)
+			}, getBackOff())
 
 			if err != nil {
 				log.Error().Err(err).Msg("could not update message to MR")
 				return err
 			}
 			// just incase the note ID changes
-			m.NoteID = n.ID
+			m.NoteID = note.ID
 		} else {
 			continuedHeader := fmt.Sprintf(
 				"> Continued from previous [comment](%s)\n",
