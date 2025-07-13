@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cenkalti/backoff/v5"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/google/go-github/v74/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -25,8 +25,8 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 
 	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
 
-	exponentialBackOff := getBackOff()
-	comment, err := backoff.Retry(ctx, func() (*github.IssueComment, error) {
+	var comment *github.IssueComment
+	err := backoff.Retry(func() error {
 		cm, _, err := c.googleClient.Issues.CreateComment(
 			ctx,
 			pr.Owner,
@@ -34,8 +34,9 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 			pr.CheckID,
 			&github.IssueComment{Body: &message},
 		)
-		return cm, err
-	}, backoff.WithBackOff(exponentialBackOff))
+		comment = cm
+		return err
+	}, getBackOff())
 
 	if err != nil {
 		telemetry.SetError(span, err, "Create Pull Request comment")
@@ -58,8 +59,7 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 			var err error
 
 			repoNameComponents := strings.Split(m.Name, "/")
-			exponentialBackOff := getBackOff()
-			resp, err = backoff.Retry(ctx, func() (*github.Response, error) {
+			err = backoff.Retry(func() error {
 				comment, resp, err = c.googleClient.Issues.EditComment(
 					ctx,
 					repoNameComponents[0],
@@ -67,8 +67,8 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 					int64(m.NoteID),
 					&github.IssueComment{Body: &msg},
 				)
-				return resp, err
-			}, backoff.WithBackOff(exponentialBackOff))
+				return err
+			}, getBackOff())
 
 			if err != nil {
 				telemetry.SetError(span, err, "Update Pull Request comment")
