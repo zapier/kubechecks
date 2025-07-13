@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/google/go-github/v74/github"
@@ -26,10 +25,8 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 
 	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
 
-	exponentialBackOff := backoff.NewExponentialBackOff()
-	exponentialBackOff.InitialInterval = 1 * time.Second
-	exponentialBackOff.Multiplier = 2
-	comment, err := backoff.Retry(context.TODO(), func() (*github.IssueComment, error) {
+	exponentialBackOff := getBackOff()
+	comment, err := backoff.Retry(ctx, func() (*github.IssueComment, error) {
 		cm, _, err := c.googleClient.Issues.CreateComment(
 			ctx,
 			pr.Owner,
@@ -61,10 +58,8 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 			var err error
 
 			repoNameComponents := strings.Split(m.Name, "/")
-			exponentialBackOff := backoff.NewExponentialBackOff()
-			exponentialBackOff.InitialInterval = 1 * time.Second
-			exponentialBackOff.Multiplier = 2
-			resp, err = backoff.Retry(context.TODO(), func() (*github.Response, error) {
+			exponentialBackOff := getBackOff()
+			resp, err = backoff.Retry(ctx, func() (*github.Response, error) {
 				comment, resp, err = c.googleClient.Issues.EditComment(
 					ctx,
 					repoNameComponents[0],
