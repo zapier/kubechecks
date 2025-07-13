@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/pkg/errors"
@@ -22,6 +23,10 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	_, span := tracer.Start(ctx, "PostMessage")
 	defer span.End()
 
+	exponentialBackOff := backoff.NewExponentialBackOff()
+	exponentialBackOff.InitialInterval = 1 * time.Second
+	exponentialBackOff.Multiplier = 2
+
 	n, err := backoff.Retry(context.TODO(), func() (*gitlab.Note, error) {
 		n, _, err := c.c.Notes.CreateMergeRequestNote(
 			pr.FullName, pr.CheckID,
@@ -29,7 +34,7 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 				Body: pkg.Pointer(message),
 			})
 		return n, err
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
+	}, backoff.WithBackOff(exponentialBackOff))
 
 	if err != nil {
 		telemetry.SetError(span, err, "Create Merge Request Note")
@@ -86,12 +91,16 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 
 	for i, msg := range messages {
 		if i == 0 {
+			exponentialBackOff := backoff.NewExponentialBackOff()
+			exponentialBackOff.InitialInterval = 1 * time.Second
+			exponentialBackOff.Multiplier = 2
+
 			n, err := backoff.Retry(context.TODO(), func() (*gitlab.Note, error) {
 				n, _, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
 					Body: pkg.Pointer(msg),
 				})
 				return n, err
-			}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
+			}, backoff.WithBackOff(exponentialBackOff))
 
 			if err != nil {
 				log.Error().Err(err).Msg("could not update message to MR")
