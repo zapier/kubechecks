@@ -87,6 +87,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, messages []string) error {
 	log.Debug().Msgf("Updating message %d for %s", m.NoteID, m.Name)
 
+	var pastMessageId int
 	for i, msg := range messages {
 		if i == 0 {
 			var note *gitlab.Note
@@ -105,10 +106,11 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 			}
 			// just incase the note ID changes
 			m.NoteID = note.ID
+			pastMessageId = note.ID
 		} else {
 			continuedHeader := fmt.Sprintf(
 				"> Continued from previous [comment](%s)\n",
-				fmt.Sprintf("https://gitlab.com/%s/%s/merge_requests/%d#note_%d", pr.Owner, pr.Name, pr.CheckID, m.NoteID),
+				fmt.Sprintf("https://gitlab.com/%s/%s/merge_requests/%d#note_%d", pr.Owner, pr.Name, pr.CheckID, pastMessageId),
 			)
 
 			msg = fmt.Sprintf("%s\n\n%s", continuedHeader, msg)
@@ -118,6 +120,7 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 				return err
 			}
 			m.NoteID = n.NoteID
+			pastMessageId = n.NoteID
 		}
 
 	}

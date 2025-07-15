@@ -237,7 +237,7 @@ func (m *Message) BuildComment(
 	}
 
 	updateWritten := false
-	for _, appName := range names {
+	for appIndex, appName := range names {
 		if m.isDeleted(appName) {
 			continue
 		}
@@ -329,8 +329,8 @@ func (m *Message) BuildComment(
 					comments = append(comments, sb.String())
 					sb.Reset()
 					sb.WriteString(header)
-					sb.WriteString(appHeader)
 					contentLength = len(continuedHeader)
+					sb.WriteString(appHeader)
 					contentLength += len(appHeader)
 					msg = secondPart
 				} else {
@@ -341,9 +341,16 @@ func (m *Message) BuildComment(
 			}
 		}
 
-		// Close the app details block
-		sb.WriteString("\n</details>\n")
-		contentLength += len("\n</details>\n")
+		// Don't write if there's no more apps to write. An unclosed details tag wouldn't cause an issue
+		// unless there's more contents to write
+		if appIndex < len(names)-1 {
+			closingDetailsTag := "\n</details>\n"
+			if contentLength+len(closingDetailsTag) > maxContentLength {
+				appendChunk(appHeader)
+			} // Close the app details block
+			sb.WriteString(closingDetailsTag)
+			contentLength += len(closingDetailsTag)
+		}
 
 		updateWritten = true
 	}

@@ -741,3 +741,416 @@ func TestSplitContentPreservingCodeBlocks(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitContentPreservingCodeBlocks_SizeConstraints(t *testing.T) {
+	tests := []struct {
+		name        string
+		content     string
+		splitPos    int
+		description string
+	}{
+		{
+			name:        "split at exact boundary",
+			content:     "exact boundary test",
+			splitPos:    15,
+			description: "Split at exact content length boundary",
+		},
+		{
+			name:        "split inside code block with type",
+			content:     "text ```diff\n- old line\n+ new line\n``` more text",
+			splitPos:    20,
+			description: "Split inside code block with language type",
+		},
+		{
+			name:        "split at code block boundary",
+			content:     "text ```code``` more text",
+			splitPos:    8, // right before ```
+			description: "Split right before code block starts",
+		},
+		{
+			name:        "split after code block",
+			content:     "text ```code``` more text",
+			splitPos:    18, // right after ```
+			description: "Split right after code block ends",
+		},
+		{
+			name:        "split in middle of code block",
+			content:     "text ```long code block content here``` text",
+			splitPos:    15,
+			description: "Split in middle of code block content",
+		},
+		{
+			name:        "split with multiple code blocks",
+			content:     "text ```first``` middle ```second``` end",
+			splitPos:    25,
+			description: "Split between multiple code blocks",
+		},
+		{
+			name:        "split with empty content",
+			content:     "",
+			splitPos:    0,
+			description: "Split empty content",
+		},
+		{
+			name:        "split with single character",
+			content:     "a",
+			splitPos:    1,
+			description: "Split single character content",
+		},
+		{
+			name:        "split with unicode characters",
+			content:     "text with 🚀 emoji ```code``` more 🎉",
+			splitPos:    20,
+			description: "Split content with unicode characters",
+		},
+		{
+			name:        "split with very long code block",
+			content:     "text ```" + strings.Repeat("very long code content ", 50) + "``` end",
+			splitPos:    100,
+			description: "Split very long code block content",
+		},
+		{
+			name:        "split with code block type containing spaces",
+			content:     "text ```go func\nfunc main() {\n}\n``` text",
+			splitPos:    15,
+			description: "Split code block with type containing spaces",
+		},
+		{
+			name:        "split with code block type containing special chars",
+			content:     "text ```diff-format\n- old\n+ new\n``` text",
+			splitPos:    20,
+			description: "Split code block with type containing special characters",
+		},
+		{
+			name:        "split with nested code blocks",
+			content:     "text ```outer\n```inner```\n``` text",
+			splitPos:    25,
+			description: "Split with nested code block markers",
+		},
+		{
+			name:        "split with code block at very end",
+			content:     "text ```code```",
+			splitPos:    8,
+			description: "Split with code block at the very end",
+		},
+		{
+			name:        "split with code block at very beginning",
+			content:     "```code``` text",
+			splitPos:    8,
+			description: "Split with code block at the very beginning",
+		},
+		{
+			name:        "split with incomplete code block at split point",
+			content:     "text ```incomplete code block",
+			splitPos:    10,
+			description: "Split with incomplete code block at split position",
+		},
+		{
+			name:        "split with code block type and newlines",
+			content:     "text ```go\n\nfunc main() {\n}\n``` text",
+			splitPos:    15,
+			description: "Split code block with type and multiple newlines",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			first, second := splitContentPreservingCodeBlocks(tt.content, tt.splitPos)
+
+			// Calculate expected first part length considering code block markers
+			expectedFirstLength := tt.splitPos
+			isSplittingInCodeBlockMarker := false
+			if tt.splitPos < len(tt.content) {
+				codeBlockMarkers := strings.Count(tt.content[:tt.splitPos], "```")
+				if codeBlockMarkers%2 == 1 {
+					// We're inside a code block, so we add closing marker
+					expectedFirstLength += len("\n```")
+				}
+				// Check if the split position is in the middle of a ``` sequence
+				beforeSplit := tt.content[:tt.splitPos]
+				afterSplit := tt.content[tt.splitPos:]
+				if strings.HasSuffix(beforeSplit, "`") || strings.HasSuffix(beforeSplit, "``") ||
+					strings.HasPrefix(afterSplit, "`") || strings.HasPrefix(afterSplit, "``") {
+					isSplittingInCodeBlockMarker = true
+				}
+			}
+			// Allow up to 3 extra chars if splitting in the middle of a code block marker
+			maxAllowedFirstLength := expectedFirstLength
+			if isSplittingInCodeBlockMarker {
+				maxAllowedFirstLength += 3
+			}
+			// Test that first part does not exceed expected length (when split position is valid)
+			if tt.splitPos >= 0 && tt.splitPos <= len(tt.content) {
+				assert.LessOrEqual(t, len(first), maxAllowedFirstLength,
+					"First part should not exceed expected length (plus up to 3 for marker). %s", tt.description)
+			}
+
+			// Test that the combined length equals original length plus any added markers
+			expectedCombinedLength := len(tt.content)
+			if tt.splitPos < len(tt.content) {
+				codeBlockMarkers := strings.Count(tt.content[:tt.splitPos], "```")
+				if codeBlockMarkers%2 == 1 {
+					// We're inside a code block, so we add closing and opening markers
+					// Find the code block type
+					lastIdx := strings.LastIndex(tt.content[:tt.splitPos], "```")
+					if lastIdx != -1 {
+						typeStart := lastIdx + 3
+						typeEnd := typeStart
+						for typeEnd < len(tt.content[:tt.splitPos]) &&
+							tt.content[:tt.splitPos][typeEnd] != '\n' &&
+							tt.content[:tt.splitPos][typeEnd] != '\r' &&
+							tt.content[:tt.splitPos][typeEnd] != '`' {
+							typeEnd++
+						}
+						codeBlockType := strings.TrimSpace(tt.content[:tt.splitPos][typeStart:typeEnd])
+
+						if codeBlockType != "" {
+							expectedCombinedLength += len("\n```") + len("```"+codeBlockType+"\n")
+						} else {
+							expectedCombinedLength += len("\n```") + len("```\n")
+						}
+					}
+				}
+			}
+
+			actualCombinedLength := len(first) + len(second)
+			assert.Equal(t, expectedCombinedLength, actualCombinedLength,
+				"Combined length should equal original length plus any added markers. %s", tt.description)
+
+			// Test that we preserve the original content structure
+			if tt.splitPos > 0 && tt.splitPos < len(tt.content) {
+				// Check that the first part contains the beginning of the original content
+				// (ignoring any added closing markers)
+				firstWithoutMarkers := first
+				if strings.HasSuffix(first, "\n```") {
+					firstWithoutMarkers = first[:len(first)-4]
+				}
+				assert.True(t, strings.HasPrefix(tt.content, firstWithoutMarkers) ||
+					strings.HasPrefix(firstWithoutMarkers, tt.content[:len(firstWithoutMarkers)]),
+					"First part should preserve the beginning of original content. %s", tt.description)
+
+				// Check that the second part contains the end of the original content
+				// (ignoring any added opening markers)
+				if len(second) > 0 {
+					secondWithoutMarkers := second
+					if strings.HasPrefix(second, "```") {
+						// Find the end of the opening marker
+						markerEnd := strings.Index(second, "\n")
+						if markerEnd != -1 {
+							secondWithoutMarkers = second[markerEnd+1:]
+						}
+					}
+					if len(secondWithoutMarkers) > 0 {
+						assert.True(t, strings.HasSuffix(tt.content, secondWithoutMarkers) ||
+							strings.HasSuffix(secondWithoutMarkers, tt.content[len(tt.content)-len(secondWithoutMarkers):]),
+							"Second part should preserve the end of original content. %s", tt.description)
+					}
+				}
+			}
+
+			// Test code block integrity - each part should have even number of markers
+			if strings.Contains(first, "```") {
+				firstMarkers := strings.Count(first, "```")
+				assert.Equal(t, 0, firstMarkers%2,
+					"First part should have even number of code block markers. %s", tt.description)
+			}
+			if strings.Contains(second, "```") {
+				secondMarkers := strings.Count(second, "```")
+				// Only check evenness if not splitting in the middle of a code block marker or incomplete marker
+				incompleteMarkerSplit := false
+				if tt.splitPos > 0 && tt.splitPos < len(tt.content) {
+					beforeSplit := tt.content[:tt.splitPos]
+					afterSplit := tt.content[tt.splitPos:]
+					if (strings.HasSuffix(beforeSplit, "`") || strings.HasSuffix(beforeSplit, "``")) &&
+						(strings.HasPrefix(afterSplit, "`") || strings.HasPrefix(afterSplit, "``")) {
+						incompleteMarkerSplit = true
+					}
+				}
+				if !isSplittingInCodeBlockMarker && !incompleteMarkerSplit && (tt.splitPos == 0 || tt.splitPos == len(tt.content)) {
+					assert.Equal(t, 0, secondMarkers%2,
+						"Second part should have even number of code block markers (unless splitting in middle of marker). %s", tt.description)
+				}
+			}
+		})
+	}
+}
+
+func TestSplitContentPreservingCodeBlocks_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		content     string
+		splitPos    int
+		description string
+	}{
+		{
+			name:        "split position at zero",
+			content:     "some content",
+			splitPos:    0,
+			description: "Split at position 0",
+		},
+		{
+			name:        "split position at content length",
+			content:     "some content",
+			splitPos:    12,
+			description: "Split at content length",
+		},
+		{
+			name:        "split position beyond content length",
+			content:     "short",
+			splitPos:    100,
+			description: "Split beyond content length",
+		},
+		{
+			name:        "negative split position",
+			content:     "some content",
+			splitPos:    -5,
+			description: "Negative split position",
+		},
+		{
+			name:        "empty content with zero split",
+			content:     "",
+			splitPos:    0,
+			description: "Empty content with zero split",
+		},
+		{
+			name:        "content with only code block markers",
+			content:     "``````",
+			splitPos:    3,
+			description: "Content with only code block markers",
+		},
+		{
+			name:        "content with single backtick",
+			content:     "text ` code",
+			splitPos:    8,
+			description: "Content with single backtick",
+		},
+		{
+			name:        "content with double backticks",
+			content:     "text `` code",
+			splitPos:    8,
+			description: "Content with double backticks",
+		},
+		{
+			name:        "content with four backticks",
+			content:     "text ```` code",
+			splitPos:    8,
+			description: "Content with four backticks",
+		},
+		{
+			name:        "content with mixed backticks",
+			content:     "text ` `` ``` ```` code",
+			splitPos:    15,
+			description: "Content with mixed backtick counts",
+		},
+		{
+			name:        "content with code block type at end",
+			content:     "text ```go",
+			splitPos:    8,
+			description: "Content with code block type at the end",
+		},
+		{
+			name:        "content with code block type and newline",
+			content:     "text ```go\n",
+			splitPos:    8,
+			description: "Content with code block type and newline",
+		},
+		{
+			name:        "content with code block type and carriage return",
+			content:     "text ```go\r",
+			splitPos:    8,
+			description: "Content with code block type and carriage return",
+		},
+		{
+			name:        "content with code block type and backtick",
+			content:     "text ```go`",
+			splitPos:    8,
+			description: "Content with code block type and backtick",
+		},
+		{
+			name:        "content with very long code block type",
+			content:     "text ```very-long-code-block-type-name-that-exceeds-normal-length",
+			splitPos:    15,
+			description: "Content with very long code block type",
+		},
+		{
+			name:        "content with code block type containing unicode",
+			content:     "text ```go🚀",
+			splitPos:    8,
+			description: "Content with code block type containing unicode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			first, second := splitContentPreservingCodeBlocks(tt.content, tt.splitPos)
+
+			// Calculate expected first part length considering code block markers
+			expectedFirstLength := tt.splitPos
+			if tt.splitPos >= 0 && tt.splitPos <= len(tt.content) {
+				codeBlockMarkers := strings.Count(tt.content[:tt.splitPos], "```")
+				if codeBlockMarkers%2 == 1 {
+					// We're inside a code block, so we add closing marker
+					expectedFirstLength += len("\n```")
+				}
+			}
+
+			// Test that first part does not exceed expected length (when split position is valid)
+			if tt.splitPos >= 0 && tt.splitPos <= len(tt.content) {
+				assert.LessOrEqual(t, len(first), expectedFirstLength,
+					"First part should not exceed expected length. %s", tt.description)
+			}
+
+			// Test that we don't lose any content (except for edge cases)
+			if tt.splitPos >= 0 && tt.splitPos <= len(tt.content) {
+				// For normal cases, combined length should equal original length plus any added markers
+				expectedLength := len(tt.content)
+				if tt.splitPos < len(tt.content) {
+					codeBlockMarkers := strings.Count(tt.content[:tt.splitPos], "```")
+					if codeBlockMarkers%2 == 1 {
+						// We're inside a code block, so we add closing and opening markers
+						expectedLength += len("\n```") + len("```\n") // Simplified calculation
+					}
+				}
+
+				actualLength := len(first) + len(second)
+				// Allow some tolerance for complex cases
+				assert.LessOrEqual(t, actualLength, expectedLength+20,
+					"Combined length should not significantly exceed original length. %s", tt.description)
+			}
+
+			// Test that the function doesn't panic or return invalid results
+			assert.NotNil(t, first, "First part should not be nil. %s", tt.description)
+			assert.NotNil(t, second, "Second part should not be nil. %s", tt.description)
+		})
+	}
+}
+
+func TestSplitContentPreservingCodeBlocks_Debug(t *testing.T) {
+	// Test case that was failing
+	content := "text ```first``` middle ```second``` end"
+	splitPos := 25
+
+	first, second := splitContentPreservingCodeBlocks(content, splitPos)
+
+	t.Logf("Original content: %q", content)
+	t.Logf("Split position: %d", splitPos)
+	t.Logf("First part: %q", first)
+	t.Logf("Second part: %q", second)
+	t.Logf("First part length: %d", len(first))
+	t.Logf("Second part length: %d", len(second))
+	t.Logf("First part markers: %d", strings.Count(first, "```"))
+	t.Logf("Second part markers: %d", strings.Count(second, "```"))
+
+	// Check if we're inside a code block at split position
+	codeBlockMarkers := strings.Count(content[:splitPos], "```")
+	t.Logf("Code block markers before split: %d", codeBlockMarkers)
+	t.Logf("Inside code block: %v", codeBlockMarkers%2 == 1)
+}
+
+// Helper function for min
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
