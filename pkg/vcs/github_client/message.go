@@ -175,15 +175,14 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 		var err error
 
 		err = backoff.Retry(func() error {
-			cs, rsp, err := c.googleClient.Issues.ListComments(ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueListCommentsOptions{
+			comments, resp, err = c.googleClient.Issues.ListComments(ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueListCommentsOptions{
 				Sort:        pkg.Pointer("created"),
 				Direction:   pkg.Pointer("asc"),
 				ListOptions: github.ListOptions{Page: nextPage},
 			})
-			comments = cs
-			resp = rsp
 			return err
 		}, getBackOff())
+
 		if err != nil {
 			telemetry.SetError(span, err, "Get Issue Comments failed")
 			return fmt.Errorf("failed listing comments: %w", err)
