@@ -298,14 +298,15 @@ func (m *Message) BuildComment(
 					summary = fmt.Sprintf("%s %s %s", check.Summary, check.State.BareString(), m.vcs.ToEmoji(check.State))
 				}
 			}
+			summaryHeader := fmt.Sprintf("<details>\n<summary>%s</summary>\n", summary)
 
 			// Only split if adding the summary would exceed the chunk limit (not if it equals)
-			if contentLength+len(summary) > maxContentLength {
+			if contentLength+len(summaryHeader) > maxContentLength {
 				appendChunk(appHeader)
 			}
 
 			// Details block (may need to split across chunks)
-			msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
+			msg := fmt.Sprintf("%s\n%s\n</details>", summaryHeader, check.Details)
 			for len(msg) > 0 {
 				availableSpace := maxContentLength - contentLength - len(splitCommentFooter)
 				if availableSpace <= 0 {
@@ -317,8 +318,12 @@ func (m *Message) BuildComment(
 				}
 				if availableSpace > 0 && availableSpace < len(msg) {
 					// Split content while preserving code blocks
+					// Create space for writing the the closing </details> tag
+					availableSpace -= len("</details>")
 					firstPart, secondPart := splitContentPreservingCodeBlocks(msg, availableSpace)
 					sb.WriteString(firstPart)
+					// close the summary tag. This ensures it's not split across chunks.
+					sb.WriteString("</details>")
 					sb.WriteString(splitCommentFooter)
 					comments = append(comments, sb.String())
 					sb.Reset()
