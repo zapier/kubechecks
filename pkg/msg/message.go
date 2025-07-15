@@ -209,7 +209,7 @@ func (m *Message) BuildComment(
 
 	// Helper to finalize and append a chunk, always ending with a splitCommentFooter
 	// and starting new chunks with continuedHeader after the first
-	appendChunk := func() {
+	appendChunk := func(appHeader string) {
 		if sb.Len() > 0 {
 			currentContent := sb.String()
 			// Only add splitCommentFooter if there's enough space
@@ -226,10 +226,12 @@ func (m *Message) BuildComment(
 			comments = append(comments, sb.String())
 			sb.Reset()
 			sb.WriteString(header)
+			sb.WriteString(header)
 			// continuedHeader contains both the header and the comment about the continued fromprevious comment
 			// header is written here but the rest of the content is written from the vcs PostMessage/UpdateMessage function
 			// that's why we're setting the contentLength to the length of the continuedHeader
 			contentLength = len(continuedHeader)
+			contentLength += len(appHeader)
 
 		}
 	}
@@ -267,10 +269,11 @@ func (m *Message) BuildComment(
 
 		// Only split if adding the app header would exceed the chunk limit
 		if contentLength+len(appHeader) > maxContentLength {
-			appendChunk()
+			appendChunk(appHeader)
+		} else {
+			sb.WriteString(appHeader)
+			contentLength += len(appHeader)
 		}
-		sb.WriteString(appHeader)
-		contentLength += len(appHeader)
 
 		// Write each result for the app
 		for _, check := range results.results {
@@ -298,7 +301,7 @@ func (m *Message) BuildComment(
 
 			// Only split if adding the summary would exceed the chunk limit (not if it equals)
 			if contentLength+len(summary) > maxContentLength {
-				appendChunk()
+				appendChunk(appHeader)
 			}
 
 			// Details block (may need to split across chunks)
@@ -306,7 +309,7 @@ func (m *Message) BuildComment(
 			for len(msg) > 0 {
 				availableSpace := maxContentLength - contentLength - len(splitCommentFooter)
 				if availableSpace <= 0 {
-					appendChunk()
+					appendChunk(appHeader)
 					availableSpace = maxContentLength - contentLength - len(splitCommentFooter)
 				}
 				if availableSpace > len(msg) {
@@ -319,8 +322,10 @@ func (m *Message) BuildComment(
 					sb.WriteString(splitCommentFooter)
 					comments = append(comments, sb.String())
 					sb.Reset()
+					sb.WriteString(appHeader)
 					sb.WriteString(header)
 					contentLength = len(continuedHeader)
+					contentLength += len(appHeader)
 					msg = secondPart
 				} else {
 					sb.WriteString(msg)
