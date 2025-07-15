@@ -226,7 +226,7 @@ func (m *Message) BuildComment(
 			comments = append(comments, sb.String())
 			sb.Reset()
 			sb.WriteString(header)
-			sb.WriteString(header)
+			sb.WriteString(appHeader)
 			// continuedHeader contains both the header and the comment about the continued fromprevious comment
 			// header is written here but the rest of the content is written from the vcs PostMessage/UpdateMessage function
 			// that's why we're setting the contentLength to the length of the continuedHeader
@@ -322,8 +322,8 @@ func (m *Message) BuildComment(
 					sb.WriteString(splitCommentFooter)
 					comments = append(comments, sb.String())
 					sb.Reset()
-					sb.WriteString(appHeader)
 					sb.WriteString(header)
+					sb.WriteString(appHeader)
 					contentLength = len(continuedHeader)
 					contentLength += len(appHeader)
 					msg = secondPart
