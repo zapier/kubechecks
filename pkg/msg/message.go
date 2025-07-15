@@ -259,7 +259,7 @@ func (m *Message) BuildComment(
 		}
 
 		// App header: show emoji only if state is not None
-		appHeader := "\n\n<details>\n<summary>\n\n"
+		appHeader := "\n\n<details>\n<summary>\n"
 		if appState == pkg.StateNone {
 			appHeader += fmt.Sprintf("## ArgoCD Application Checks: `%s`\n", appName)
 		} else {
@@ -304,9 +304,10 @@ func (m *Message) BuildComment(
 			if contentLength+len(summaryHeader) > maxContentLength {
 				appendChunk(appHeader)
 			}
+			sb.WriteString(summaryHeader)
 
 			// Details block (may need to split across chunks)
-			msg := fmt.Sprintf("%s\n%s\n</details>", summaryHeader, check.Details)
+			msg := fmt.Sprintf("%s\n</details>", check.Details)
 			for len(msg) > 0 {
 				availableSpace := maxContentLength - contentLength - len(splitCommentFooter)
 				if availableSpace <= 0 {
@@ -341,8 +342,8 @@ func (m *Message) BuildComment(
 		}
 
 		// Close the app details block
-		sb.WriteString("</details>\n\n")
-		contentLength += len("</details>\n\n")
+		sb.WriteString("\n</details>\n")
+		contentLength += len("\n</details>\n")
 
 		updateWritten = true
 	}
