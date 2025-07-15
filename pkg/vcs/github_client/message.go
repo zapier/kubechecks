@@ -109,7 +109,10 @@ func (c *Client) pruneOldComments(
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) || strings.Contains(*comment.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
-			_, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *comment.ID)
+			err := backoff.Retry(func() error {
+				_, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *comment.ID)
+				return err
+			}, getBackOff())
 			if err != nil {
 				return fmt.Errorf("failed to delete comment: %w", err)
 			}
@@ -142,8 +145,14 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, pr vcs.PullRequest, c
 				Classifier: githubv4.ReportedContentClassifiersOutdated,
 				SubjectID:  comment.GetNodeID(),
 			}
-			if err := c.shurcoolClient.Mutate(ctx, &m, input, nil); err != nil {
-				return fmt.Errorf("minimize comment %s: %w", comment.GetNodeID(), err)
+			err := backoff.Retry(func() error {
+				if err := c.shurcoolClient.Mutate(ctx, &m, input, nil); err != nil {
+					return fmt.Errorf("minimize comment %s: %w", comment.GetNodeID(), err)
+				}
+				return nil
+			}, getBackOff())
+			if err != nil {
+				return fmt.Errorf("failed to minimize comment: %w", err)
 			}
 		}
 	}
@@ -160,11 +169,21 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 	nextPage := 0
 
 	for {
-		comments, resp, err := c.googleClient.Issues.ListComments(ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueListCommentsOptions{
-			Sort:        pkg.Pointer("created"),
-			Direction:   pkg.Pointer("asc"),
-			ListOptions: github.ListOptions{Page: nextPage},
-		})
+		log.Debug().Msgf("Listing comments for PR %d in repo %s", pr.CheckID, pr.FullName)
+		var comments []*github.IssueComment
+		var resp *github.Response
+		var err error
+
+		err = backoff.Retry(func() error {
+			cs, rsp, err := c.googleClient.Issues.ListComments(ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueListCommentsOptions{
+				Sort:        pkg.Pointer("created"),
+				Direction:   pkg.Pointer("asc"),
+				ListOptions: github.ListOptions{Page: nextPage},
+			})
+			comments = cs
+			resp = rsp
+			return err
+		}, getBackOff())
 		if err != nil {
 			telemetry.SetError(span, err, "Get Issue Comments failed")
 			return fmt.Errorf("failed listing comments: %w", err)

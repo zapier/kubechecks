@@ -134,7 +134,10 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 	for _, note := range notes {
 		if note.Author.Username == c.username && strings.Contains(note.Body, pkg.GetMessageHeader(c.cfg.Identifier)) {
 			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
-			_, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
+			err := backoff.Retry(func() error {
+				_, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
+				return err
+			}, getBackOff())
 			if err != nil {
 				telemetry.SetError(span, err, "Prune Old Comments")
 				return fmt.Errorf("could not delete old comment: %w", err)
@@ -154,14 +157,22 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 	nextPage := 0
 
 	for {
-		// list merge request notes
-		notes, resp, err := c.c.Notes.ListMergeRequestNotes(pr.FullName, pr.CheckID, &gitlab.ListMergeRequestNotesOptions{
-			Sort:    pkg.Pointer("asc"),
-			OrderBy: pkg.Pointer("created_at"),
-			ListOptions: gitlab.ListOptions{
-				Page: nextPage,
-			},
-		})
+
+		var notes []*gitlab.Note
+		var resp *gitlab.Response
+		var err error
+
+		err = backoff.Retry(func() error {
+			// list merge request notes
+			notes, resp, err = c.c.Notes.ListMergeRequestNotes(pr.FullName, pr.CheckID, &gitlab.ListMergeRequestNotesOptions{
+				Sort:    pkg.Pointer("asc"),
+				OrderBy: pkg.Pointer("created_at"),
+				ListOptions: gitlab.ListOptions{
+					Page: nextPage,
+				},
+			})
+			return err
+		}, getBackOff())
 
 		if err != nil {
 			telemetry.SetError(span, err, "Tidy Outdated Comments")
