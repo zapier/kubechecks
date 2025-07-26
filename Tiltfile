@@ -235,7 +235,7 @@ k8s_resource(
   port_forwards=['2345:2345', '8080:8080'],
   resource_deps=[
     # 'go-build',
-    'go-test',
+    # 'go-test',
     'k8s:namespace',
     'argocd',
     'argocd-crds',

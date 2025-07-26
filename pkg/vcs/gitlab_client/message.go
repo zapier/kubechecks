@@ -92,6 +92,7 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 		if i == 0 {
 			var note *gitlab.Note
 
+			log.Debug().Msgf("Updating message to MR %d for %s; message length: %d", pr.CheckID, pr.FullName, len(msg))
 			err := backoff.Retry(func() error {
 				n, resp, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
 					Body: pkg.Pointer(msg),
@@ -114,6 +115,7 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 			)
 
 			msg = fmt.Sprintf("%s\n\n%s", continuedHeader, msg)
+			log.Debug().Msgf("Posting message to MR %d for %s; message length: %d", pr.CheckID, pr.FullName, len(msg))
 			n, err := c.PostMessage(ctx, pr, msg)
 			if err != nil {
 				log.Error().Err(err).Msg("could not post message to MR")
