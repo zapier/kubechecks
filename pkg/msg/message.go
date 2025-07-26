@@ -259,7 +259,7 @@ func (m *Message) BuildComment(
 		}
 
 		// App header: show emoji only if state is not None
-		appHeader := "\n\n<details>\n<summary>\n\n"
+		appHeader := "\n<details>\n<summary>\n\n"
 		if appState == pkg.StateNone {
 			appHeader += fmt.Sprintf("## ArgoCD Application Checks: `%s`\n", appName)
 		} else {
@@ -300,44 +300,42 @@ func (m *Message) BuildComment(
 			}
 			summaryHeader := fmt.Sprintf("<details>\n\n<summary>%s</summary>\n\n", summary)
 
-			// Only split if adding the summary would exceed the chunk limit (not if it equals)
-			if contentLength+len(summaryHeader) > maxContentLength {
-				appendChunk(appHeader)
-			}
-			sb.WriteString(summaryHeader)
-			contentLength += len(summaryHeader)
-
 			// Details block (may need to split across chunks)
-			msg := fmt.Sprintf("%s\n</details>", check.Details)
-			for len(msg) > 0 {
-				availableSpace := maxContentLength - contentLength - len(splitCommentFooter)
+			// Using a pointer to the string to avoid copying the string
+			var msg *string
+			msg = &check.Details
+			for len(*msg) > 0 {
+				// Create space for writing the the closing </details> tag appHeader
+				availableSpace := maxContentLength - contentLength - len(splitCommentFooter) - len(summaryHeader) - len("</details>")
 				if availableSpace <= 0 {
 					appendChunk(appHeader)
-					availableSpace = maxContentLength - contentLength - len(splitCommentFooter)
+					availableSpace = maxContentLength - contentLength - len(splitCommentFooter) - len(summaryHeader) - len("</details>")
 				}
-				if availableSpace > len(msg) {
-					availableSpace = len(msg)
-				}
-				if availableSpace > 0 && availableSpace < len(msg) {
+
+				sb.WriteString(summaryHeader)
+				contentLength += len(summaryHeader)
+				if availableSpace > 0 && availableSpace < len(*msg) {
 					// Split content while preserving code blocks
-					// Create space for writing the the closing </details> tag
-					availableSpace -= len("</details>")
 					firstPart, secondPart := splitContentPreservingCodeBlocks(msg, availableSpace)
 					sb.WriteString(firstPart)
-					// close the summary tag. This ensures it's not split across chunks.
-					sb.WriteString("</details>")
+					// close the summary tag and the appHeader tag. This ensures it's not split across chunks.
+					sb.WriteString("\n\n</details></details>")
 					appendChunk(appHeader)
-					msg = secondPart
+					msg = &secondPart
 				} else {
-					sb.WriteString(msg)
-					contentLength += len(msg)
-					msg = ""
+					sb.WriteString(*msg)
+					contentLength += len(*msg)
+					sb.WriteString("\n</details>") // Close the details tag from the summaryHeader
+					contentLength += len("\n</details>")
+					break
 				}
 			}
 		}
 
 		// Don't split if there's no more apps to write. An unclosed details tag wouldn't cause an issue
 		// unless there's more contents to write
+		// this sometimes leads to outdated comments not showing properly, but that's better than splitting the comment
+		// because of a closing tag
 		closingDetailsTag := "\n</details>\n"
 		if appIndex < len(names)-1 {
 			if contentLength+len(closingDetailsTag) > maxContentLength {
@@ -377,19 +375,19 @@ func (m *Message) BuildComment(
 // splitContentPreservingCodeBlocks splits content at a given position while preserving code blocks and their types.
 // If the split position is inside a code block, it will close the code block in the first part
 // and open a new one in the second part, preserving the code block type (e.g., ```diff).
-func splitContentPreservingCodeBlocks(content string, splitPos int) (string, string) {
+func splitContentPreservingCodeBlocks(content *string, splitPos int) (string, string) {
 	_, span := tracer.Start(context.Background(), "splitContentPreservingCodeBlocks")
 	defer span.End()
 
-	if splitPos >= len(content) {
-		return content, ""
+	if splitPos >= len(*content) {
+		return *content, ""
 	}
 	if splitPos <= 0 {
-		return "", content
+		return "", *content
 	}
 
-	firstPart := content[:splitPos]
-	secondPart := content[splitPos:]
+	firstPart := (*content)[:splitPos]
+	secondPart := (*content)[splitPos:]
 
 	// Count the number of code block markers (```) in the first part
 	codeBlockMarkers := strings.Count(firstPart, "```")
