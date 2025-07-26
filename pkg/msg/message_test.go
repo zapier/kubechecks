@@ -39,6 +39,7 @@ func TestBuildComment(t *testing.T) {
 
 <details>
 <summary>
+
 ## ArgoCD Application Checks: ` + "`myapp`" + ` :test:
 </summary>
 
