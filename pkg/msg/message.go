@@ -260,7 +260,7 @@ func (m *Message) BuildComment(
 		}
 
 		// App header: show emoji only if state is not None
-		appHeader := "\n\n<details>\n<summary>\n"
+		appHeader := "\n\n<details>\n<summary>\n\n"
 		if appState == pkg.StateNone {
 			appHeader += fmt.Sprintf("## ArgoCD Application Checks: `%s`\n", appName)
 		} else {
