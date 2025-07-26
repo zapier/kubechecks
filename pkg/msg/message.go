@@ -12,6 +12,7 @@ import (
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 
+	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg"
 )
 
@@ -196,9 +197,10 @@ func (m *Message) BuildComment(
 	// Footer warning for split comments
 	splitCommentFooter := "\n\n> **Warning**: Output length greater than maximum allowed comment size. Continued in next comment"
 	// Header for continued comments
+	// this is written from the VCS PostMessage/UpdateMessage function. So, we need to account for it here
 	continuedHeader := fmt.Sprintf("%s> Continued from previous [comment](%s)\n\n", header, prLinkTemplate)
 	// Max content length for each chunk (accounting for continuedHeader)
-	maxContentLength := maxCommentLength - len(continuedHeader)
+	maxContentLength := maxCommentLength - len(continuedHeader) - 10 // 10 is a safety margin
 	contentLength := 0
 
 	comments := []string{}
@@ -211,13 +213,12 @@ func (m *Message) BuildComment(
 	// and starting new chunks with continuedHeader after the first
 	appendChunk := func(appHeader string) {
 		if sb.Len() > 0 {
-			currentContent := sb.String()
 			// Only add splitCommentFooter if there's enough space
-			if len(currentContent)+len(splitCommentFooter) <= maxContentLength {
+			if (contentLength)+len(splitCommentFooter) <= maxContentLength {
 				sb.WriteString(splitCommentFooter)
 			} else {
 				// Create a truncated copy of splitCommentFooter to make room for it
-				availableSpace := maxContentLength - len(currentContent)
+				availableSpace := maxContentLength - contentLength
 				if availableSpace > 0 {
 					truncatedFooter := splitCommentFooter[:availableSpace]
 					sb.WriteString(truncatedFooter)
@@ -226,11 +227,11 @@ func (m *Message) BuildComment(
 			comments = append(comments, sb.String())
 			sb.Reset()
 			sb.WriteString(header)
-			sb.WriteString(appHeader)
 			// continuedHeader contains both the header and the comment about the continued fromprevious comment
 			// header is written here but the rest of the content is written from the vcs PostMessage/UpdateMessage function
 			// that's why we're setting the contentLength to the length of the continuedHeader
 			contentLength = len(continuedHeader)
+			sb.WriteString(appHeader)
 			contentLength += len(appHeader)
 
 		}
@@ -305,6 +306,7 @@ func (m *Message) BuildComment(
 				appendChunk(appHeader)
 			}
 			sb.WriteString(summaryHeader)
+			contentLength += len(summaryHeader)
 
 			// Details block (may need to split across chunks)
 			msg := fmt.Sprintf("%s\n</details>", check.Details)
@@ -325,13 +327,7 @@ func (m *Message) BuildComment(
 					sb.WriteString(firstPart)
 					// close the summary tag. This ensures it's not split across chunks.
 					sb.WriteString("</details>")
-					sb.WriteString(splitCommentFooter)
-					comments = append(comments, sb.String())
-					sb.Reset()
-					sb.WriteString(header)
-					contentLength = len(continuedHeader)
-					sb.WriteString(appHeader)
-					contentLength += len(appHeader)
+					appendChunk(appHeader)
 					msg = secondPart
 				} else {
 					sb.WriteString(msg)
@@ -341,13 +337,16 @@ func (m *Message) BuildComment(
 			}
 		}
 
-		// Don't write if there's no more apps to write. An unclosed details tag wouldn't cause an issue
+		// Don't split if there's no more apps to write. An unclosed details tag wouldn't cause an issue
 		// unless there's more contents to write
+		closingDetailsTag := "\n</details>\n"
 		if appIndex < len(names)-1 {
-			closingDetailsTag := "\n</details>\n"
 			if contentLength+len(closingDetailsTag) > maxContentLength {
 				appendChunk(appHeader)
 			} // Close the app details block
+		}
+		// if there's space to write the closingTag, write it
+		if contentLength+len(closingDetailsTag) < maxContentLength {
 			sb.WriteString(closingDetailsTag)
 			contentLength += len(closingDetailsTag)
 		}
@@ -373,6 +372,9 @@ func (m *Message) BuildComment(
 		comments = append(comments, sb.String())
 	}
 
+	for _, comment := range comments {
+		log.Debug().Msgf("Comment length: %d", len(comment))
+	}
 	return comments
 }
 

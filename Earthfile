@@ -1,6 +1,7 @@
 VERSION 0.7
 
 ARG --global USERARCH
+ARG --global GITHUB_TOKEN=""
 
 test:
     BUILD +ci-golang
@@ -32,6 +33,13 @@ go-deps:
 
     ENV GO111MODULE=on
     ENV CGO_ENABLED=0
+
+    # Conditionally configure GitHub token for private repos
+    IF [ "$GITHUB_TOKEN" != "" ]
+        ENV GOPRIVATE=github.com/zapier/*
+        ENV GITHUB_TOKEN=$GITHUB_TOKEN
+        RUN git config --global url."https://${GITHUB_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+    END
 
     WORKDIR /src
     COPY go.mod go.sum /src
@@ -93,28 +101,52 @@ docker:
 
     WORKDIR /tmp
     ARG KUSTOMIZE_VERSION=5.6.0
-    RUN \
-        curl \
+    IF [ "$GITHUB_TOKEN" != "" ]
+        RUN curl \
             --fail \
             --silent \
             --show-error \
             --location \
+            --header "Authorization: token ${GITHUB_TOKEN}" \
             "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
-            --output install_kustomize.sh && \
-        chmod 700 install_kustomize.sh && \
-        ./install_kustomize.sh ${KUSTOMIZE_VERSION} /usr/local/bin
+            --output install_kustomize.sh \
+        && chmod 700 install_kustomize.sh \
+        && ./install_kustomize.sh ${KUSTOMIZE_VERSION} /usr/local/bin
+    ELSE
+        RUN curl \
+                --fail \
+                --silent \
+                --show-error \
+                --location \
+                "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+                --output install_kustomize.sh; \
+        chmod 700 install_kustomize.sh \
+        && ./install_kustomize.sh ${KUSTOMIZE_VERSION} /usr/local/bin
+    END
 
     ARG HELM_VERSION=3.10.0
-    RUN \
-        curl \
-            --fail \
-            --silent \
-            --show-error \
-            --location \
-            "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" \
-            --output get-helm-3.sh && \
+    IF [ "$GITHUB_TOKEN" != "" ]
+    RUN curl \
+                --fail \
+                --silent \
+                --show-error \
+                --location \
+                --header "Authorization: token ${GITHUB_TOKEN}" \
+                "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" \
+                --output get-helm-3.sh \
+        && chmod 700 get-helm-3.sh \
+        && ./get-helm-3.sh -v v${HELM_VERSION}
+    ELSE
+        RUN curl \
+                --fail \
+                --silent \
+                --show-error \
+                --location \
+                "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3" \
+                --output get-helm-3.sh; \
         chmod 700 get-helm-3.sh && \
         ./get-helm-3.sh -v v${HELM_VERSION}
+    END
 
     RUN mkdir /app
 
@@ -178,16 +210,30 @@ test-helm:
 
     # install kubeconform
     ARG KUBECONFORM_VERSION="0.7.0"
-    RUN FILE=kubeconform.tgz \
-        && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-${USERARCH}.tar.gz \
-        && wget ${URL} \
-            --output-document ${FILE} \
-        && tar \
-            --extract \
-            --verbose \
-            --directory /bin \
-            --file ${FILE} \
-        && kubeconform -v
+    IF [ "$GITHUB_TOKEN" != "" ]
+        RUN FILE=kubeconform.tgz \
+            && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-${USERARCH}.tar.gz \
+            && wget ${URL} \
+                --header="Authorization: token ${GITHUB_TOKEN}" \
+                --output-document ${FILE} \
+            && tar \
+                --extract \
+                --verbose \
+                --directory /bin \
+                --file ${FILE} \
+            && kubeconform -v
+    ELSE
+        RUN FILE=kubeconform.tgz \
+            && URL=https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-${USERARCH}.tar.gz \
+            && wget ${URL} \
+                --output-document ${FILE} \
+            && tar \
+                --extract \
+                --verbose \
+                --directory /bin \
+                --file ${FILE} \
+            && kubeconform -v
+    END
 
     ARG HELM_UNITTEST_VERSION="0.3.3"
     RUN apk add --no-cache bash git \

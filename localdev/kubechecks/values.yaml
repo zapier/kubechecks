@@ -31,7 +31,10 @@ configMap:
 deployment:
   annotations:
     reloader.stakater.com/auto: "true" 
-  
+  resources:
+    limits:
+      memory: 4Gi
+
   image:
     pullPolicy: IfNotPresent
     name: "kubechecks"
