@@ -1,9 +1,12 @@
 package github_client
 
 import (
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/google/go-github/v62/github"
 )
 
 // getBackOff returns a backoff pointer to use to retry requests
@@ -17,4 +20,16 @@ func getBackOff() *backoff.ExponentialBackOff {
 	bOff.MaxElapsedTime = 180 * time.Second
 
 	return bOff
+}
+
+func checkReturnForBackoff(resp *github.Response, err error) error {
+	if resp != nil {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("%s", "Rate Limited")
+		}
+	}
+	if err != nil {
+		return &backoff.PermanentError{Err: err}
+	}
+	return err
 }

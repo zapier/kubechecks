@@ -27,7 +27,7 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 
 	var comment *github.IssueComment
 	err := backoff.Retry(func() error {
-		cm, _, err := c.googleClient.Issues.CreateComment(
+		cm, resp, err := c.googleClient.Issues.CreateComment(
 			ctx,
 			pr.Owner,
 			pr.Name,
@@ -35,7 +35,7 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 			&github.IssueComment{Body: &message},
 		)
 		comment = cm
-		return err
+		return checkReturnForBackoff(resp, err)
 	}, getBackOff())
 
 	if err != nil {
@@ -67,12 +67,12 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 					int64(m.NoteID),
 					&github.IssueComment{Body: &msg},
 				)
-				return err
+				return checkReturnForBackoff(resp, err)
 			}, getBackOff())
 
 			if err != nil {
 				telemetry.SetError(span, err, "Update Pull Request comment")
-				log.Error().Err(err).Msgf("could not update message to PR, msg: %s, response: %+v", msg, resp)
+				log.Error().Err(err).Msgf("could not update message to PR, response: %+v", resp)
 				return err
 			}
 
@@ -110,8 +110,8 @@ func (c *Client) pruneOldComments(
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) || strings.Contains(*comment.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
 			err := backoff.Retry(func() error {
-				_, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *comment.ID)
-				return err
+				resp, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *comment.ID)
+				return checkReturnForBackoff(resp, err)
 			}, getBackOff())
 			if err != nil {
 				return fmt.Errorf("failed to delete comment: %w", err)
@@ -145,14 +145,8 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, pr vcs.PullRequest, c
 				Classifier: githubv4.ReportedContentClassifiersOutdated,
 				SubjectID:  comment.GetNodeID(),
 			}
-			err := backoff.Retry(func() error {
-				if err := c.shurcoolClient.Mutate(ctx, &m, input, nil); err != nil {
-					return fmt.Errorf("minimize comment %s: %w", comment.GetNodeID(), err)
-				}
-				return nil
-			}, getBackOff())
-			if err != nil {
-				return fmt.Errorf("failed to minimize comment: %w", err)
+			if err := c.shurcoolClient.Mutate(ctx, &m, input, nil); err != nil {
+				return fmt.Errorf("minimize comment %s: %w", comment.GetNodeID(), err)
 			}
 		}
 	}
@@ -180,7 +174,7 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 				Direction:   pkg.Pointer("asc"),
 				ListOptions: github.ListOptions{Page: nextPage},
 			})
-			return err
+			return checkReturnForBackoff(resp, err)
 		}, getBackOff())
 
 		if err != nil {
