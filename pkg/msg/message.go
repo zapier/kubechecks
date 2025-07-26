@@ -12,7 +12,6 @@ import (
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 
-	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg"
 )
 
@@ -266,7 +265,7 @@ func (m *Message) BuildComment(
 		} else {
 			appHeader += fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, m.vcs.ToEmoji(appState))
 		}
-		appHeader += "</summary>\n\n"
+		appHeader += "\n</summary>\n\n"
 
 		// Only split if adding the app header would exceed the chunk limit
 		if contentLength+len(appHeader) > maxContentLength {
@@ -299,7 +298,7 @@ func (m *Message) BuildComment(
 					summary = fmt.Sprintf("%s %s %s", check.Summary, check.State.BareString(), m.vcs.ToEmoji(check.State))
 				}
 			}
-			summaryHeader := fmt.Sprintf("<details>\n<summary>%s</summary>\n", summary)
+			summaryHeader := fmt.Sprintf("<details>\n\n<summary>%s</summary>\n\n", summary)
 
 			// Only split if adding the summary would exceed the chunk limit (not if it equals)
 			if contentLength+len(summaryHeader) > maxContentLength {
@@ -372,9 +371,6 @@ func (m *Message) BuildComment(
 		comments = append(comments, sb.String())
 	}
 
-	for _, comment := range comments {
-		log.Debug().Msgf("Comment length: %d", len(comment))
-	}
 	return comments
 }
 

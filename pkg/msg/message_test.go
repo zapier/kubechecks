@@ -41,10 +41,13 @@ func TestBuildComment(t *testing.T) {
 <summary>
 
 ## ArgoCD Application Checks: ` + "`myapp`" + ` :test:
+
 </summary>
 
 <details>
+
 <summary>this failed bigly Error :test:</summary>
+
 should add some important details here
 </details>
 </details>
@@ -1324,7 +1327,7 @@ func TestBuildComment_ContentLengthLimits(t *testing.T) {
 
 	// Test case 5: Edge case with very small maxCommentLength
 	// This tests the minimum viable comment size
-	smallMaxCommentLength := len(continuedHeader) + 50 // Just enough for continuedHeader + minimal content
+	smallMaxCommentLength := len(continuedHeader) + 100 // Increased buffer to account for message structure overhead
 	appResults5 := map[string]*AppResults{
 		"testapp": {
 			results: []Result{
