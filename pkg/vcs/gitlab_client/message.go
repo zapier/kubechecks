@@ -140,8 +140,8 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 		if note.Author.Username == c.username && strings.Contains(note.Body, pkg.GetMessageHeader(c.cfg.Identifier)) {
 			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
 			err := backoff.Retry(func() error {
-				_, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
-				return err
+				resp, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
+				return checkReturnForBackoff(resp, err)
 			}, getBackOff())
 			if err != nil {
 				telemetry.SetError(span, err, "Prune Old Comments")
@@ -176,7 +176,7 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 					Page: nextPage,
 				},
 			})
-			return err
+			return checkReturnForBackoff(resp, err)
 		}, getBackOff())
 
 		if err != nil {
