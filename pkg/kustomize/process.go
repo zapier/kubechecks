@@ -108,6 +108,22 @@ func (p processor) processDir(sourceFS fs.FS, relBase string) (files, dirs []str
 		}
 	}
 
+	for _, configmapGenerator := range kust.ConfigMapGenerator {
+		if configmapGenerator.EnvSource != "" {
+			files = append(files, configmapGenerator.EnvSource)
+		}
+		files = append(files, configmapGenerator.EnvSources...)
+		files = append(files, extractFileSourcePaths(configmapGenerator.FileSources)...)
+	}
+
+	for _, secretGenerator := range kust.SecretGenerator {
+		if secretGenerator.EnvSource != "" {
+			files = append(files, secretGenerator.EnvSource)
+		}
+		files = append(files, secretGenerator.EnvSources...)
+		files = append(files, extractFileSourcePaths(secretGenerator.FileSources)...)
+	}
+
 	// clean up the directories and files
 	filesOrDirectories = cleanPaths(relBase, filesOrDirectories)
 	directories = cleanPaths(relBase, directories)
@@ -188,4 +204,21 @@ func isRemoteResource(resource string) bool {
 	}
 
 	return false
+}
+
+func extractFileSourcePaths(fileSources []string) []string {
+	var files []string
+	for _, fileSource := range fileSources {
+		if strings.Contains(fileSource, "=") {
+			slicedFileSource := strings.SplitN(fileSource, "=", 2)
+			if len(slicedFileSource) != 2 {
+				log.Warn().Msgf("invalid file source %q, expected format {key}=path", fileSource)
+				continue
+			}
+			files = append(files, slicedFileSource[1])
+			continue
+		}
+		files = append(files, fileSource)
+	}
+	return files
 }

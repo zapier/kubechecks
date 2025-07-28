@@ -261,6 +261,56 @@ dummy:
 		assert.NoError(t, err)
 		assert.Contains(t, files, "testdir/values-dummy.yaml")
 	})
+
+	t.Run("configMapGenerator", func(t *testing.T) {
+		kustContent := `
+configMapGenerator:
+  - name: "env-file"
+    envs:
+      - config/config.env
+  - name: plain-file
+    files:
+      - plain-file.yaml=config/plain-file.yaml
+`
+		sourceFS := fstest.MapFS{
+			"testdir/kustomization.yaml": &fstest.MapFile{
+				Data: []byte(kustContent),
+			},
+			"testdir/config/config.env": &fstest.MapFile{},
+
+			"testdir/config/plain-file.yaml": &fstest.MapFile{},
+		}
+
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
+		assert.NoError(t, err)
+		assert.Contains(t, files, "testdir/config/config.env")
+		assert.Contains(t, files, "testdir/config/plain-file.yaml")
+	})
+
+	t.Run("secretGenerator", func(t *testing.T) {
+		kustContent := `
+secretGenerator:
+  - name: "env-file"
+    envs:
+      - secret/config.env
+  - name: plain-file
+    files:
+      - plain-file.yaml=secret/plain-file.yaml
+`
+		sourceFS := fstest.MapFS{
+			"testdir/kustomization.yaml": &fstest.MapFile{
+				Data: []byte(kustContent),
+			},
+			"testdir/secret/config.env": &fstest.MapFile{},
+
+			"testdir/secret/plain-file.yaml": &fstest.MapFile{},
+		}
+
+		files, _, err := ProcessKustomizationFile(sourceFS, filepath.Join("testdir", "kustomization.yaml"))
+		assert.NoError(t, err)
+		assert.Contains(t, files, "testdir/secret/config.env")
+		assert.Contains(t, files, "testdir/secret/plain-file.yaml")
+	})
 }
 
 func TestIsRemoteResource(t *testing.T) {
