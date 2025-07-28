@@ -211,7 +211,7 @@ func extractFileSourcePaths(fileSources []string) []string {
 	for _, fileSource := range fileSources {
 		if strings.Contains(fileSource, "=") {
 			slicedFileSource := strings.SplitN(fileSource, "=", 2)
-			if len(slicedFileSource) != 2 {
+			if slicedFileSource[1] == "" {
 				log.Warn().Msgf("invalid file source %q, expected format {key}=path", fileSource)
 				continue
 			}
