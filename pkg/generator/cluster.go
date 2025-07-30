@@ -94,7 +94,7 @@ func (g *ClusterGenerator) GenerateParams(appSetGenerator *argoappsetv1alpha1.Ap
 
 	var secretsFound []corev1.Secret
 
-	for _, cluster := range clustersFromArgoCD.Items {
+	for _, cluster := range clustersFromArgoCD {
 
 		// If there is a secret for this cluster, then it's a non-local cluster, so it will be
 		// handled by the next step.
