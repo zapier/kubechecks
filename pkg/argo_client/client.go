@@ -4,11 +4,11 @@ import (
 	"crypto/tls"
 	"io"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/settings"
-	repoapiclient "github.com/argoproj/argo-cd/v2/reposerver/apiclient"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/applicationset"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/settings"
+	repoapiclient "github.com/argoproj/argo-cd/v3/reposerver/apiclient"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	client "github.com/zapier/kubechecks/pkg/kubernetes"
@@ -17,7 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/cluster"
 
 	"github.com/zapier/kubechecks/pkg/config"
 )

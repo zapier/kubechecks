@@ -7,15 +7,15 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/argoproj/argo-cd/v2/util/settings"
+	"github.com/argoproj/argo-cd/v3/util/settings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/argoproj/argo-cd/v2/applicationset/utils"
-	argoappsetv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/applicationset/utils"
+	argoappsetv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 )
 
 const (
@@ -75,13 +75,13 @@ func (g *ClusterGenerator) GenerateParams(appSetGenerator *argoappsetv1alpha1.Ap
 	// - Since local clusters do not have secrets, they do not have labels to match against
 	ignoreLocalClusters := len(appSetGenerator.Clusters.Selector.MatchExpressions) > 0 || len(appSetGenerator.Clusters.Selector.MatchLabels) > 0
 
-	// ListCluster from Argo CD's util/db package will include the local cluster in the list of clusters
-	clustersFromArgoCD, err := utils.ListClusters(g.ctx, g.clientset, g.namespace)
+	// ListClusters from Argo CD's util/db package will include the local cluster in the list of clusters
+	clusters, err := utils.ListClusters(g.ctx, g.clientset, g.namespace)
 	if err != nil {
 		return nil, fmt.Errorf("error listing clusters: %w", err)
 	}
 
-	if clustersFromArgoCD == nil {
+	if clusters == nil {
 		return nil, nil
 	}
 
@@ -94,7 +94,7 @@ func (g *ClusterGenerator) GenerateParams(appSetGenerator *argoappsetv1alpha1.Ap
 
 	var secretsFound []corev1.Secret
 
-	for _, cluster := range clustersFromArgoCD.Items {
+	for _, cluster := range clusters {
 
 		// If there is a secret for this cluster, then it's a non-local cluster, so it will be
 		// handled by the next step.

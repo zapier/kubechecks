@@ -7,7 +7,7 @@ package generator
 import (
 	"context"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	mock "github.com/stretchr/testify/mock"
 	"github.com/zapier/kubechecks/pkg/container"
 )
