@@ -7,15 +7,15 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/argoproj/argo-cd/v2/util/settings"
+	"github.com/argoproj/argo-cd/v3/util/settings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/argoproj/argo-cd/v2/applicationset/utils"
-	argoappsetv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/applicationset/utils"
+	argoappsetv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 )
 
 const (
@@ -94,7 +94,7 @@ func (g *ClusterGenerator) GenerateParams(appSetGenerator *argoappsetv1alpha1.Ap
 
 	var secretsFound []corev1.Secret
 
-	for _, cluster := range clustersFromArgoCD.Items {
+	for _, cluster := range clustersFromArgoCD {
 
 		// If there is a secret for this cluster, then it's a non-local cluster, so it will be
 		// handled by the next step.

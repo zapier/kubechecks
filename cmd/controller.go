@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	_ "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

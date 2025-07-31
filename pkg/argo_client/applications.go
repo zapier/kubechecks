@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/applicationset"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/cluster"
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/pkg/errors"
 
 	"github.com/zapier/kubechecks/pkg"
