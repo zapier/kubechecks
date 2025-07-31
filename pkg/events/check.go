@@ -275,7 +275,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
+		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("%sNo changes", pkg.GetMessageHeader(ce.ctr.Config.Identifier))); err != nil {
 			return errors.Wrap(err, "failed to post changes")
 		}
 		return nil
@@ -325,13 +325,15 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	ce.logger.Info().Msg("Finished")
 
-	comment := ce.vcsNote.BuildComment(
+	comments := ce.vcsNote.BuildComment(
 		ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter,
 		ce.ctr.Config.ShowDebugInfo, ce.ctr.Config.Identifier,
 		len(ce.addedAppsSet), int(ce.appsSent),
+		ce.ctr.VcsClient.GetMaxCommentLength(),
+		ce.ctr.VcsClient.GetPrCommentLinkTemplate(ce.pullRequest),
 	)
 
-	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
+	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.pullRequest, ce.vcsNote, comments); err != nil {
 		return errors.Wrap(err, "failed to push comment")
 	}
 
@@ -407,5 +409,5 @@ func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 
 	ce.logger.Info().Msgf("Creating note")
 
-	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\n:hourglass: kubechecks running...", ce.ctr.Config.Identifier))
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("%s:hourglass: kubechecks running...", pkg.GetMessageHeader(ce.ctr.Config.Identifier)))
 }
