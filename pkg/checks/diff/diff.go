@@ -92,7 +92,7 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 		return msg.Result{}, err
 	}
 
-	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name); err != nil {
+	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name, app.Spec.Destination.Namespace); err != nil {
 		return msg.Result{}, err
 	}
 
@@ -310,7 +310,7 @@ func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructu
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
-func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.ResourceKey]*unstructured.Unstructured, items []objKeyLiveTarget, argoSettings *settings.Settings, appName string) ([]objKeyLiveTarget, error) {
+func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.ResourceKey]*unstructured.Unstructured, items []objKeyLiveTarget, argoSettings *settings.Settings, appName string, namespace string) ([]objKeyLiveTarget, error) {
 	resourceTracking := argo.NewResourceTracking()
 	for _, res := range resources {
 		var live = &unstructured.Unstructured{}
@@ -327,7 +327,7 @@ func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.Resourc
 		if local, ok := objs[key]; ok || live != nil {
 			if local != nil && !kube.IsCRD(local) {
 				if err := resourceTracking.SetAppInstance(
-					local, argoSettings.AppLabelKey, appName, "", argoappv1.TrackingMethod(argoSettings.GetTrackingMethod()), "",
+					local, argoSettings.AppLabelKey, appName, namespace, argoappv1.TrackingMethod(argoSettings.GetTrackingMethod()), "",
 				); err != nil {
 					return nil, err
 				}
