@@ -33,7 +33,18 @@ func TestBuildComment(t *testing.T) {
 	}
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, 1000, "https://github.com/zapier/kubechecks/pull/1")
+	params := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: 1000,
+		PrLinkTemplate:   "https://github.com/zapier/kubechecks/pull/1",
+	}
+	comment := m.BuildComment(context.TODO(), params)
 	assert.Equal(t, []string{`# Kubechecks test-identifier Report
 
 <details>
@@ -82,7 +93,18 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, 1000, "https://github.com/zapier/kubechecks/pull/1")
+	params := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: 1000,
+		PrLinkTemplate:   "https://github.com/zapier/kubechecks/pull/1",
+	}
+	comment := m.BuildComment(context.TODO(), params)
 
 	expected := `# Kubechecks test-identifier Report
 No changes
@@ -178,7 +200,18 @@ func TestMultipleItemsWithNewlines(t *testing.T) {
 		Summary: "summary-2",
 		Details: "detail-2",
 	})
-	result := message.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, 1000, "https://github.com/zapier/kubechecks/pull/1")
+	params := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: 1000,
+		PrLinkTemplate:   "https://github.com/zapier/kubechecks/pull/1",
+	}
+	result := message.BuildComment(context.TODO(), params)
 
 	// header rows need single newline before and after
 	index := 0
@@ -214,7 +247,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "app1")
 		m.AddToAppMessage(ctx, "app1", Result{State: pkg.StateSuccess, Summary: "all good", Details: "details"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "app1")
 		assert.Contains(t, comments[0], "all good")
@@ -229,7 +273,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddToAppMessage(ctx, "app1", Result{State: pkg.StateSuccess, Summary: "ok1", Details: "d1"})
 		m.AddNewApp(ctx, "app2")
 		m.AddToAppMessage(ctx, "app2", Result{State: pkg.StateFailure, Summary: "fail2", Details: "d2"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 2, 2, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      2,
+			TotalChecked:     2,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "app1")
 		assert.Contains(t, comments[0], "ok1")
@@ -245,7 +300,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddToAppMessage(ctx, "app2", Result{State: pkg.StateSkip, Summary: "skip", Details: "d"})
 		m.AddNewApp(ctx, "app3")
 		m.AddToAppMessage(ctx, "app3", Result{State: pkg.StateSuccess, Summary: "nochange", Details: "d", NoChangesDetected: true})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 3, 3, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      3,
+			TotalChecked:     3,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "app1")
 		assert.NotContains(t, comments[0], "app2")
@@ -257,7 +323,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddNewApp(ctx, "bigapp")
 		longSummary := strings.Repeat("A", 900)
 		m.AddToAppMessage(ctx, "bigapp", Result{State: pkg.StateSuccess, Summary: longSummary, Details: "d"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 950, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 950,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Greater(t, len(comments), 1)
 		foundSplitWarning := false
 		foundDetails := false
@@ -291,7 +368,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "app1")
 		m.AddToAppMessage(ctx, "app1", Result{State: pkg.StateSuccess, Summary: "ok", Details: "d"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "env", true, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "env",
+			ShowDebugInfo:    true,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "Pod:")
 		assert.Contains(t, comments[0], "Env: env")
@@ -300,7 +388,18 @@ func TestBuildComment_Deep(t *testing.T) {
 
 	t.Run("no apps at all", func(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 0, 0, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      0,
+			TotalChecked:     0,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "No changes")
 	})
@@ -309,7 +408,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "app1")
 		m.RemoveApp("app1")
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "No changes")
 	})
@@ -320,7 +430,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddToAppMessage(ctx, "app1", Result{State: pkg.StateSkip, Summary: "skip", Details: "d"})
 		m.AddNewApp(ctx, "app2")
 		m.AddToAppMessage(ctx, "app2", Result{State: pkg.StateSuccess, Summary: "nochange", Details: "d", NoChangesDetected: true})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 2, 2, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      2,
+			TotalChecked:     2,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "No changes")
 	})
@@ -330,7 +451,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "app1")
 		m.AddToAppMessage(ctx, "app1", Result{State: pkg.StateNone, Summary: "no state summary", Details: "no state details"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		// Debug print for analysis
 		fmt.Println("StateNone_handling actual output:\n", comments[0])
@@ -345,7 +477,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddToAppMessage(ctx, "mixed-app", Result{State: pkg.StateSuccess, Summary: "success check", Details: "success details"})
 		m.AddToAppMessage(ctx, "mixed-app", Result{State: pkg.StateWarning, Summary: "warning check", Details: "warning details"})
 		m.AddToAppMessage(ctx, "mixed-app", Result{State: pkg.StateError, Summary: "error check", Details: "error details"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 3, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     3,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "success check")
 		assert.Contains(t, comments[0], "warning check")
@@ -362,7 +505,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddToAppMessage(ctx, "alpha", Result{State: pkg.StateSuccess, Summary: "alpha check", Details: "alpha details"})
 		m.AddNewApp(ctx, "beta")
 		m.AddToAppMessage(ctx, "beta", Result{State: pkg.StateSuccess, Summary: "beta check", Details: "beta details"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 3, 3, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      3,
+			TotalChecked:     3,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		comment := comments[0]
 		alphaIndex := strings.Index(comment, "alpha")
@@ -377,7 +531,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddNewApp(ctx, "long-details-app")
 		longDetails := strings.Repeat("Very long details content that will cause multiple splits. ", 50)
 		m.AddToAppMessage(ctx, "long-details-app", Result{State: pkg.StateSuccess, Summary: "Long details test", Details: longDetails})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 500, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 500,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Greater(t, len(comments), 2) // Should create multiple comments
 		// First comment should have header and start of details
 		assert.Contains(t, comments[0], "# Kubechecks id Report")
@@ -407,7 +572,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		availableSpace := 1000 - len(header) - len(footer) - len(appHeader) - len(appFooter)
 		summary := strings.Repeat("A", availableSpace-10) // Leave some buffer
 		m.AddToAppMessage(ctx, "boundary-app", Result{State: pkg.StateSuccess, Summary: summary, Details: "short details"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		// Accept either a single comment of length 1000, or multiple comments that together contain all the content
 		totalLen := 0
 		foundDetails := false
@@ -436,7 +612,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "empty-app")
 		m.AddToAppMessage(ctx, "empty-app", Result{State: pkg.StateSuccess, Summary: "", Details: ""})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "empty-app")
 		// The current implementation doesn't show "Success :ok:" when both summary and details are empty
@@ -450,7 +637,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		specialSummary := "Summary with <details> and </details> tags"
 		specialDetails := "Details with <summary> and </summary> tags\nAnd newlines\nAnd \"quotes\""
 		m.AddToAppMessage(ctx, "special-app", Result{State: pkg.StateSuccess, Summary: specialSummary, Details: specialDetails})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], specialSummary)
 		assert.Contains(t, comments[0], specialDetails)
@@ -460,7 +658,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "debug-app")
 		m.AddToAppMessage(ctx, "debug-app", Result{State: pkg.StateSuccess, Summary: "debug test", Details: "debug details"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "production", true, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "production",
+			ShowDebugInfo:    true,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "Env: production")
 		assert.Contains(t, comments[0], "Apps Checked: 1")
@@ -471,7 +680,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "no-debug-app")
 		m.AddToAppMessage(ctx, "no-debug-app", Result{State: pkg.StateSuccess, Summary: "no debug test", Details: "no debug details"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "staging", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "staging",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.NotContains(t, comments[0], "Env: staging")
 		assert.NotContains(t, comments[0], "Apps Checked:")
@@ -488,7 +708,18 @@ func TestBuildComment_Deep(t *testing.T) {
 			m.AddToAppMessage(ctx, appNames[i], Result{State: state, Summary: fmt.Sprintf("%s check", state.BareString()), Details: fmt.Sprintf("%s details", state.BareString())})
 		}
 
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 5, 5, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      5,
+			TotalChecked:     5,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		// Accept either a single comment or multiple comments, as long as all app names are present
 		for _, appName := range appNames {
 			found := false
@@ -508,7 +739,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "no-changes-app")
 		m.AddToAppMessage(ctx, "no-changes-app", Result{State: pkg.StateSuccess, Summary: "no changes", Details: "details", NoChangesDetected: true})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.NotContains(t, comments[0], "no-changes-app")
 		assert.Contains(t, comments[0], "No changes")
@@ -519,7 +761,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddNewApp(ctx, "mixed-changes-app")
 		m.AddToAppMessage(ctx, "mixed-changes-app", Result{State: pkg.StateSuccess, Summary: "regular check", Details: "regular details"})
 		m.AddToAppMessage(ctx, "mixed-changes-app", Result{State: pkg.StateSuccess, Summary: "no changes", Details: "details", NoChangesDetected: true})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 2, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     2,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "mixed-changes-app")
 		assert.Contains(t, comments[0], "regular check")
@@ -532,7 +785,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m.AddToAppMessage(ctx, "small-limit-app", Result{State: pkg.StateSuccess, Summary: "test summary", Details: "test details"})
 		m.AddNewApp(ctx, "small-limit-app-2")
 		m.AddToAppMessage(ctx, "small-limit-app-2", Result{State: pkg.StateSuccess, Summary: "test summary 2", Details: "test details 2"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 200, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 200,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Greater(t, len(comments), 1)
 		// Should have multiple comments due to very small limit
 		assert.Contains(t, comments[0], "# Kubechecks id Report")
@@ -569,7 +833,18 @@ func TestBuildComment_Deep(t *testing.T) {
 		m := NewMessage("test", 1, 2, fakeVCS)
 		m.AddNewApp(ctx, "app-🚀-test")
 		m.AddToAppMessage(ctx, "app-🚀-test", Result{State: pkg.StateSuccess, Summary: "Unicode summary 🎉", Details: "Unicode details 🌟\nWith emojis 🎨"})
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Len(t, comments, 1)
 		assert.Contains(t, comments[0], "app-🚀-test")
 		assert.Contains(t, comments[0], "Unicode summary 🎉")
@@ -596,7 +871,18 @@ func TestBuildComment_Deep(t *testing.T) {
 			<-done
 		}
 
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 5, 5, 1000, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      5,
+			TotalChecked:     5,
+			MaxCommentLength: 1000,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		// Accept either a single comment or multiple comments, as long as all app names are present
 		for i := 0; i < 5; i++ {
 			appName := fmt.Sprintf("concurrent-app-%d", i)
@@ -636,7 +922,18 @@ And some text after the code block.`
 		})
 
 		// Use a small maxCommentLength to force splitting
-		comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 200, "prlink")
+		params := BuildCommentParams{
+			Start:            time.Now(),
+			CommitSHA:        "sha",
+			LabelFilter:      "",
+			ShowDebugInfo:    false,
+			Identifier:       "id",
+			AppsChecked:      1,
+			TotalChecked:     1,
+			MaxCommentLength: 200,
+			PrLinkTemplate:   "prlink",
+		}
+		comments := m.BuildComment(ctx, params)
 		require.Greater(t, len(comments), 1, "Should have multiple comments due to small limit")
 
 		// Combine all comments to check the final result
@@ -1144,7 +1441,18 @@ func TestBuildComment_NoTrailingDetailsTag(t *testing.T) {
 	ctx := context.TODO()
 	m.AddNewApp(ctx, "app1")
 	m.AddToAppMessage(ctx, "app1", Result{State: pkg.StateSuccess, Summary: "all good", Details: "details"})
-	comments := m.BuildComment(ctx, time.Now(), "sha", "", false, "id", 1, 1, 1000, "prlink")
+	params := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "sha",
+		LabelFilter:      "",
+		ShowDebugInfo:    false,
+		Identifier:       "id",
+		AppsChecked:      1,
+		TotalChecked:     1,
+		MaxCommentLength: 1000,
+		PrLinkTemplate:   "prlink",
+	}
+	comments := m.BuildComment(ctx, params)
 	require.Len(t, comments, 1)
 	output := comments[0]
 
@@ -1200,7 +1508,18 @@ func TestBuildComment_ContentLengthLimits(t *testing.T) {
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
 
-	comments := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, maxCommentLength, prLinkTemplate)
+	params := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: maxCommentLength,
+		PrLinkTemplate:   prLinkTemplate,
+	}
+	comments := m.BuildComment(context.TODO(), params)
 
 	// Should fit in one comment since content is well under the boundary
 	assert.Len(t, comments, 1, "Content should fit in one comment when well under maxContentLength boundary")
@@ -1240,7 +1559,18 @@ func TestBuildComment_ContentLengthLimits(t *testing.T) {
 	m1b := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m1b.apps = appResults1b
 
-	comments1b := m1b.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, maxCommentLength, prLinkTemplate)
+	params1b := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: maxCommentLength,
+		PrLinkTemplate:   prLinkTemplate,
+	}
+	comments1b := m1b.BuildComment(context.TODO(), params1b)
 
 	// Should split into multiple comments due to large content
 	assert.Greater(t, len(comments1b), 1, "Multiple apps with large content should split into multiple comments")
@@ -1271,7 +1601,18 @@ func TestBuildComment_ContentLengthLimits(t *testing.T) {
 	m2 := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m2.apps = appResults2
 
-	comments2 := m2.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, maxCommentLength, prLinkTemplate)
+	params2 := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: maxCommentLength,
+		PrLinkTemplate:   prLinkTemplate,
+	}
+	comments2 := m2.BuildComment(context.TODO(), params2)
 
 	t.Logf("Test case 2 - Number of comments: %d", len(comments2))
 	for i, comment := range comments2 {
@@ -1297,7 +1638,18 @@ func TestBuildComment_ContentLengthLimits(t *testing.T) {
 	m3 := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m3.apps = appResults3
 
-	comments3 := m3.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, maxCommentLength, prLinkTemplate)
+	params3 := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: maxCommentLength,
+		PrLinkTemplate:   prLinkTemplate,
+	}
+	comments3 := m3.BuildComment(context.TODO(), params3)
 
 	// Should fit in one comment easily
 	assert.Len(t, comments3, 1, "Short content should fit in one comment")
@@ -1320,7 +1672,18 @@ func TestBuildComment_ContentLengthLimits(t *testing.T) {
 	m4 := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m4.apps = appResults4
 
-	comments4 := m4.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, maxCommentLength, prLinkTemplate)
+	params4 := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: maxCommentLength,
+		PrLinkTemplate:   prLinkTemplate,
+	}
+	comments4 := m4.BuildComment(context.TODO(), params4)
 
 	// Should have multiple comments
 	assert.Greater(t, len(comments4), 1, "Large content should split into multiple comments")
@@ -1349,7 +1712,18 @@ func TestBuildComment_ContentLengthLimits(t *testing.T) {
 	m5 := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m5.apps = appResults5
 
-	comments5 := m5.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2, smallMaxCommentLength, prLinkTemplate)
+	params5 := BuildCommentParams{
+		Start:            time.Now(),
+		CommitSHA:        "commit-sha",
+		LabelFilter:      "label-filter",
+		ShowDebugInfo:    false,
+		Identifier:       "test-identifier",
+		AppsChecked:      1,
+		TotalChecked:     2,
+		MaxCommentLength: smallMaxCommentLength,
+		PrLinkTemplate:   prLinkTemplate,
+	}
+	comments5 := m5.BuildComment(context.TODO(), params5)
 
 	// Should still produce valid comments
 	assert.Greater(t, len(comments5), 0, "Should produce at least one comment even with small maxCommentLength")

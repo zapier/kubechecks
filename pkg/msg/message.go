@@ -145,6 +145,18 @@ func (m *Message) buildFooter(
 		hostname, duration.Round(time.Second), pkg.GitCommit, envStr, appsChecked, totalChecked)
 }
 
+type BuildCommentParams struct {
+	Start            time.Time
+	CommitSHA        string
+	LabelFilter      string
+	ShowDebugInfo    bool
+	Identifier       string
+	AppsChecked      int
+	TotalChecked     int
+	MaxCommentLength int
+	PrLinkTemplate   string
+}
+
 // BuildComment iterates the map of all apps in this message, building a final comment from their current state
 //
 // This function is responsible for generating the VCS comment(s) for a PR/MR, handling:
@@ -182,8 +194,7 @@ func (m *Message) buildFooter(
 //
 // The output is a slice of strings, each representing a comment chunk to be posted.
 func (m *Message) BuildComment(
-	ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool, identifier string,
-	appsChecked, totalChecked int, maxCommentLength int, prLinkTemplate string,
+	ctx context.Context, params BuildCommentParams,
 ) []string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
@@ -192,14 +203,14 @@ func (m *Message) BuildComment(
 	names := getSortedKeys(m.apps)
 
 	// Header for the first comment
-	header := pkg.GetMessageHeader(identifier)
+	header := pkg.GetMessageHeader(params.Identifier)
 	// Footer warning for split comments
 	splitCommentFooter := "\n\n> **Warning**: Output length greater than maximum allowed comment size. Continued in next comment"
 	// Header for continued comments
 	// this is written from the VCS PostMessage/UpdateMessage function. So, we need to account for it here
-	continuedHeader := fmt.Sprintf("%s> Continued from previous [comment](%s)\n\n", header, prLinkTemplate)
+	continuedHeader := fmt.Sprintf("%s> Continued from previous [comment](%s)\n\n", header, params.PrLinkTemplate)
 	// Max content length for each chunk (accounting for continuedHeader)
-	maxContentLength := maxCommentLength - len(continuedHeader) - 10 // 10 is a safety margin
+	maxContentLength := params.MaxCommentLength - len(continuedHeader) - 10 // 10 is a safety margin
 	contentLength := 0
 
 	comments := []string{}
@@ -359,12 +370,12 @@ func (m *Message) BuildComment(
 	}
 
 	// Add the footer (with debug info if requested)
-	footer := m.buildFooter(start, commitSHA, labelFilter, showDebugInfo, appsChecked, totalChecked)
+	footer := m.buildFooter(params.Start, params.CommitSHA, params.LabelFilter, params.ShowDebugInfo, params.AppsChecked, params.TotalChecked)
 	sb.WriteString(fmt.Sprintf("\n\n%s", footer))
 
 	// Only split if content exceeds the max length
-	if len(sb.String()) > maxCommentLength {
-		comments = append(comments, sb.String()[:maxCommentLength])
+	if len(sb.String()) > params.MaxCommentLength {
+		comments = append(comments, sb.String()[:params.MaxCommentLength])
 	} else {
 		comments = append(comments, sb.String())
 	}
