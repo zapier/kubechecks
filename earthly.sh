@@ -39,4 +39,5 @@ earthly $* \
   --KUBECONFORM_VERSION=${kubeconform_tool_version} \
   --KUSTOMIZE_VERSION=${kustomize_tool_version} \
   --GIT_COMMIT=$(git rev-parse --short HEAD) \
-  --KUBECHECKS_LOG_LEVEL=debug
+  --KUBECHECKS_LOG_LEVEL=debug \
+  --GITHUB_TOKEN=${GITHUB_TOKEN}
