@@ -7,7 +7,7 @@ package github_client
 import (
 	"context"
 
-	"github.com/google/go-github/v62/github"
+	"github.com/google/go-github/v74/github"
 	mock "github.com/stretchr/testify/mock"
 )
 

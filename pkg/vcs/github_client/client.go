@@ -14,7 +14,7 @@ import (
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/cenkalti/backoff/v4"
 	giturls "github.com/chainguard-dev/git-urls"
-	"github.com/google/go-github/v62/github"
+	"github.com/google/go-github/v74/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"

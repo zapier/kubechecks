@@ -18,7 +18,7 @@ require (
 	github.com/go-git/go-git-fixtures/v4 v4.3.2-0.20231010084843-55a94097c399
 	github.com/go-logr/zerologr v1.2.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
-	github.com/google/go-github/v62 v62.0.0
+	github.com/google/go-github/v74 v74.0.0
 	github.com/google/uuid v1.6.0
 	github.com/heptiolabs/healthcheck v0.0.0-20211123025425-613501dd5deb
 	github.com/imdario/mergo v0.3.16
