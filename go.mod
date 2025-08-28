@@ -328,7 +328,7 @@ require (
 	k8s.io/kube-aggregator v0.32.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20250304201544-e5f78fe3ede9 // indirect
 	k8s.io/kubectl v0.32.2 // indirect
-	k8s.io/kubernetes v1.32.2 // indirect
+	k8s.io/kubernetes v1.32.7 // indirect
 	k8s.io/utils v0.0.0-20241210054802-24370beab758 // indirect
 	layeh.com/gopher-json v0.0.0-20190114024228-97fed8db8427 // indirect
 	muzzammil.xyz/jsonc v1.0.0 // indirect
