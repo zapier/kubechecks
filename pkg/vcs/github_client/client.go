@@ -116,6 +116,8 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		}
 
 		vcsToken = response.Token
+		// this is so that we can censor the token in the logs
+		cfg.VcsToken = vcsToken
 
 		expirationDuration := time.Until(response.ExpiresAt)
 		interval := expirationDuration / 2
@@ -180,6 +182,8 @@ func (c *Client) refreshToken(ctx context.Context, cfg config.ServerConfig, inte
 					return errors.Wrap(err, "failed to refresh github app token")
 				}
 
+				// this is so that we can censor the token in the logs
+				cfg.VcsToken = response.Token
 				if err = c.setCredentials(ctx, cfg, appUsername, response.Token); err != nil {
 					logger.Warn().Err(err).Msg("failed to set git credentials")
 					return errors.Wrap(err, "failed to set git credentials")
