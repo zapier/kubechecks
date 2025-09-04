@@ -271,8 +271,8 @@ github.com/apparentlymart/go-textseg/v13 v13.0.0 h1:Y+KvPE1NYz0xl601PVImeQfFyEy6
 github.com/apparentlymart/go-textseg/v13 v13.0.0/go.mod h1:ZK2fH7c4NqDTLtiYLvIkEghdlcqw7yxLeM89kiTRPUo=
 github.com/arbovm/levenshtein v0.0.0-20160628152529-48b4e1c0c4d0 h1:jfIu9sQUG6Ig+0+Ap1h4unLjW6YQJpKZVmUzxsD4E/Q=
 github.com/arbovm/levenshtein v0.0.0-20160628152529-48b4e1c0c4d0/go.mod h1:t2tdKJDJF9BV14lnkjHmOQgcvEKgtqs5a1N3LNdJhGE=
-github.com/argoproj/argo-cd/v3 v3.0.12 h1:wyZQNonPXIWG7sRAwQlqweFyzMURCo8bz4fOQT09bEs=
-github.com/argoproj/argo-cd/v3 v3.0.12/go.mod h1:ofadwxZACMBM+CGn+d0cytbqU4Xthj/pCjp2k2gekn4=
+github.com/argoproj/argo-cd/v3 v3.0.14 h1:sM+h75i1QtTQS+wKoJOKeS9g7cqysE97eUTrwZC30j0=
+github.com/argoproj/argo-cd/v3 v3.0.14/go.mod h1:bVeSUtER7VMb2qLqmjZag9X35UldkiolYOdEyNbnZ2A=
 github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1 h1:Ze4U6kV49vSzlUBhH10HkO52bYKAIXS4tHr/MlNDfdU=
 github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1/go.mod h1:WsnykM8idYRUnneeT31cM/Fq/ZsjkefCbjiD8ioCJkU=
 github.com/argoproj/pkg v0.13.7-0.20250305113207-cbc37dc61de5 h1:YBoLSjpoaJXaXAldVvBRKJuOPvIXz9UOv6S96gMJM/Q=
