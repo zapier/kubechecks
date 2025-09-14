@@ -52,7 +52,7 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 
 	log.Info().Msgf("Updating message for PR %d in repo %s", m.CheckID, m.Name)
 
-	for i, msg := range messages {
+	for i, message := range messages {
 		if i == 0 {
 			var comment *github.IssueComment
 			var resp *github.Response
@@ -65,7 +65,7 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 					repoNameComponents[0],
 					repoNameComponents[1],
 					int64(m.NoteID),
-					&github.IssueComment{Body: &msg},
+					&github.IssueComment{Body: &message},
 				)
 				return checkReturnForBackoff(resp, err)
 			}, getBackOff())
@@ -81,11 +81,11 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 		} else {
 			continuedHeader := fmt.Sprintf(
 				"> Continued from previous [comment](%s)\n",
-				fmt.Sprintf("https://github.com/%s/%s/pull/%d#issuecomment-%d", pr.Owner, pr.Name, pr.CheckID, m.NoteID),
+				fmt.Sprintf("%s/%s/%s/pull/%d#issuecomment-%d", c.cfg.VcsBaseUrl, pr.Owner, pr.Name, pr.CheckID, m.NoteID),
 			)
 
-			msg = fmt.Sprintf("%s\n\n%s", continuedHeader, msg)
-			n, err := c.PostMessage(ctx, pr, msg)
+			message = fmt.Sprintf("%s\n\n%s", continuedHeader, message)
+			n, err := c.PostMessage(ctx, pr, message)
 			if err != nil {
 				log.Error().Err(err).Msg("could not post message to PR")
 				return err
@@ -199,5 +199,5 @@ func (c *Client) GetMaxCommentLength() int {
 }
 
 func (c *Client) GetPrCommentLinkTemplate(pr vcs.PullRequest) string {
-	return fmt.Sprintf("https://github.com/%s/%s/pull/%d#issuecomment-0000000000", pr.Owner, pr.Name, pr.CheckID)
+	return fmt.Sprintf("%s/%s/%s/pull/%d#issuecomment-0000000000", c.cfg.VcsBaseUrl, pr.Owner, pr.Name, pr.CheckID)
 }

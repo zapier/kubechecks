@@ -38,7 +38,7 @@ type Client interface {
 	LoadHook(ctx context.Context, repoAndId string) (PullRequest, error)
 	// GetMaxCommentLength returns the maximum length of a comment for the VCS
 	GetMaxCommentLength() int
-	// GetPrLinkTemplate returns the template for the PR link
+	// GetPrCommentLinkTemplate returns the template for the PR comment link
 	GetPrCommentLinkTemplate(PullRequest) string
 
 	Username() string

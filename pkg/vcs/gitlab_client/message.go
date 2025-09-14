@@ -88,14 +88,14 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 	log.Debug().Msgf("Updating message %d for %s", m.NoteID, m.Name)
 
 	var pastMessageId int
-	for i, msg := range messages {
+	for i, message := range messages {
 		if i == 0 {
 			var note *gitlab.Note
 
-			log.Debug().Msgf("Updating message to MR %d for %s; message length: %d", pr.CheckID, pr.FullName, len(msg))
+			log.Debug().Msgf("Updating message to MR %d for %s; message length: %d", pr.CheckID, pr.FullName, len(message))
 			err := backoff.Retry(func() error {
 				n, resp, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
-					Body: pkg.Pointer(msg),
+					Body: pkg.Pointer(message),
 				})
 				note = n
 				return checkReturnForBackoff(resp, err)
@@ -111,12 +111,12 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 		} else {
 			continuedHeader := fmt.Sprintf(
 				"> Continued from previous [comment](%s)\n",
-				fmt.Sprintf("https://gitlab.com/%s/%s/merge_requests/%d#note_%d", pr.Owner, pr.Name, pr.CheckID, pastMessageId),
+				fmt.Sprintf("%s/%s/%s/merge_requests/%d#note_%d", c.cfg.VcsBaseUrl, pr.Owner, pr.Name, pr.CheckID, pastMessageId),
 			)
 
-			msg = fmt.Sprintf("%s\n\n%s", continuedHeader, msg)
-			log.Debug().Msgf("Posting message to MR %d for %s; message length: %d", pr.CheckID, pr.FullName, len(msg))
-			n, err := c.PostMessage(ctx, pr, msg)
+			message = fmt.Sprintf("%s\n\n%s", continuedHeader, message)
+			log.Debug().Msgf("Posting message to MR %d for %s; message length: %d", pr.CheckID, pr.FullName, len(message))
+			n, err := c.PostMessage(ctx, pr, message)
 			if err != nil {
 				log.Error().Err(err).Msg("could not post message to MR")
 				return err
