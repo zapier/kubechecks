@@ -19,7 +19,7 @@ type Client interface {
 	// PostMessage takes in project name in form "owner/repo" (ie zapier/kubechecks), the PR/MR id, and the actual message
 	PostMessage(context.Context, PullRequest, string) (*msg.Message, error)
 	// UpdateMessage update a message with new content
-	UpdateMessage(context.Context, *msg.Message, string) error
+	UpdateMessage(context.Context, PullRequest, *msg.Message, []string) error
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
 	VerifyHook(*http.Request, string) ([]byte, error)
 	// ParseHook parses webook payload for valid events, with context for request-scoped values
@@ -36,6 +36,10 @@ type Client interface {
 	TidyOutdatedComments(context.Context, PullRequest) error
 	// LoadHook creates an EventRequest from the ID of an actual request
 	LoadHook(ctx context.Context, repoAndId string) (PullRequest, error)
+	// GetMaxCommentLength returns the maximum length of a comment for the VCS
+	GetMaxCommentLength() int
+	// GetPrCommentLinkTemplate returns the template for the PR comment link
+	GetPrCommentLinkTemplate(PullRequest) string
 
 	Username() string
 	CloneUsername() string
