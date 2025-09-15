@@ -202,7 +202,8 @@ func (c *Client) GetMaxCommentLength() int {
 }
 
 func (c *Client) GetPrCommentLinkTemplate(pr vcs.PullRequest) string {
-	return fmt.Sprintf("https://gitlab.com/%s/%s/merge_requests/%d#note_0000000000", pr.Owner, pr.Name, pr.CheckID)
+	baseUrl := strings.TrimRight(c.cfg.VcsBaseUrl, "/")
+	return fmt.Sprintf("%s/%s/%s/merge_requests/%d#note_0000000000", baseUrl, pr.Owner, pr.Name, pr.CheckID)
 }
 
 type NotesServices interface {
