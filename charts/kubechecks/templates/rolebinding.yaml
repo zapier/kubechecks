@@ -1,3 +1,4 @@
+{{ if .Values.argocd.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -11,3 +12,4 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "kubechecks.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
+{{ end }}

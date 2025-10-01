@@ -1,7 +1,13 @@
-# Labels to apply to all resources created by this Helm chart
+# ArgoCD integration configuration
+# Used to configure RBAC permissions for kubechecks to access ArgoCD resources
 argocd:
+  # Whether to create RBAC resources (Role/RoleBinding) for ArgoCD integration
+  create: true
+  # The namespace where ArgoCD is installed. kubechecks needs read access to
+  # ConfigMaps and Secrets in this namespace to integrate with ArgoCD
   namespace: argocd
 
+# Labels to apply to all resources created by this Helm chart
 commonLabels: {}
 
 configMap:
