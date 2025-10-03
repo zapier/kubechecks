@@ -2,7 +2,9 @@
 # Used to configure RBAC permissions for kubechecks to access ArgoCD resources
 argocd:
   # Whether to create RBAC resources (Role/RoleBinding) for ArgoCD integration
-  create: true
+  rbac
+    create: true
+    
   # The namespace where ArgoCD is installed. kubechecks needs read access to
   # ConfigMaps and Secrets in this namespace to integrate with ArgoCD
   namespace: argocd
