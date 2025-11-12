@@ -106,7 +106,7 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		case validator.Empty:
 			// noop
 		case validator.Skipped:
-			outputString = append(outputString, fmt.Sprintf(" * :skip: Skipped: %s", sig))
+			outputString = append(outputString, fmt.Sprintf(" * :right_arrow: Skipped: %s", sig))
 		default:
 			outputString = append(outputString, fmt.Sprintf(" * :white_check_mark: Passed: %s", sig))
 		}
