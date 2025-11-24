@@ -44,6 +44,8 @@ runs:
 
     - name: Build and push the Docker image
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
       run: >-
         ./earthly.sh 
         ${{ inputs.push == 'true' && '--push' || '' }} 

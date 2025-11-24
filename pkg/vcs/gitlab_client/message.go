@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/xanzy/go-gitlab"
@@ -21,22 +22,24 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	_, span := tracer.Start(ctx, "PostMessage")
 	defer span.End()
 
-	if len(message) > MaxCommentLength {
-		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
-		message = message[:MaxCommentLength]
-	}
+	var note *gitlab.Note
 
-	n, _, err := c.c.Notes.CreateMergeRequestNote(
-		pr.FullName, pr.CheckID,
-		&gitlab.CreateMergeRequestNoteOptions{
-			Body: pkg.Pointer(message),
-		})
+	err := backoff.Retry(func() error {
+		n, resp, err := c.c.Notes.CreateMergeRequestNote(
+			pr.FullName, pr.CheckID,
+			&gitlab.CreateMergeRequestNoteOptions{
+				Body: pkg.Pointer(message),
+			})
+		note = n
+		return checkReturnForBackoff(resp, err)
+	}, getBackOff())
+
 	if err != nil {
 		telemetry.SetError(span, err, "Create Merge Request Note")
 		return nil, errors.Wrap(err, "could not post message to MR")
 	}
 
-	return msg.NewMessage(pr.FullName, pr.CheckID, n.ID, c), nil
+	return msg.NewMessage(pr.FullName, pr.CheckID, note.ID, c), nil
 }
 
 func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
@@ -53,23 +56,18 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 		// note is an internal system note such as notes on commit messages
 		// note is already hidden
 		if note.Author.Username != c.username || note.System ||
-			strings.Contains(note.Body, fmt.Sprintf("<summary><i>OUTDATED: Kubechecks %s Report</i></summary>", c.cfg.Identifier)) ||
-			!strings.Contains(note.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
+			strings.Contains(note.Body, fmt.Sprintf("<summary><i>OUTDATED: %s</i></summary>", pkg.GetMessageHeader(c.cfg.Identifier))) ||
+			!strings.Contains(note.Body, pkg.GetMessageHeader(c.cfg.Identifier)) {
 			continue
 		}
 
 		newBody := fmt.Sprintf(`
 <details>
-	<summary><i>OUTDATED: Kubechecks %s Report</i></summary>
+	<summary><i>OUTDATED: %s</i></summary>
 	
 %s
 </details>
-			`, c.cfg.Identifier, note.Body)
-
-		if len(newBody) > MaxCommentLength {
-			log.Warn().Int("original_length", len(newBody)).Msg("trimming the comment size")
-			newBody = newBody[:MaxCommentLength]
-		}
+			`, pkg.GetMessageHeader(c.cfg.Identifier), note.Body)
 
 		log.Debug().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
 
@@ -86,25 +84,48 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 	return nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message string) error {
+func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, messages []string) error {
 	log.Debug().Msgf("Updating message %d for %s", m.NoteID, m.Name)
 
-	if len(message) > MaxCommentLength {
-		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
-		message = message[:MaxCommentLength]
+	var pastMessageId int
+	for i, message := range messages {
+		if i == 0 {
+			var note *gitlab.Note
+
+			log.Debug().Msgf("Updating message to MR %d for %s; message length: %d", pr.CheckID, pr.FullName, len(message))
+			err := backoff.Retry(func() error {
+				n, resp, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
+					Body: pkg.Pointer(message),
+				})
+				note = n
+				return checkReturnForBackoff(resp, err)
+			}, getBackOff())
+
+			if err != nil {
+				log.Error().Err(err).Msg("could not update message to MR")
+				return err
+			}
+			// just incase the note ID changes
+			m.NoteID = note.ID
+			pastMessageId = note.ID
+		} else {
+			continuedHeader := fmt.Sprintf(
+				"> Continued from previous [comment](%s)\n",
+				fmt.Sprintf("%s/%s/%s/merge_requests/%d#note_%d", c.cfg.VcsBaseUrl, pr.Owner, pr.Name, pr.CheckID, pastMessageId),
+			)
+
+			message = fmt.Sprintf("%s\n\n%s", continuedHeader, message)
+			log.Debug().Msgf("Posting message to MR %d for %s; message length: %d", pr.CheckID, pr.FullName, len(message))
+			n, err := c.PostMessage(ctx, pr, message)
+			if err != nil {
+				log.Error().Err(err).Msg("could not post message to MR")
+				return err
+			}
+			m.NoteID = n.NoteID
+			pastMessageId = n.NoteID
+		}
+
 	}
-
-	n, _, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
-		Body: pkg.Pointer(message),
-	})
-
-	if err != nil {
-		log.Error().Err(err).Msg("could not update message to MR")
-		return err
-	}
-
-	// just incase the note ID changes
-	m.NoteID = n.ID
 	return nil
 }
 
@@ -116,9 +137,12 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 	log.Debug().Msg("deleting outdated comments")
 
 	for _, note := range notes {
-		if note.Author.Username == c.username && strings.Contains(note.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
+		if note.Author.Username == c.username && strings.Contains(note.Body, pkg.GetMessageHeader(c.cfg.Identifier)) {
 			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
-			_, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
+			err := backoff.Retry(func() error {
+				resp, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
+				return checkReturnForBackoff(resp, err)
+			}, getBackOff())
 			if err != nil {
 				telemetry.SetError(span, err, "Prune Old Comments")
 				return fmt.Errorf("could not delete old comment: %w", err)
@@ -138,14 +162,22 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 	nextPage := 0
 
 	for {
-		// list merge request notes
-		notes, resp, err := c.c.Notes.ListMergeRequestNotes(pr.FullName, pr.CheckID, &gitlab.ListMergeRequestNotesOptions{
-			Sort:    pkg.Pointer("asc"),
-			OrderBy: pkg.Pointer("created_at"),
-			ListOptions: gitlab.ListOptions{
-				Page: nextPage,
-			},
-		})
+
+		var notes []*gitlab.Note
+		var resp *gitlab.Response
+		var err error
+
+		err = backoff.Retry(func() error {
+			// list merge request notes
+			notes, resp, err = c.c.Notes.ListMergeRequestNotes(pr.FullName, pr.CheckID, &gitlab.ListMergeRequestNotesOptions{
+				Sort:    pkg.Pointer("asc"),
+				OrderBy: pkg.Pointer("created_at"),
+				ListOptions: gitlab.ListOptions{
+					Page: nextPage,
+				},
+			})
+			return checkReturnForBackoff(resp, err)
+		}, getBackOff())
 
 		if err != nil {
 			telemetry.SetError(span, err, "Tidy Outdated Comments")
@@ -163,6 +195,15 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 	}
 	return c.hideOutdatedMessages(ctx, pr.FullName, pr.CheckID, allNotes)
 
+}
+
+func (c *Client) GetMaxCommentLength() int {
+	return MaxCommentLength
+}
+
+func (c *Client) GetPrCommentLinkTemplate(pr vcs.PullRequest) string {
+	baseUrl := strings.TrimRight(c.cfg.VcsBaseUrl, "/")
+	return fmt.Sprintf("%s/%s/%s/merge_requests/%d#note_0000000000", baseUrl, pr.Owner, pr.Name, pr.CheckID)
 }
 
 type NotesServices interface {

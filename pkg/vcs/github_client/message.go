@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/google/go-github/v74/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -22,19 +23,20 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
-	if len(message) > MaxCommentLength {
-		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
-		message = message[:MaxCommentLength]
-	}
-
 	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
-	comment, _, err := c.googleClient.Issues.CreateComment(
-		ctx,
-		pr.Owner,
-		pr.Name,
-		pr.CheckID,
-		&github.IssueComment{Body: &message},
-	)
+
+	var comment *github.IssueComment
+	err := backoff.Retry(func() error {
+		cm, resp, err := c.googleClient.Issues.CreateComment(
+			ctx,
+			pr.Owner,
+			pr.Name,
+			pr.CheckID,
+			&github.IssueComment{Body: &message},
+		)
+		comment = cm
+		return checkReturnForBackoff(resp, err)
+	}, getBackOff())
 
 	if err != nil {
 		telemetry.SetError(span, err, "Create Pull Request comment")
@@ -44,34 +46,53 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c), nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) error {
+func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, messages []string) error {
 	_, span := tracer.Start(ctx, "UpdateMessage")
 	defer span.End()
 
-	if len(msg) > MaxCommentLength {
-		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
-		msg = msg[:MaxCommentLength]
-	}
-
 	log.Info().Msgf("Updating message for PR %d in repo %s", m.CheckID, m.Name)
 
-	repoNameComponents := strings.Split(m.Name, "/")
-	comment, resp, err := c.googleClient.Issues.EditComment(
-		ctx,
-		repoNameComponents[0],
-		repoNameComponents[1],
-		int64(m.NoteID),
-		&github.IssueComment{Body: &msg},
-	)
+	for i, message := range messages {
+		if i == 0 {
+			var comment *github.IssueComment
+			var resp *github.Response
+			var err error
 
-	if err != nil {
-		telemetry.SetError(span, err, "Update Pull Request comment")
-		log.Error().Err(err).Msgf("could not update message to PR, msg: %s, response: %+v", msg, resp)
-		return err
+			repoNameComponents := strings.Split(m.Name, "/")
+			err = backoff.Retry(func() error {
+				comment, resp, err = c.googleClient.Issues.EditComment(
+					ctx,
+					repoNameComponents[0],
+					repoNameComponents[1],
+					int64(m.NoteID),
+					&github.IssueComment{Body: &message},
+				)
+				return checkReturnForBackoff(resp, err)
+			}, getBackOff())
+
+			if err != nil {
+				telemetry.SetError(span, err, "Update Pull Request comment")
+				log.Error().Err(err).Msgf("could not update message to PR, response: %+v", resp)
+				return err
+			}
+
+			// update note id just in case it changed
+			m.NoteID = int(*comment.ID)
+		} else {
+			continuedHeader := fmt.Sprintf(
+				"> Continued from previous [comment](%s)\n",
+				fmt.Sprintf("%s/%s/%s/pull/%d#issuecomment-%d", c.cfg.VcsBaseUrl, pr.Owner, pr.Name, pr.CheckID, m.NoteID),
+			)
+
+			message = fmt.Sprintf("%s\n\n%s", continuedHeader, message)
+			n, err := c.PostMessage(ctx, pr, message)
+			if err != nil {
+				log.Error().Err(err).Msg("could not post message to PR")
+				return err
+			}
+			m.NoteID = n.NoteID
+		}
 	}
-
-	// update note id just in case it changed
-	m.NoteID = int(*comment.ID)
 
 	return nil
 }
@@ -79,7 +100,8 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) 
 // Pull all comments for the specified PR, and delete any comments that already exist from the bot
 // This is different from updating an existing message, as this will delete comments from previous runs of the bot
 // Whereas updates occur mid-execution
-func (c *Client) pruneOldComments(ctx context.Context, pr vcs.PullRequest, comments []*github.IssueComment) error {
+func (c *Client) pruneOldComments(
+	ctx context.Context, pr vcs.PullRequest, comments []*github.IssueComment) error {
 	_, span := tracer.Start(ctx, "pruneOldComments")
 	defer span.End()
 
@@ -87,7 +109,10 @@ func (c *Client) pruneOldComments(ctx context.Context, pr vcs.PullRequest, comme
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) || strings.Contains(*comment.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
-			_, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *comment.ID)
+			err := backoff.Retry(func() error {
+				resp, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, *comment.ID)
+				return checkReturnForBackoff(resp, err)
+			}, getBackOff())
 			if err != nil {
 				return fmt.Errorf("failed to delete comment: %w", err)
 			}
@@ -138,11 +163,20 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 	nextPage := 0
 
 	for {
-		comments, resp, err := c.googleClient.Issues.ListComments(ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueListCommentsOptions{
-			Sort:        pkg.Pointer("created"),
-			Direction:   pkg.Pointer("asc"),
-			ListOptions: github.ListOptions{Page: nextPage},
-		})
+		log.Debug().Msgf("Listing comments for PR %d in repo %s", pr.CheckID, pr.FullName)
+		var comments []*github.IssueComment
+		var resp *github.Response
+		var err error
+
+		err = backoff.Retry(func() error {
+			comments, resp, err = c.googleClient.Issues.ListComments(ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueListCommentsOptions{
+				Sort:        pkg.Pointer("created"),
+				Direction:   pkg.Pointer("asc"),
+				ListOptions: github.ListOptions{Page: nextPage},
+			})
+			return checkReturnForBackoff(resp, err)
+		}, getBackOff())
+
 		if err != nil {
 			telemetry.SetError(span, err, "Get Issue Comments failed")
 			return fmt.Errorf("failed listing comments: %w", err)
@@ -158,4 +192,12 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 		return c.pruneOldComments(ctx, pr, allComments)
 	}
 	return c.hideOutdatedMessages(ctx, pr, allComments)
+}
+
+func (c *Client) GetMaxCommentLength() int {
+	return MaxCommentLength
+}
+
+func (c *Client) GetPrCommentLinkTemplate(pr vcs.PullRequest) string {
+	return fmt.Sprintf("%s/%s/%s/pull/%d#issuecomment-0000000000", c.cfg.VcsBaseUrl, pr.Owner, pr.Name, pr.CheckID)
 }
