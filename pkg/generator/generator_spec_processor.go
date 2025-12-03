@@ -133,10 +133,18 @@ func flattenParameters(in map[string]interface{}) (map[string]string, error) {
 }
 
 func mergeGeneratorTemplate(g Generator, requestedGenerator *argoprojiov1alpha1.ApplicationSetGenerator, applicationSetTemplate argoprojiov1alpha1.ApplicationSetTemplate) (argoprojiov1alpha1.ApplicationSetTemplate, error) {
+	if requestedGenerator == nil {
+		return argoprojiov1alpha1.ApplicationSetTemplate{}, fmt.Errorf("error nil passing requestedGenerator")
+	}
+
 	// Make a copy of the value from `GetTemplate()` before merge, rather than copying directly into
 	// the provided parameter (which will touch the original resource object returned by client-go)
-	dest := g.GetTemplate(requestedGenerator).DeepCopy()
+	templ := g.GetTemplate(requestedGenerator)
+	if templ == nil {
+		return argoprojiov1alpha1.ApplicationSetTemplate{}, fmt.Errorf("error nil getting template")
+	}
 
+	dest := templ.DeepCopy()
 	err := mergo.Merge(dest, applicationSetTemplate)
 
 	return *dest, err
