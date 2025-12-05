@@ -112,10 +112,10 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 				rows = append(rows, row)
 			}
 			if err := table.Bulk(rows); err != nil {
-				logger.Error().Err(err).Msg("failed to save rows to table")
+				logger.Error().Err(err).Str("check", "kubepug").Msg("failed to save rows to table")
 			}
 			if err := table.Render(); err != nil {
-				logger.Error().Err(err).Msg("failed to render table")
+				logger.Error().Err(err).Str("check", "kubepug").Msg("failed to render table")
 			}
 			outputString = append(outputString, buff.String())
 		}
