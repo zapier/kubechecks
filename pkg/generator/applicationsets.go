@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	argogenerator "github.com/argoproj/argo-cd/v3/applicationset/generators"
 	"github.com/argoproj/argo-cd/v3/applicationset/utils"
 	argov1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/zapier/kubechecks/pkg/container"
@@ -28,7 +29,7 @@ func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha
 
 	appSetGenerators := getGenerators(ctx, *ctr.KubeClientSet.ControllerClient(), ctr.KubeClientSet.ClientSet(), ctr.Config.ArgoCDNamespace)
 
-	apps, appsetReason, err := generateApplications(appset, appSetGenerators)
+	apps, appsetReason, err := generateApplications(appset, appSetGenerators, *ctr.KubeClientSet.ControllerClient())
 	if err != nil {
 		fmt.Printf("error generating applications: %v, appset reason: %v", err, appsetReason)
 		return nil, fmt.Errorf("error generating applications: %w", err)
@@ -39,31 +40,31 @@ func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha
 // GetGenerators returns the generators that will be used to generate applications for the ApplicationSet
 //
 // only support List and Clusters generators
-func getGenerators(ctx context.Context, c client.Client, k8sClient kubernetes.Interface, namespace string) map[string]Generator {
+func getGenerators(ctx context.Context, c client.Client, k8sClient kubernetes.Interface, namespace string) map[string]argogenerator.Generator {
 
-	terminalGenerators := map[string]Generator{
-		"List":     NewListGenerator(),
-		"Clusters": NewClusterGenerator(c, ctx, k8sClient, namespace),
+	terminalGenerators := map[string]argogenerator.Generator{
+		"List":     argogenerator.NewListGenerator(),
+		"Clusters": argogenerator.NewClusterGenerator(ctx, c, k8sClient, namespace),
 	}
 
-	nestedGenerators := map[string]Generator{
+	nestedGenerators := map[string]argogenerator.Generator{
 		"List":     terminalGenerators["List"],
 		"Clusters": terminalGenerators["Clusters"],
-		"Matrix":   NewMatrixGenerator(terminalGenerators),
-		"Merge":    NewMergeGenerator(terminalGenerators),
+		"Matrix":   argogenerator.NewMatrixGenerator(terminalGenerators),
+		"Merge":    argogenerator.NewMergeGenerator(terminalGenerators),
 	}
 
-	topLevelGenerators := map[string]Generator{
+	topLevelGenerators := map[string]argogenerator.Generator{
 		"List":     terminalGenerators["List"],
 		"Clusters": terminalGenerators["Clusters"],
-		"Matrix":   NewMatrixGenerator(nestedGenerators),
-		"Merge":    NewMergeGenerator(nestedGenerators),
+		"Matrix":   argogenerator.NewMatrixGenerator(nestedGenerators),
+		"Merge":    argogenerator.NewMergeGenerator(nestedGenerators),
 	}
 	return topLevelGenerators
 }
 
 // generateApplications generates applications from the ApplicationSet
-func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[string]Generator) (
+func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[string]argogenerator.Generator, client client.Client) (
 	[]argov1alpha1.Application, argov1alpha1.ApplicationSetReasonType, error,
 ) {
 	var res []argov1alpha1.Application
@@ -72,7 +73,7 @@ func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[
 	var applicationSetReason argov1alpha1.ApplicationSetReasonType
 
 	for _, requestedGenerator := range applicationSetInfo.Spec.Generators {
-		t, err := Transform(requestedGenerator, g, applicationSetInfo.Spec.Template, &applicationSetInfo, map[string]interface{}{})
+		t, err := argogenerator.Transform(requestedGenerator, g, applicationSetInfo.Spec.Template, &applicationSetInfo, map[string]interface{}{}, client)
 		if err != nil {
 			if firstError == nil {
 				firstError = err

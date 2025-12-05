@@ -6,7 +6,7 @@ namespace: kubechecks
 images:
   - name: quay.io/argoproj/argocd
     newName: quay.io/argoproj/argocd
-    newTag: v3.0.12
+    newTag: v3.2.1
 
 resources:
   - argocd-initial-admin-secret.yaml
@@ -20,12 +20,12 @@ resources:
   - ./manifests/base/config
   - ./manifests/base/redis
 
-patchesStrategicMerge:
-  - ./argocd-cm-patch.yaml
-  - ./argocd-rbac-cm-patch.yaml
-  - ./argocd-secret-patch.yaml
-  - ./argocd-server-patch.yaml
-  - ./argocd-application-controller-statefulset-patch.yaml
-  - ./argocd-applicationset-controller-deployment-patch.yaml
-  - ./argocd-redis-deployment-patch.yaml
-  - ./argocd-repo-server-deployment-patch.yaml
+patches:
+  - path: ./argocd-cm-patch.yaml
+  - path: ./argocd-rbac-cm-patch.yaml
+  - path: ./argocd-secret-patch.yaml
+  - path: ./argocd-server-patch.yaml
+  - path: ./argocd-application-controller-statefulset-patch.yaml
+  - path: ./argocd-applicationset-controller-deployment-patch.yaml
+  - path: ./argocd-redis-deployment-patch.yaml
+  - path: ./argocd-repo-server-deployment-patch.yaml

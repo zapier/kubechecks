@@ -28,7 +28,7 @@ go-deps:
     ARG GOARCH=$USERARCH
     ARG --required GOLANG_VERSION
 
-    FROM --platform=linux/$USERARCH golang:$GOLANG_VERSION-bullseye
+    FROM --platform=linux/$USERARCH golang:$GOLANG_VERSION
 
     ENV GO111MODULE=on
     ENV CGO_ENABLED=0
@@ -88,7 +88,7 @@ docker:
     ARG TARGETARCH
     ARG TARGETVARIANT
 
-    FROM --platform=$TARGETPLATFORM ubuntu:20.04
+    FROM --platform=$TARGETPLATFORM ubuntu:25.10
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
@@ -134,7 +134,7 @@ docker:
 dlv:
     ARG --required GOLANG_VERSION
 
-    FROM golang:$GOLANG_VERSION-bullseye
+    FROM golang:$GOLANG_VERSION
 
     RUN apt update && apt install -y ca-certificates curl git
     RUN go install github.com/go-delve/delve/cmd/dlv@latest

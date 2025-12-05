@@ -6,7 +6,7 @@ package gitlab_client
 
 import (
 	mock "github.com/stretchr/testify/mock"
-	"github.com/xanzy/go-gitlab"
+	"gitlab.com/gitlab-org/api/client-go"
 )
 
 // NewMockProjectsServices creates a new instance of MockProjectsServices. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

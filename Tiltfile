@@ -175,21 +175,28 @@ tool_versions = parse_tool_versions(".tool-versions")
 # get the git commit ref
 git_commit = local_output('git rev-parse --short HEAD')
 
-earthly_build(
-    context='.',
-    target="+docker-debug",
-    ref='kubechecks',
-    image_arg='IMAGE_NAME',
-    ignore='./dist',
-    extra_args=[
-        '--CHART_RELEASER_VERSION='+tool_versions.get('helm-cr'),
-        '--GOLANG_VERSION='+tool_versions.get('golang'),
-        '--GOLANGCI_LINT_VERSION='+tool_versions.get('golangci-lint'),
-        '--HELM_VERSION='+tool_versions.get('helm'),
-        '--KUBECONFORM_VERSION='+tool_versions.get('kubeconform'),
-        '--KUSTOMIZE_VERSION='+tool_versions.get('kustomize'),
-        '--GIT_COMMIT='+git_commit,
-        ],
+custom_build(
+    'kubechecks',
+    'earthly --output +docker-debug --IMAGE_NAME=$EXPECTED_REF --CHART_RELEASER_VERSION=%s --GOLANG_VERSION=%s --GOLANGCI_LINT_VERSION=%s --HELM_VERSION=%s --KUBECONFORM_VERSION=%s --KUSTOMIZE_VERSION=%s --GIT_COMMIT=%s' % (
+        tool_versions.get('helm-cr'),
+        tool_versions.get('golang'),
+        tool_versions.get('golangci-lint'),
+        tool_versions.get('helm'),
+        tool_versions.get('kubeconform'),
+        tool_versions.get('kustomize'),
+        git_commit,
+    ),
+    deps=[
+        'cmd',
+        'pkg',
+        'telemetry',
+        'main.go',
+        'go.mod',
+        'go.sum',
+        'Earthfile',
+    ],
+    ignore=['./dist'],
+    skips_local_docker=True,
 )
 
 cmd_button('loc:go mod tidy',

@@ -1,12 +1,12 @@
 package diff
 
 import (
+	"context"
 	"regexp"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
-	"golang.org/x/net/context"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/aisummary"

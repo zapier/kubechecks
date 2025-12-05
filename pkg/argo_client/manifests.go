@@ -206,7 +206,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, fmt.Errorf("error getting settings enabled source types: %w", err)
 	}
 
-	refSources, err := argo.GetRefSources(context.Background(), app.Spec.Sources, app.Spec.Project, argoDB.GetRepository, []string{}, false)
+	refSources, err := argo.GetRefSources(context.Background(), app.Spec.Sources, app.Spec.Project, argoDB.GetRepository, []string{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ref sources: %w", err)
 	}

@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/xanzy/go-gitlab"
+	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/msg"
@@ -96,7 +96,9 @@ func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message stri
 
 	n, _, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
 		Body: pkg.Pointer(message),
-	})
+	},
+		gitlab.WithContext(ctx),
+	)
 
 	if err != nil {
 		log.Error().Err(err).Msg("could not update message to MR")

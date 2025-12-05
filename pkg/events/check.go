@@ -145,8 +145,12 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 		attribute.String("affectedApps", fmt.Sprintf("%+v", ce.affectedItems.Applications)),
 		attribute.String("affectedAppSets", fmt.Sprintf("%+v", ce.affectedItems.ApplicationSets)),
 	)
-	ce.logger.Debug().Msgf("Affected apps: %+v", ce.affectedItems.Applications)
-	ce.logger.Debug().Msgf("Affected appSets: %+v", ce.affectedItems.ApplicationSets)
+	for _, app := range ce.affectedItems.Applications {
+		ce.logger.Debug().Msgf("Affected apps: %+v", app.Name)
+	}
+	for _, appset := range ce.affectedItems.ApplicationSets {
+		ce.logger.Debug().Msgf("Affected appSets: %+v", appset.Name)
+	}
 
 	return err
 }
