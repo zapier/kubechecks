@@ -77,10 +77,10 @@ func getFilenameFromRawManifest(manifest string) (string, error) {
 
 	namespace, okNamespace := metadata["namespace"].(string)
 	if !okNamespace {
-		return fmt.Sprintf("kind=%s_name=%s.yaml", kind, name), nil
+		return fmt.Sprintf("kind=%s,name=%s.yaml", kind, name), nil
 	}
 
-	return fmt.Sprintf("namespace=%s_kind=%s_name=%s.yaml", namespace, kind, name), nil
+	return fmt.Sprintf("namespace=%s,kind=%s,name=%s.yaml", namespace, kind, name), nil
 }
 
 func dumpFiles(manifests []string) (string, error) {

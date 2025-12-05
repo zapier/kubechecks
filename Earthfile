@@ -88,7 +88,7 @@ docker:
     ARG TARGETARCH
     ARG TARGETVARIANT
 
-    FROM --platform=$TARGETPLATFORM ubuntu:25.10
+    FROM --platform=$TARGETPLATFORM ubuntu:24.04
     RUN apt update && apt install -y ca-certificates curl git
 
     WORKDIR /tmp
