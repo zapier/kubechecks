@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/xanzy/go-gitlab"
 	gitlabMocks "github.com/zapier/kubechecks/mocks/gitlab_client/mocks"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
+	"gitlab.com/gitlab-org/api/client-go"
 )
 
 func TestCustomGitURLParsing(t *testing.T) {

@@ -12,8 +12,8 @@ import (
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/xanzy/go-gitlab"
 	"github.com/zapier/kubechecks/pkg/git"
+	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
@@ -120,7 +120,7 @@ func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 var nilPr vcs.PullRequest
 
 // ParseHook parses and validates a webhook event; return an err if this isn't valid
-func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte) (vcs.PullRequest, error) {
+func (c *Client) ParseHook(_ context.Context, r *http.Request, request []byte) (vcs.PullRequest, error) {
 	eventRequest, err := gitlab.ParseHook(gitlab.HookEventType(r), request)
 	if err != nil {
 		return nilPr, err
@@ -178,7 +178,7 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse repo url")
 	}
-	webhooks, _, err := c.c.Projects.ListProjectHooks(pid, nil)
+	webhooks, _, err := c.c.Projects.ListProjectHooks(pid, nil, gitlab.WithContext(ctx))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list project webhooks")
 	}
@@ -215,7 +215,7 @@ func (c *Client) CreateHook(ctx context.Context, repoName, webhookUrl, webhookSe
 		MergeRequestsEvents: pkg.Pointer(true),
 		NoteEvents:          pkg.Pointer(true),
 		Token:               pkg.Pointer(webhookSecret),
-	})
+	}, gitlab.WithContext(ctx))
 
 	if err != nil && glStatus.StatusCode < http.StatusOK || glStatus.StatusCode >= http.StatusMultipleChoices {
 		return errors.Wrap(err, "failed to create project webhook")
@@ -243,7 +243,7 @@ func (c *Client) LoadHook(ctx context.Context, id string) (vcs.PullRequest, erro
 		return nilPr, errors.Wrapf(err, "failed to get project '%s'", repoPath)
 	}
 
-	mergeRequest, _, err := c.c.MergeRequests.GetMergeRequest(repoPath, int(mrNumber), nil)
+	mergeRequest, _, err := c.c.MergeRequests.GetMergeRequest(repoPath, int(mrNumber), nil, gitlab.WithContext(ctx))
 	if err != nil {
 		return nilPr, errors.Wrapf(err, "failed to get merge request '%d' in project '%s'", mrNumber, repoPath)
 	}

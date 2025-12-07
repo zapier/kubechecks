@@ -11,6 +11,8 @@ import (
 	"github.com/kubepug/kubepug/pkg/results"
 	"github.com/masterminds/semver"
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/renderer"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
@@ -78,13 +80,28 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 		if len(result.DeprecatedAPIs) > 0 {
 			outputString = append(outputString, "\n\n**Deprecated APIs**\n")
 			buff := &bytes.Buffer{}
-			table := tablewriter.NewWriter(buff)
+			table := tablewriter.NewTable(buff,
+				tablewriter.WithRenderer(
+					renderer.NewBlueprint(
+						tw.Rendition{
+							Borders: tw.Border{Left: tw.On, Top: tw.Off, Right: tw.On, Bottom: tw.Off},
+							Settings: tw.Settings{
+								Separators: tw.Separators{BetweenColumns: tw.On},
+								Lines:      tw.Lines{ShowFooterLine: tw.On},
+							},
+						},
+					),
+				),
+				tablewriter.WithConfig(tablewriter.Config{
+					Row: tw.CellConfig{
+						Formatting: tw.CellFormatting{AutoWrap: tw.WrapNone}, // Wrap long content
+						Alignment:  tw.CellAlignment{Global: tw.AlignLeft},   // Left-align rows
+					},
+				}),
+			)
 
-			table.SetHeader([]string{"API Version", "Kind", "Objects", "Docs"})
-			table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
-			table.SetCenterSeparator("|")
-			table.SetAutoWrapText(false)
-
+			table.Header([]string{"API Version", "Kind", "Objects", "Docs"})
+			var rows [][]string
 			for _, dep := range result.DeprecatedAPIs {
 				row := []string{
 					fmt.Sprintf("%s/%s", dep.Group, dep.Version),
@@ -92,22 +109,42 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 					formatItems(dep.Items),
 					fmt.Sprintf(docLinkFmt, dep.Kind, strings.ToLower(dep.Kind), nextVersion.Major(), nextVersion.Minor()),
 				}
-				table.Append(row)
+				rows = append(rows, row)
 			}
-			table.Render()
+			if err := table.Bulk(rows); err != nil {
+				logger.Error().Err(err).Str("check", "kubepug").Msg("failed to save rows to table")
+			}
+			if err := table.Render(); err != nil {
+				logger.Error().Err(err).Str("check", "kubepug").Msg("failed to render table")
+			}
 			outputString = append(outputString, buff.String())
 		}
 
 		if len(result.DeletedAPIs) > 0 {
 			outputString = append(outputString, "\n\n**Deleted APIs**\n")
 			buff := &bytes.Buffer{}
-			table := tablewriter.NewWriter(buff)
+			table := tablewriter.NewTable(buff,
+				tablewriter.WithRenderer(
+					renderer.NewBlueprint(
+						tw.Rendition{
+							Borders: tw.Border{Left: tw.On, Top: tw.Off, Right: tw.On, Bottom: tw.Off},
+							Settings: tw.Settings{
+								Separators: tw.Separators{BetweenColumns: tw.On},
+								Lines:      tw.Lines{ShowFooterLine: tw.On},
+							},
+						},
+					),
+				),
+				tablewriter.WithConfig(tablewriter.Config{
+					Row: tw.CellConfig{
+						Formatting: tw.CellFormatting{AutoWrap: tw.WrapNone}, // Wrap long content
+						Alignment:  tw.CellAlignment{Global: tw.AlignLeft},   // Left-align rows
+					},
+				}),
+			)
 
-			table.SetHeader([]string{"API Version", "Kind", "Objects", "Docs"})
-			table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
-			table.SetCenterSeparator("|")
-			table.SetAutoWrapText(false)
-
+			table.Header([]string{"API Version", "Kind", "Objects", "Docs"})
+			var rows [][]string
 			for _, dep := range result.DeletedAPIs {
 				row := []string{
 					fmt.Sprintf("%s/%s", dep.Group, dep.Version),
@@ -115,9 +152,15 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 					formatItems(dep.Items),
 					fmt.Sprintf(docLinkFmt, dep.Kind, strings.ToLower(dep.Kind), nextVersion.Major(), nextVersion.Minor()),
 				}
-				table.Append(row)
+
+				rows = append(rows, row)
 			}
-			table.Render()
+			if err := table.Bulk(rows); err != nil {
+				logger.Error().Err(err).Msg("failed to save rows to table")
+			}
+			if err := table.Render(); err != nil {
+				logger.Error().Err(err).Msg("failed to render table")
+			}
 			outputString = append(outputString, buff.String())
 		}
 

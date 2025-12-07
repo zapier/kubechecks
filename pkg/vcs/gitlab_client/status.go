@@ -9,7 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
-	"github.com/xanzy/go-gitlab"
+	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -34,7 +34,7 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 	var pipelineStatus *gitlab.PipelineInfo
 	getStatusFn := func() error {
 		log.Debug().Msg("getting pipeline status")
-		pipelineStatus = c.GetLastPipelinesForCommit(pr.FullName, pr.SHA)
+		pipelineStatus = c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
 		if pipelineStatus == nil {
 			return errNoPipelineStatus
 		}

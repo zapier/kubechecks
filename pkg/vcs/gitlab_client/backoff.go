@@ -7,7 +7,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
-	"github.com/xanzy/go-gitlab"
+	"gitlab.com/gitlab-org/api/client-go"
 )
 
 // getBackOff returns a backoff pointer to use to retry requests

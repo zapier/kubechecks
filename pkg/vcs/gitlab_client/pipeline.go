@@ -1,16 +1,20 @@
 package gitlab_client
 
 import (
+	"context"
+
 	"github.com/rs/zerolog/log"
-	"github.com/xanzy/go-gitlab"
+	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
 )
 
-func (c *Client) GetLastPipelinesForCommit(projectName string, commitSHA string) *gitlab.PipelineInfo {
+func (c *Client) GetLastPipelinesForCommit(ctx context.Context, projectName string, commitSHA string) *gitlab.PipelineInfo {
 	pipelines, _, err := c.c.Pipelines.ListProjectPipelines(projectName, &gitlab.ListProjectPipelinesOptions{
 		SHA: pkg.Pointer(commitSHA),
-	})
+	},
+		gitlab.WithContext(ctx),
+	)
 	if err != nil {
 		log.Error().Err(err).Msg("gitlab client: could not get last pipeline for commit")
 		return nil

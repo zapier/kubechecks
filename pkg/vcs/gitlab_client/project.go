@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/xanzy/go-gitlab"
+	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/repo_config"

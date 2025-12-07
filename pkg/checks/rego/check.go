@@ -11,6 +11,8 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/renderer"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/open-policy-agent/conftest/output"
 	"github.com/open-policy-agent/conftest/parser"
 	"github.com/open-policy-agent/conftest/runner"
@@ -141,6 +143,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 		NoColor:            true,
 		Policy:             c.locations,
 		Parser:             parser.YAML,
+		RegoVersion:        "v1",
 		ShowBuiltinErrors:  request.Container.Config.ShowDebugInfo,
 		SuppressExceptions: false,
 		Trace:              request.Container.Config.ShowDebugInfo,
@@ -153,7 +156,10 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	}
 
 	var b bytes.Buffer
-	formatConftestResults(&b, results, request.Container.VcsClient)
+	if err := formatConftestResults(&b, results, request.Container.VcsClient); err != nil {
+		telemetry.SetError(span, err, "formatConftestResults")
+		return msg.Result{}, errors.Wrap(err, "failed to format conftest results")
+	}
 	resultsMessage := b.String()
 	resultsMessage = strings.ReplaceAll(resultsMessage, fmt.Sprintf("%s/", manifestsPath), "")
 
@@ -194,12 +200,28 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 // formatConftestResults writes the check results from an array of output.CheckResult objects into a formatted table.
 // The table omits success messages to reduce noise and includes file, message, and status (failed, warning, skipped).
 // The formatted table is then rendered and written to the given io.Writer 'w'.
-func formatConftestResults(w io.Writer, checkResults []output.CheckResult, vcs emojiable) {
-	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{" ", "file", "message"})
-	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
-	table.SetCenterSeparator("|")
-	table.SetAutoWrapText(false)
+func formatConftestResults(w io.Writer, checkResults []output.CheckResult, vcs emojiable) error {
+	//table := tablewriter.NewWriter(w)
+	table := tablewriter.NewTable(w,
+		tablewriter.WithRenderer(
+			renderer.NewBlueprint(
+				tw.Rendition{
+					Borders: tw.Border{Left: tw.On, Top: tw.Off, Right: tw.On, Bottom: tw.Off},
+					Settings: tw.Settings{
+						Separators: tw.Separators{BetweenColumns: tw.On},
+						Lines:      tw.Lines{ShowFooterLine: tw.On},
+					},
+				},
+			),
+		),
+		tablewriter.WithConfig(tablewriter.Config{
+			Row: tw.CellConfig{
+				Formatting: tw.CellFormatting{AutoWrap: tw.WrapNone}, // Wrap long content
+				Alignment:  tw.CellAlignment{Global: tw.AlignLeft},   // Left-align rows
+			},
+		}),
+	)
+	table.Header([]string{" ", "file", "message"})
 
 	var tableData [][]string
 	for _, checkResult := range checkResults {
@@ -221,9 +243,14 @@ func formatConftestResults(w io.Writer, checkResults []output.CheckResult, vcs e
 	}
 
 	if len(tableData) > 0 {
-		table.AppendBulk(tableData)
-		table.Render()
+		if err := table.Bulk(tableData); err != nil {
+			return errors.Wrap(err, "failed to add rows to table")
+		}
+		if err := table.Render(); err != nil {
+			return errors.Wrap(err, "failed to render table")
+		}
 	}
+	return nil
 }
 
 func code(s string) string {

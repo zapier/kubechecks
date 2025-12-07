@@ -36,7 +36,9 @@ func TestHappyPath(t *testing.T) {
 			name: "good policy, good manifest",
 			policy: `package tests
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   input.kind == "Deployment"
   not input.spec.template.spec.securityContext.runAsNonRoot
 
@@ -65,7 +67,9 @@ deny[msg] {
 			name: "good policy, bad manifest",
 			policy: `package tests
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   input.kind == "Deployment"
   not input.spec.template.spec.securityContext.runAsNonRoot
 
@@ -94,7 +98,9 @@ deny[msg] {
 			name: "good policy, missing key manifest",
 			policy: `package tests
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   input.kind == "Deployment"
   not input.spec.template.spec.securityContext.runAsNonRoot
 
@@ -121,7 +127,9 @@ deny[msg] {
 			name: "warn policy, bad manifest",
 			policy: `package tests
 
-warn[msg] {
+import rego.v1
+
+warn contains msg if {
   input.kind == "Deployment"
   not input.spec.template.spec.securityContext.runAsNonRoot
 
