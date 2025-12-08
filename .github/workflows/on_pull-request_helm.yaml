@@ -8,9 +8,9 @@ on:
 
 jobs:
   ci-helm:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
       - uses: wistia/parse-tool-versions@v1.0
 

@@ -11,7 +11,7 @@ env:
 
 jobs:
   remove-temp-image:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     continue-on-error: true
 
     # should match env.FS_TAG, in both pr-open.yaml and pr-close.yaml

@@ -40,8 +40,7 @@ The following checks run when a PR is opened:
 
 ### Tools / Accounts
 
-* [Go 1.22](https://go.dev/)
-* [Earthly](https://earthly.dev/)
+* [Go 1.25](https://go.dev/)
 * [Ngrok](https://ngrok.com/)
 * [Tilt](https://tilt.dev/)
 * [Gitlab](https://gitlab.com) / [Github](https://github.com) token
