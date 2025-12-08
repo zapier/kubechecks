@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/on_pull_request_docs.yaml'
-      - 'Earthfile'
+      - 'Makefile'
       - '*/**.go'
       - '*.go'
       - 'go.mod'
@@ -13,15 +13,20 @@ jobs:
   lint-docs:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v5
 
-      - uses: wistia/parse-tool-versions@v1.0
+      - name: Parse tool versions
+        uses: wistia/parse-tool-versions@v1.0
 
-      - uses: earthly/actions-setup@v1
-        with: { version: "${{ env.EARTHLY_TOOL_VERSION }}" }
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GOLANG_TOOL_VERSION }}
+          cache: true
 
-      - name: rebuild the docs
-        run: ./earthly.sh +rebuild-docs
+      - name: Rebuild the docs
+        run: make rebuild-docs
 
-      - name: verify that the checked in file has not changed
-        run: ./hacks/exit-on-changed-files.sh "Please run './earthly +rebuild-docs' and commit the results to this PR"
+      - name: Verify that the checked in file has not changed
+        run: ./hacks/exit-on-changed-files.sh "Please run 'make rebuild-docs' and commit the results to this PR"

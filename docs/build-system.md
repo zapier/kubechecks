@@ -29,6 +29,7 @@ make ci
 | `make test` | Run Go tests |
 | `make lint` | Run golangci-lint |
 | `make ci` | Run full CI pipeline (fmt, validate, lint, test) |
+| `make rebuild-docs` | Rebuild documentation from code |
 | `make clean` | Clean up build artifacts |
 
 ## Build Targets
@@ -76,6 +77,9 @@ make validate
 
 # Run linter
 make lint
+
+# Rebuild documentation from code
+make rebuild-docs
 
 # Run all CI checks
 make ci
@@ -209,6 +213,9 @@ The Makefile is designed for use in CI/CD pipelines:
 - name: Run CI checks
   run: make ci
 
+- name: Rebuild docs
+  run: make rebuild-docs
+
 - name: Build and push
   run: make push-multiarch
   env:
@@ -228,6 +235,7 @@ If you're migrating from Earthly:
 | `earthly +golang-ci-lint` | `make lint` | Linting |
 | `earthly +fmt-golang` | `make fmt` | Formatting |
 | `earthly +validate-golang` | `make validate` | Validation |
+| `earthly +rebuild-docs` | `make rebuild-docs` | Documentation |
 | `earthly +ci-golang` | `make ci` | Full CI |
 
 ## Additional Resources

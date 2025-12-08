@@ -203,6 +203,11 @@ tidy: ## Run go mod tidy
 	@git diff --exit-code go.mod go.sum || \
 		(echo "Warning: go.mod or go.sum changed. Please commit the changes." && exit 1)
 
+rebuild-docs: ## Rebuild documentation from code
+	@echo "==> Rebuilding documentation..."
+	go run hacks/env-to-docs.go
+	@echo "==> Documentation regenerated: docs/usage.md"
+
 # ============================================================================
 # CI Target
 # ============================================================================
