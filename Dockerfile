@@ -7,8 +7,9 @@ ARG ALPINE_VERSION=3.21
 # ============================================================================
 # Stage: go-deps
 # Cache Go module downloads with BuildKit cache mount
+# Always runs on build platform (amd64) for fast cross-compilation
 # ============================================================================
-FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS go-deps
+FROM --platform=$BUILDPLATFORM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS go-deps
 
 WORKDIR /src
 
@@ -30,11 +31,15 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # ============================================================================
 # Stage: builder
 # Compile production binary with aggressive size optimization
+# Uses Go cross-compilation for fast multi-arch builds (no QEMU emulation!)
 # ============================================================================
 FROM go-deps AS builder
 
 ARG GIT_COMMIT=unknown
 ARG GIT_TAG=dev
+# Docker build args for cross-compilation
+ARG TARGETOS
+ARG TARGETARCH
 
 # Copy source code
 COPY . .
@@ -43,10 +48,11 @@ COPY . .
 # -trimpath: Remove file system paths from binary
 # -w: Omit DWARF symbol table
 # -s: Omit symbol table and debug info
+# GOOS/GOARCH: Cross-compile for target platform (avoids slow QEMU emulation)
 # Target binary size: 30-50MB (down from 223MB)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
         -trimpath \
         -ldflags="-w -s -X github.com/zapier/kubechecks/pkg.GitCommit=${GIT_COMMIT} -X github.com/zapier/kubechecks/pkg.GitTag=${GIT_TAG}" \
         -o /out/kubechecks \
@@ -60,21 +66,25 @@ FROM go-deps AS debug-builder
 
 ARG GIT_COMMIT=debug
 ARG GIT_TAG=debug
+# Docker build args for cross-compilation
+ARG TARGETOS
+ARG TARGETARCH
 
 # Copy source code
 COPY . .
 
 # Build with debug symbols:
 # -gcflags="all=-N -l": Disable optimizations and inlining for debugging
+# GOOS/GOARCH: Cross-compile for target platform
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
         -gcflags="all=-N -l" \
         -ldflags="-X github.com/zapier/kubechecks/pkg.GitCommit=${GIT_COMMIT} -X github.com/zapier/kubechecks/pkg.GitTag=${GIT_TAG}" \
         -o /out/kubechecks \
         .
 
-# Install delve debugger
+# Install delve debugger (always for host arch, not target)
 RUN --mount=type=cache,target=/go/pkg/mod \
     go install github.com/go-delve/delve/cmd/dlv@latest
 

@@ -125,6 +125,7 @@ The build system uses Docker Buildx with BuildKit for:
 - **Multi-stage builds** - Separate stages for dependencies, building, and runtime
 - **Cache mounts** - Fast rebuilds with Go module and build caching
 - **Multi-platform** - Build for amd64 and arm64 simultaneously
+- **Go cross-compilation** - Uses native Go cross-compilation instead of QEMU emulation for 8x faster ARM64 builds
 
 ### BuildKit Cache
 
@@ -155,11 +156,23 @@ For GitHub Actions:
 |---------|---------|---------------|
 | Binary size | 223MB | 133MB (40% smaller) |
 | Image size | 300MB | 161MB (46% smaller) |
-| Cold build | ~3min | ~3min |
-| Warm build | ~3min | ~4sec (98% faster) |
+| AMD64 build (CI) | ~6min | ~6min |
+| ARM64 build (CI) | ~50min (QEMU) | ~6min (cross-compile, 8x faster) |
+| Warm build (local) | ~3min | ~4sec (98% faster) |
 | Tools included | helm, kustomize, git | git only |
 | Multi-arch | ✅ | ✅ |
 | Cache | Earthly cache | BuildKit cache |
+| Cross-compilation | ❌ (uses QEMU) | ✅ (native Go) |
+
+### Multi-Architecture Performance
+
+**Key Optimization:** The Dockerfile uses Go's native cross-compilation instead of QEMU emulation for ARM64 builds.
+
+- **Before (QEMU emulation):** ARM64 builds took ~50 minutes due to CPU instruction emulation
+- **After (Go cross-compile):** ARM64 builds take ~6 minutes (same as AMD64)
+- **How it works:** Sets `GOOS` and `GOARCH` environment variables, letting the Go compiler run natively on AMD64 while producing ARM64 binaries
+
+This makes multi-arch builds in GitHub Actions **8x faster** without requiring expensive ARM64 runners.
 
 ## Troubleshooting
 
