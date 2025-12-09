@@ -245,11 +245,13 @@ If you're migrating from Earthly:
 | `earthly +docker-multiarch` | `make build-multiarch` | Multi-arch |
 | `earthly +docker-debug` | `make build-debug` | Debug image |
 | `earthly +test-golang` | `make test` | Go tests |
+| `earthly +test-helm` | `make test-helm` | Helm chart tests |
 | `earthly +golang-ci-lint` | `make lint` | Linting |
 | `earthly +fmt-golang` | `make fmt` | Formatting |
 | `earthly +validate-golang` | `make validate` | Validation |
 | `earthly +rebuild-docs` | `make rebuild-docs` | Documentation |
 | `earthly +ci-golang` | `make ci` | Full CI |
+| `earthly +ci-helm` | `make test-helm` | Helm CI |
 
 ## Additional Resources
 
