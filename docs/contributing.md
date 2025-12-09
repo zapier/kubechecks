@@ -139,6 +139,14 @@ You can also run tests directly with `go test ./...`. Please ensure that `make c
 
 For more build commands, run `make help` to see all available targets.
 
+### Local docker maintenance
+The use of docker buildx may lead to a large number of dangling images and build cache being stored locally. You can clean these up with the following commands:
+
+```bash
+docker image prune      # Remove dangling images
+docker buildx prune     # Remove build cache
+```
+
 ### Documentation Changes
 
 We use [mkdocs](https://www.mkdocs.org/) to build our docs locally. You can build these docs by running `mkdocs serve` from the root of the repository. It will also auto reload when any file is changed in that directory. By default you can view the docs under `http://localhost:8000`. Please confirm that any changes to documentation render correctly and that your changes display as expected.
