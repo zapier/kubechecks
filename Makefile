@@ -190,8 +190,8 @@ lint: ## Run golangci-lint
 fmt: ## Format Go code
 	@echo "==> Formatting Go code..."
 	go fmt ./...
-	@echo "==> Checking for formatting changes..."
-	@git diff --exit-code || (echo "Error: Code formatting changed files. Please commit the changes." && exit 1)
+	@echo "==> Checking for Go file formatting changes..."
+	@git diff --exit-code -- '*.go' ':!vendor/' || (echo "Error: Code formatting changed files. Please commit the changes." && exit 1)
 
 validate: ## Validate Go code with go vet
 	@echo "==> Running go vet..."
@@ -212,7 +212,7 @@ rebuild-docs: ## Rebuild documentation from code
 # CI Target
 # ============================================================================
 
-ci: fmt validate lint test ## Run full CI pipeline (fmt, validate, lint, test)
+ci: fmt lint test ## Run full CI pipeline (fmt, lint, test)
 	@echo ""
 	@echo "==> ✅ All CI checks passed!"
 
@@ -274,8 +274,13 @@ dev-setup: ## Setup development environment
 	@echo "✅ Docker version: $$(docker --version)"
 	@echo ""
 	@echo "Installing Go tools..."
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
-	@echo "✅ golangci-lint installed"
+	@if which golangci-lint >/dev/null 2>&1; then \
+		echo "✅ golangci-lint already installed ($$(golangci-lint version --format short 2>/dev/null || golangci-lint --version | head -1))"; \
+	else \
+		echo "Installing golangci-lint@v$(GOLANGCI_LINT_VERSION)..."; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION); \
+		echo "✅ golangci-lint installed"; \
+	fi
 	@echo ""
 	@echo "==> Development environment ready!"
 

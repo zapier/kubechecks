@@ -2,6 +2,8 @@
 
 Kubechecks uses Docker Buildx with BuildKit for building container images and native Go tooling for testing and validation.
 
+> **Migration Complete:** The build system has been successfully migrated from Earthly to Docker Buildx (December 2025). See the [Migration from Earthly](#migration-from-earthly) section below for details on changes and improvements.
+
 ## Quick Start
 
 ### Build locally
