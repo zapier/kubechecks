@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 
 	"github.com/zapier/kubechecks/pkg"
@@ -115,6 +116,9 @@ func (qm *QueueManager) Enqueue(ctx context.Context, params EnqueueParams) error
 	// Try to enqueue (non-blocking)
 	select {
 	case queue.queue <- request:
+		repoWorkerRequestsTotal.Inc()
+		repoWorkerQueueSize.WithLabelValues(repoKey).Set(float64(len(queue.queue)))
+		qm.updateTotalQueueMetrics()
 		log.Info().
 			Str("repo", params.PullRequest.CloneURL).
 			Int("check_id", params.PullRequest.CheckID).
@@ -227,6 +231,8 @@ notify:
 // processRequest handles a single check request
 func (rq *RepoQueue) processRequest(request *CheckRequest) {
 	start := time.Now()
+	timer := prometheus.NewTimer(repoWorkerProcessingDuration)
+	defer timer.ObserveDuration()
 
 	log.Info().
 		Str("repo", request.PullRequest.CloneURL).
@@ -235,12 +241,27 @@ func (rq *RepoQueue) processRequest(request *CheckRequest) {
 		Msg("worker processing request")
 
 	// Process the check event using the configured process function
+	// We don't have error return, so we assume success unless panic
+	defer func() {
+		if r := recover(); r != nil {
+			repoWorkerRequestsFailed.Inc()
+			log.Error().
+				Interface("panic", r).
+				Str("repo", request.PullRequest.CloneURL).
+				Int("check_id", request.PullRequest.CheckID).
+				Msg("worker panicked processing request")
+			panic(r) // Re-panic after logging
+		}
+	}()
+
 	rq.processFunc(
 		context.Background(),
 		request.PullRequest,
 		request.Container,
 		request.Processors,
 	)
+
+	repoWorkerRequestsProcessed.Inc()
 
 	// Update metrics
 	rq.mu.Lock()
@@ -315,4 +336,18 @@ func (qm *QueueManager) GetStats() map[string]interface{} {
 	stats["queues"] = queues
 
 	return stats
+}
+
+// updateTotalQueueMetrics updates aggregate queue metrics
+func (qm *QueueManager) updateTotalQueueMetrics() {
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+
+	var totalSize int
+	for _, queue := range qm.queues {
+		totalSize += len(queue.queue)
+	}
+
+	repoWorkerQueueTotal.Set(float64(totalSize))
+	repoWorkerQueueCount.Set(float64(len(qm.queues)))
 }

@@ -2,7 +2,7 @@ package git
 
 import (
 	"context"
-	"crypto/sha256"
+	"crypto/md5"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/singleflight"
@@ -89,6 +90,9 @@ func NewPersistentRepoManager(cfg config.ServerConfig, persistentDir string) *Pe
 	// Start background cleanup goroutine
 	go rm.startCleanupRoutine()
 
+	// Start metrics update routine
+	go rm.startMetricsUpdateRoutine()
+
 	return rm
 }
 
@@ -164,12 +168,18 @@ func (rm *PersistentRepoManager) GetOrCloneRepo(ctx context.Context, cloneURL, b
 		rm.lock.RUnlock()
 
 		if exists {
+			// Cache hit - reuse existing repo
+			repoCacheHits.Inc()
 			log.Debug().
 				Str("url", cloneURL).
 				Str("branch", baseBranch).
 				Msg("using cached repository")
 			return pr, nil
 		}
+
+		// Cache miss - need to clone
+		repoCacheMisses.Inc()
+		repoCloneTotal.Inc()
 
 		// Clone the repository to persistent storage
 		log.Info().
@@ -182,11 +192,17 @@ func (rm *PersistentRepoManager) GetOrCloneRepo(ctx context.Context, cloneURL, b
 		// Create the repo object
 		repo := New(rm.cfg, cloneURL, baseBranch)
 
+		// Record clone duration
+		timer := prometheus.NewTimer(repoCloneDuration)
+		defer timer.ObserveDuration()
+
 		// First clone to temp, then move to persistent location
 		// This avoids issues with execGitCommand trying to chdir to non-existent directory
 		if err := repo.Clone(ctx); err != nil {
+			repoCloneFailed.Inc()
 			return nil, errors.Wrap(err, "failed to clone repository to persistent cache")
 		}
+		repoCloneSuccess.Inc()
 
 		// Move from temp to persistent location
 		tempDir := repo.Directory
@@ -444,24 +460,10 @@ func generateRepoKey(cloneURL string) string {
 	return normalized
 }
 
-// sanitizeRepoName creates a safe directory name from clone URL
+// sanitizeRepoName creates a safe directory name from clone URL using MD5 hash
 func sanitizeRepoName(cloneURL string) string {
-	// Convert https://github.com/zapier/kubechecks.git
-	// to github.com_zapier_kubechecks
-	sanitized := strings.NewReplacer(
-		"https://", "",
-		"http://", "",
-		"git@", "",
-		":", "_",
-		"/", "_",
-		".git", "",
-	).Replace(cloneURL)
-
-	// Take hash suffix to handle long URLs
-	if len(sanitized) > 100 {
-		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(cloneURL)))
-		sanitized = sanitized[:90] + "_" + hash[:8]
-	}
-
-	return sanitized
+	// Use MD5 hash for simple, deterministic, and collision-resistant directory names
+	// Output: 32 hex characters (e.g., "c50de427c98fda747bb0bf6f07571e08")
+	hash := md5.Sum([]byte(cloneURL))
+	return fmt.Sprintf("%x", hash)
 }

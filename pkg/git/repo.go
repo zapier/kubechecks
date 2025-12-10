@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -172,9 +173,15 @@ func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 }
 
 func (r *Repo) Update(ctx context.Context) error {
+	// Record fetch metrics
+	repoFetchTotal.Inc()
+	timer := prometheus.NewTimer(repoFetchDuration)
+	defer timer.ObserveDuration()
+
 	// Fetch latest changes from remote
 	fetchCmd := r.execGitCommand("fetch", "origin", r.BranchName)
 	if out, err := fetchCmd.CombinedOutput(); err != nil {
+		repoFetchFailed.Inc()
 		log.Error().Err(err).Msgf("failed to fetch branch %s: %s", r.BranchName, out)
 		return errors.Wrapf(err, "failed to fetch branch %s", r.BranchName)
 	}
@@ -182,10 +189,12 @@ func (r *Repo) Update(ctx context.Context) error {
 	// Reset to match remote branch (fast-forward or force update)
 	resetCmd := r.execGitCommand("reset", "--hard", fmt.Sprintf("origin/%s", r.BranchName))
 	if out, err := resetCmd.CombinedOutput(); err != nil {
+		repoFetchFailed.Inc()
 		log.Error().Err(err).Msgf("failed to reset to origin/%s: %s", r.BranchName, out)
 		return errors.Wrapf(err, "failed to reset to origin/%s", r.BranchName)
 	}
 
+	repoFetchSuccess.Inc()
 	log.Debug().
 		Str("branch", r.BranchName).
 		Msg("updated branch to latest")
