@@ -83,7 +83,7 @@ func NewPersistentRepoManager(cfg config.ServerConfig, persistentDir string) *Pe
 
 	log.Info().
 		Str("dir", persistentDir).
-		Dur("ttl", cfg.RepoCacheTTL).
+		Str("ttl", cfg.RepoCacheTTL.String()).
 		Msg("persistent repo cache enabled")
 
 	// Start background cleanup goroutine
@@ -383,7 +383,7 @@ func (rm *EphemeralRepoManager) Shutdown() {
 
 // startCleanupRoutine runs background cleanup for stale repos
 func (rm *PersistentRepoManager) startCleanupRoutine() {
-	rm.cleanupTicker = time.NewTicker(1 * time.Hour)
+	rm.cleanupTicker = time.NewTicker(15 * time.Minute)
 	defer rm.cleanupTicker.Stop()
 
 	for {
