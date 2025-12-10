@@ -65,7 +65,7 @@ unit_test_race:
 	go test -race ./...
 
 rebuild_docs:
-    ./earthly.sh +rebuild-docs
+    go run hacks/env-to-docs.go
 
 rebuild_mocks:
     go run github.com/vektra/mockery/v3@v3.3.4

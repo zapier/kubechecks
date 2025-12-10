@@ -1,5 +1,4 @@
 load('ext://dotenv', 'dotenv')
-load('ext://earthly', 'earthly_build', 'earthly_build_with_restart')
 load('ext://helm_remote', 'helm_remote')
 load('ext://tests/golang', 'test_go')
 load('ext://namespace', 'namespace_create')

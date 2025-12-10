@@ -34,19 +34,20 @@ jobs:
       contents: write
 
     steps:
-      - name: checkout the source code
+      - name: Checkout source code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-      - uses: wistia/parse-tool-versions@v1.0
-
-      - uses: earthly/actions-setup@v1
-        with: { version: "v${{ env.EARTHLY_TOOL_VERSION }}" }
-
-      - name: Build and push the helm charts
+      - name: Configure Git
         run: |
-          ./earthly.sh \
-            --push \
-            +release-helm \
-              --repo_owner ${{ github.repository_owner }} \
-              --token ${{ secrets.GITHUB_TOKEN }}
+          git config user.name "Open Source at Zapier"
+          git config user.email "opensource@zapier.com"
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          config: .github/cr.yaml
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
