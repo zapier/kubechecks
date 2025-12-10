@@ -382,6 +382,7 @@ func (rm *EphemeralRepoManager) Shutdown() {
 }
 
 // startCleanupRoutine runs background cleanup for stale repos
+// runs every 15m and trigger cleanupStaleRepos.
 func (rm *PersistentRepoManager) startCleanupRoutine() {
 	rm.cleanupTicker = time.NewTicker(15 * time.Minute)
 	defer rm.cleanupTicker.Stop()
