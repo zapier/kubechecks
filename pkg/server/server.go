@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -16,51 +17,106 @@ import (
 
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/queue"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 const KubeChecksHooksPathPrefix = "/hooks"
 
 type Server struct {
-	ctr        container.Container
-	processors []checks.ProcessorEntry
+	ctr          container.Container
+	processors   []checks.ProcessorEntry
+	queueManager *queue.QueueManager
+	echo         *echo.Echo
 }
 
 func NewServer(ctr container.Container, processors []checks.ProcessorEntry) *Server {
-	return &Server{ctr: ctr, processors: processors}
+	// Create queue manager with configurable queue size
+	queueSize := ctr.Config.MaxRepoWorkerQueueSize
+	if queueSize <= 0 {
+		queueSize = 100 // Fallback to default if not configured
+	}
+
+	queueManager := queue.NewQueueManager(
+		queue.Config{QueueSize: queueSize},
+		ProcessCheckEvent,
+	)
+
+	log.Info().
+		Int("repo_worker_queue_size", queueSize).
+		Msg("initialized repo worker ueue manager")
+
+	return &Server{
+		ctr:          ctr,
+		processors:   processors,
+		queueManager: queueManager,
+	}
 }
 
-func (s *Server) Start(ctx context.Context) {
+// Shutdown gracefully shuts down the HTTP server and queue workers
+func (s *Server) Shutdown(ctx context.Context) error {
+	log.Info().Msg("shutting down server")
+
+	var httpErr, queueErr error
+
+	// Shutdown HTTP server first (stop accepting new requests)
+	if s.echo != nil {
+		log.Info().Msg("shutting down HTTP server")
+		if err := s.echo.Shutdown(ctx); err != nil {
+			log.Error().Err(err).Msg("HTTP server shutdown failed")
+			httpErr = err
+		}
+	}
+
+	// Then shutdown queue workers
+	log.Info().Msg("shutting down queue workers")
+	if err := s.queueManager.Shutdown(ctx); err != nil {
+		log.Error().Err(err).Msg("queue manager shutdown failed")
+		queueErr = err
+	}
+
+	// Return first error if any
+	if httpErr != nil {
+		return httpErr
+	}
+	return queueErr
+}
+
+// Start initializes and starts the HTTP server (blocking)
+func (s *Server) Start(ctx context.Context) error {
 	if err := s.ensureWebhooks(ctx); err != nil {
 		log.Warn().Err(err).Msg("failed to create webhooks")
 	}
 
-	e := echo.New()
-	e.HideBanner = true
-	e.Logger = lecho.New(log.Logger)
+	s.echo = echo.New()
+	s.echo.HideBanner = true
+	s.echo.Logger = lecho.New(log.Logger)
 
-	e.Use(middleware.Recover())
-	e.Use(echoprometheus.NewMiddleware("kubechecks_echo"))
+	s.echo.Use(middleware.Recover())
+	s.echo.Use(echoprometheus.NewMiddleware("kubechecks_echo"))
 
 	// add routes
 	health := healthcheck.NewHandler()
-	e.GET("/ready", echo.WrapHandler(health))
-	e.GET("/live", echo.WrapHandler(health))
-	e.GET("/metrics", echoprometheus.NewHandler())
+	s.echo.GET("/ready", echo.WrapHandler(health))
+	s.echo.GET("/live", echo.WrapHandler(health))
+	s.echo.GET("/metrics", echoprometheus.NewHandler())
 
-	hooksGroup := e.Group(s.hooksPrefix())
+	hooksGroup := s.echo.Group(s.hooksPrefix())
 
-	ghHooks := NewVCSHookHandler(s.ctr, s.processors)
+	ghHooks := NewVCSHookHandler(s.ctr, s.processors, s.queueManager)
 	ghHooks.AttachHandlers(hooksGroup)
 
 	fmt.Println("Method\tPath")
-	for _, r := range e.Routes() {
+	for _, r := range s.echo.Routes() {
 		fmt.Printf("%s\t%s\n", r.Method, r.Path)
 	}
 
-	if err := e.Start(":8080"); err != nil {
-		log.Fatal().Err(err).Msg("could not start hooks server")
+	log.Info().Msg("starting HTTP server on :8080")
+	if err := s.echo.Start(":8080"); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("failed to start HTTP server: %w", err)
 	}
+
+	return nil
 }
 
 func (s *Server) hooksPrefix() string {

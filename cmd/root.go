@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -111,6 +112,9 @@ func init() {
 	int64Flag(flags, "max-concurrent-checks", "Number of concurrent checks to run.",
 		newInt64Opts().
 			withDefault(32))
+	int64Flag(flags, "max-repo-worker-queue-size", "Maximum size of check request queue per repository worker.",
+		newInt64Opts().
+			withDefault(100))
 	boolFlag(flags, "enable-hooks-renderer", "Render hooks.", newBoolOpts().withDefault(true))
 	stringFlag(flags, "worst-hooks-state", "The worst state that can be returned from the hooks renderer.",
 		newStringOpts().
@@ -119,9 +123,15 @@ func init() {
 		newStringOpts().
 			withDefault("kubechecks again"))
 	stringSliceFlag(flags, "additional-apps-namespaces", "Additional namespaces other than the ArgoCDNamespace to monitor for applications.")
-	boolFlag(flags, "repo-shallow-clone", "Enable shallow cloning for all git repos.",
+	boolFlag(flags, "repo-cache-enabled", "Enable persistent repository caching.",
 		newBoolOpts().
-			withDefault(false))
+			withDefault(true))
+	stringFlag(flags, "repo-cache-dir", "Directory for persistent repository cache.",
+		newStringOpts().
+			withDefault("/tmp/kubechecks/repos"))
+	durationFlag(flags, "repo-cache-ttl", "Time-to-live for cached repositories.",
+		newDurationOpts().
+			withDefault(24*time.Hour))
 	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
 		newStringOpts().
 			withDefault(""))

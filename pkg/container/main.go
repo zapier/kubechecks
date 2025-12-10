@@ -25,7 +25,7 @@ type Container struct {
 
 	Config config.ServerConfig
 
-	RepoManager *git.RepoManager
+	RepoManager git.RepoManager
 
 	VcsClient    vcs.Client
 	VcsToArgoMap appdir.VcsToArgoMap
@@ -127,4 +127,11 @@ func buildAppSetsMap(ctx context.Context, argoClient *argo_client.ArgoClient, re
 		result.AddAppSet(&appSet)
 	}
 	return nil
+}
+
+// Shutdown gracefully shuts down the container and its components
+func (c *Container) Shutdown() {
+	if c.RepoManager != nil {
+		c.RepoManager.Shutdown()
+	}
 }

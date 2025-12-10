@@ -55,7 +55,7 @@ type CheckEvent struct {
 }
 
 type repoManager interface {
-	Clone(ctx context.Context, cloneURL, branchName string, shallow bool) (*git.Repo, error)
+	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 }
 
 func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
@@ -196,7 +196,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 		return repo, nil
 	}
 
-	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName, ce.ctr.Config.RepoShallowClone)
+	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to clone repo")
 	}
@@ -251,6 +251,9 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
+
+	// Cleanup temp branches when done
+	defer ce.cleanupTempBranches(ctx)
 
 	// Clone the repo's BaseRef (main, etc.) locally into the temp dir we just made
 	repo, err := ce.getRepo(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
@@ -412,4 +415,51 @@ func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 	ce.logger.Info().Msgf("Creating note")
 
 	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\n:hourglass: kubechecks running...", ce.ctr.Config.Identifier))
+}
+
+// cleanupTempBranches cleans up all temporary branches created during processing
+func (ce *CheckEvent) cleanupTempBranches(ctx context.Context) {
+	ctx, span := tracer.Start(ctx, "cleanupTempBranches")
+	defer span.End()
+
+	ce.logger.Debug().Msg("cleaning up temporary branches")
+
+	// Check if RepoManager supports persistent repos
+	persistentRM, ok := ce.repoManager.(*git.PersistentRepoManager)
+	if !ok {
+		// Ephemeral repos are cleaned up automatically
+		return
+	}
+
+	// Cleanup all cloned repos
+	ce.repoLock.Lock()
+	defer ce.repoLock.Unlock()
+
+	// Deduplicate repos by temp branch name to avoid cleaning up the same branch multiple times
+	// (clonedRepos map can have multiple keys pointing to the same *git.Repo object)
+	cleanedBranches := make(map[string]bool)
+
+	for _, repo := range ce.clonedRepos {
+		if repo == nil || repo.TempBranch == "" {
+			continue
+		}
+
+		// Skip if we've already cleaned this temp branch
+		branchKey := fmt.Sprintf("%s:%s", repo.CloneURL, repo.TempBranch)
+		if cleanedBranches[branchKey] {
+			continue
+		}
+
+		if err := persistentRM.CleanupTempBranchForRepo(ctx, repo); err != nil {
+			ce.logger.Warn().
+				Err(err).
+				Str("repo", repo.CloneURL).
+				Str("temp_branch", repo.TempBranch).
+				Msg("failed to cleanup temp branch")
+		} else {
+			cleanedBranches[branchKey] = true
+		}
+	}
+
+	ce.logger.Debug().Msg("finished cleaning up temporary branches")
 }
