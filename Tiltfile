@@ -174,18 +174,12 @@ tool_versions = parse_tool_versions(".tool-versions")
 
 # get the git commit ref
 git_commit = local_output('git rev-parse --short HEAD')
+git_tag = local_output('git describe --tags --always --dirty 2>/dev/null || echo "dev"')
 
+# Docker Buildx build via Makefile (works around Tilt v0.33.6 docker_build issues)
 custom_build(
     'kubechecks',
-    'earthly --output +docker-debug --IMAGE_NAME=$EXPECTED_REF --CHART_RELEASER_VERSION=%s --GOLANG_VERSION=%s --GOLANGCI_LINT_VERSION=%s --HELM_VERSION=%s --KUBECONFORM_VERSION=%s --KUSTOMIZE_VERSION=%s --GIT_COMMIT=%s' % (
-        tool_versions.get('helm-cr'),
-        tool_versions.get('golang'),
-        tool_versions.get('golangci-lint'),
-        tool_versions.get('helm'),
-        tool_versions.get('kubeconform'),
-        tool_versions.get('kustomize'),
-        git_commit,
-    ),
+    'make build-debug IMAGE_TAG=$EXPECTED_TAG',
     deps=[
         'cmd',
         'pkg',
@@ -193,9 +187,9 @@ custom_build(
         'main.go',
         'go.mod',
         'go.sum',
-        'Earthfile',
+        'Dockerfile',
     ],
-    ignore=['./dist'],
+    ignore=['./dist', './bin', './plan', './temp'],
     skips_local_docker=True,
 )
 

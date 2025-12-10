@@ -3,24 +3,37 @@ on:
   pull_request:
     paths:
       - '.github/workflows/on_pull_request_go.yaml'
-      - 'Earthfile'
+      - 'Makefile'
+      - 'Dockerfile'
       - '*/**.go'
       - '*.go'
       - 'go.mod'
       - 'go.sum'
 jobs:
   ci-golang:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-      - uses: jlumbroso/free-disk-space@main
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: false
 
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v5
 
-      - uses: djeebus/parse-tool-versions@v2.1
+      - name: Parse tool versions
+        uses: wistia/parse-tool-versions@v1.0
 
-      - uses: earthly/actions-setup@v1
-        with: { version: "v${{ env.EARTHLY }}" }
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GOLANG_TOOL_VERSION }}
+          cache: true
 
-      - run: ./earthly.sh +ci-golang
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.6
+
+      - name: Run tests
+        run: make test
