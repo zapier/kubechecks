@@ -43,6 +43,8 @@ type Client interface {
 	// DownloadArchive downloads a repository archive for a specific commit SHA
 	// Returns the archive URL that can be used to download the zip file
 	DownloadArchive(ctx context.Context, pr PullRequest) (string, error)
+	// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
+	GetAuthHeaders() map[string]string
 
 	Username() string
 	CloneUsername() string

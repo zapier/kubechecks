@@ -74,7 +74,7 @@ func NewCache(cfg Config) *Cache {
 
 // GetOrDownload retrieves a cached archive or downloads it if not present
 // Returns the path to the extracted archive directory
-func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA string) (string, error) {
+func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA string, authHeaders map[string]string) (string, error) {
 
 	// Use singleflight to prevent duplicate downloads for the same archive
 	result, err, _ := c.downloadGroup.Do(mergeCommitSHA, func() (interface{}, error) {
@@ -111,7 +111,7 @@ func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA st
 		targetDir := filepath.Join(c.baseDir, mergeCommitSHA)
 
 		// Download and extract
-		extractedPath, err := c.downloader.DownloadAndExtract(ctx, archiveURL, targetDir)
+		extractedPath, err := c.downloader.DownloadAndExtract(ctx, archiveURL, targetDir, authHeaders)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to download and extract archive")
 		}

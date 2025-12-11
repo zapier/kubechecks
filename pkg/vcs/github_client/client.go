@@ -289,6 +289,15 @@ func (c *Client) CloneUsername() string {
 	}
 }
 
+// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
+func (c *Client) GetAuthHeaders() map[string]string {
+	// GitHub accepts: Authorization: Bearer <token> or Authorization: token <token>
+	// Using Bearer format as it's the modern standard
+	return map[string]string{
+		"Authorization": fmt.Sprintf("Bearer %s", c.cfg.VcsToken),
+	}
+}
+
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// GitHub provides the SHA256 of the secret + payload body, so we extract the body and compare
 	// We have to split it like this as the ValidatePayload method consumes the request

@@ -31,14 +31,14 @@ func NewDownloader() *Downloader {
 
 // DownloadAndExtract downloads an archive from URL and extracts it to targetDir
 // Returns the path to the extracted directory
-func (d *Downloader) DownloadAndExtract(ctx context.Context, archiveURL, targetDir string) (string, error) {
+func (d *Downloader) DownloadAndExtract(ctx context.Context, archiveURL, targetDir string, authHeaders map[string]string) (string, error) {
 	log.Debug().
 		Str("url", archiveURL).
 		Str("target_dir", targetDir).
 		Msg("downloading and extracting archive")
 
 	// Download archive
-	zipData, err := d.download(ctx, archiveURL)
+	zipData, err := d.download(ctx, archiveURL, authHeaders)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to download archive")
 	}
@@ -58,7 +58,7 @@ func (d *Downloader) DownloadAndExtract(ctx context.Context, archiveURL, targetD
 }
 
 // download downloads archive from URL
-func (d *Downloader) download(ctx context.Context, archiveURL string) ([]byte, error) {
+func (d *Downloader) download(ctx context.Context, archiveURL string, authHeaders map[string]string) ([]byte, error) {
 	archiveDownloadTotal.Inc()
 	timer := prometheus.NewTimer(archiveDownloadDuration)
 	defer timer.ObserveDuration()
@@ -68,6 +68,11 @@ func (d *Downloader) download(ctx context.Context, archiveURL string) ([]byte, e
 	if err != nil {
 		archiveDownloadFailed.Inc()
 		return nil, errors.Wrap(err, "failed to create request")
+	}
+
+	// Add authentication headers
+	for key, value := range authHeaders {
+		req.Header.Set(key, value)
 	}
 
 	// Execute request
@@ -82,17 +87,42 @@ func (d *Downloader) download(ctx context.Context, archiveURL string) ([]byte, e
 		}
 	}()
 
-	// Check status code
-	if resp.StatusCode != http.StatusOK {
-		archiveDownloadFailed.Inc()
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
+	// Log response details for debugging
+	log.Debug().
+		Str("url", archiveURL).
+		Int("status_code", resp.StatusCode).
+		Str("content_type", resp.Header.Get("Content-Type")).
+		Int64("content_length", resp.ContentLength).
+		Msg("received HTTP response")
 
-	// Read response body
+	// Read response body first (needed for both success and error cases)
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		archiveDownloadFailed.Inc()
 		return nil, errors.Wrap(err, "failed to read response body")
+	}
+
+	// Log actual data received (first 16 bytes as hex for debugging)
+	previewLen := 16
+	if len(data) < previewLen {
+		previewLen = len(data)
+	}
+	log.Debug().
+		Str("url", archiveURL).
+		Int("bytes_read", len(data)).
+		Str("first_bytes_hex", fmt.Sprintf("%x", data[:previewLen])).
+		Msg("read response body")
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		archiveDownloadFailed.Inc()
+		// Include response body snippet in error for debugging (first 500 chars)
+		bodySnippet := string(data)
+		if len(bodySnippet) > 500 {
+			bodySnippet = bodySnippet[:500] + "..."
+		}
+		return nil, fmt.Errorf("HTTP %d %s - URL: %s - Response: %s",
+			resp.StatusCode, http.StatusText(resp.StatusCode), archiveURL, bodySnippet)
 	}
 
 	archiveDownloadSuccess.Inc()

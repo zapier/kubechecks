@@ -54,8 +54,11 @@ func (m *Manager) Clone(ctx context.Context, cloneURL, branchName string, pr vcs
 	// The archive URL contains the commit SHA, extract it or use a placeholder
 	mergeCommitSHA := pr.SHA // Fallback to PR SHA
 
+	// Get authentication headers for archive download
+	authHeaders := m.vcsClient.GetAuthHeaders()
+
 	// Download and extract archive (or get from cache)
-	extractedPath, err := m.cache.GetOrDownload(ctx, archiveURL, mergeCommitSHA)
+	extractedPath, err := m.cache.GetOrDownload(ctx, archiveURL, mergeCommitSHA, authHeaders)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to download and extract archive")
 	}

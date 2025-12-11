@@ -105,6 +105,14 @@ func (c *Client) Username() string      { return c.username }
 func (c *Client) CloneUsername() string { return c.username }
 func (c *Client) GetName() string       { return "gitlab" }
 
+// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
+func (c *Client) GetAuthHeaders() map[string]string {
+	// GitLab uses PRIVATE-TOKEN header for authentication
+	return map[string]string{
+		"PRIVATE-TOKEN": c.cfg.VcsToken,
+	}
+}
+
 // VerifyHook returns an err if the webhook isn't valid
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// If we have a secret, and the secret doesn't match, return an error
