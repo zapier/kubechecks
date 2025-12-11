@@ -27,6 +27,10 @@ configMap:
     KUBECHECKS_ENABLE_CONFTEST: "false"
     KUBECHECKS_REPO_SHALLOW_CLONE: "true"
     KUBECHECKS_IDENTIFIER: "test"
+    # Archive Mode Configuration
+    KUBECHECKS_USE_ARCHIVE_MODE: "true"
+    KUBECHECKS_ARCHIVE_CACHE_DIR: "/tmp/kubechecks/archives"
+    KUBECHECKS_ARCHIVE_CACHE_TTL: "1h"
 
 deployment:
   annotations:

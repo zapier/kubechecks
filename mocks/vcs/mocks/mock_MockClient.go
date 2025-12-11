@@ -217,6 +217,72 @@ func (_c *MockClient_CreateHook_Call) RunAndReturn(run func(ctx context.Context,
 	return _c
 }
 
+// DownloadArchive provides a mock function for the type MockClient
+func (_mock *MockClient) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
+	ret := _mock.Called(ctx, pr)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DownloadArchive")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest) (string, error)); ok {
+		return returnFunc(ctx, pr)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest) string); ok {
+		r0 = returnFunc(ctx, pr)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, vcs.PullRequest) error); ok {
+		r1 = returnFunc(ctx, pr)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockClient_DownloadArchive_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DownloadArchive'
+type MockClient_DownloadArchive_Call struct {
+	*mock.Call
+}
+
+// DownloadArchive is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pr vcs.PullRequest
+func (_e *MockClient_Expecter) DownloadArchive(ctx interface{}, pr interface{}) *MockClient_DownloadArchive_Call {
+	return &MockClient_DownloadArchive_Call{Call: _e.mock.On("DownloadArchive", ctx, pr)}
+}
+
+func (_c *MockClient_DownloadArchive_Call) Run(run func(ctx context.Context, pr vcs.PullRequest)) *MockClient_DownloadArchive_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 vcs.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(vcs.PullRequest)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_DownloadArchive_Call) Return(s string, err error) *MockClient_DownloadArchive_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *MockClient_DownloadArchive_Call) RunAndReturn(run func(ctx context.Context, pr vcs.PullRequest) (string, error)) *MockClient_DownloadArchive_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Email provides a mock function for the type MockClient
 func (_mock *MockClient) Email() string {
 	ret := _mock.Called()
@@ -375,6 +441,74 @@ func (_c *MockClient_GetName_Call) Return(s string) *MockClient_GetName_Call {
 }
 
 func (_c *MockClient_GetName_Call) RunAndReturn(run func() string) *MockClient_GetName_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetPullRequestFiles provides a mock function for the type MockClient
+func (_mock *MockClient) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
+	ret := _mock.Called(ctx, pr)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPullRequestFiles")
+	}
+
+	var r0 []string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest) ([]string, error)); ok {
+		return returnFunc(ctx, pr)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest) []string); ok {
+		r0 = returnFunc(ctx, pr)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, vcs.PullRequest) error); ok {
+		r1 = returnFunc(ctx, pr)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockClient_GetPullRequestFiles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPullRequestFiles'
+type MockClient_GetPullRequestFiles_Call struct {
+	*mock.Call
+}
+
+// GetPullRequestFiles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pr vcs.PullRequest
+func (_e *MockClient_Expecter) GetPullRequestFiles(ctx interface{}, pr interface{}) *MockClient_GetPullRequestFiles_Call {
+	return &MockClient_GetPullRequestFiles_Call{Call: _e.mock.On("GetPullRequestFiles", ctx, pr)}
+}
+
+func (_c *MockClient_GetPullRequestFiles_Call) Run(run func(ctx context.Context, pr vcs.PullRequest)) *MockClient_GetPullRequestFiles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 vcs.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(vcs.PullRequest)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_GetPullRequestFiles_Call) Return(strings []string, err error) *MockClient_GetPullRequestFiles_Call {
+	_c.Call.Return(strings, err)
+	return _c
+}
+
+func (_c *MockClient_GetPullRequestFiles_Call) RunAndReturn(run func(ctx context.Context, pr vcs.PullRequest) ([]string, error)) *MockClient_GetPullRequestFiles_Call {
 	_c.Call.Return(run)
 	return _c
 }

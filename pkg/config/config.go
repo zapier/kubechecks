@@ -83,6 +83,9 @@ type ServerConfig struct {
 	RepoCacheEnabled         bool          `mapstructure:"repo-cache-enabled"`
 	RepoCacheDir             string        `mapstructure:"repo-cache-dir"`
 	RepoCacheTTL             time.Duration `mapstructure:"repo-cache-ttl"`
+	UseArchiveMode           bool          `mapstructure:"use-archive-mode"`
+	ArchiveCacheDir          string        `mapstructure:"archive-cache-dir"`
+	ArchiveCacheTTL          time.Duration `mapstructure:"archive-cache-ttl"`
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`

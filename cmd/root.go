@@ -132,6 +132,15 @@ func init() {
 	durationFlag(flags, "repo-cache-ttl", "Time-to-live for cached repositories.",
 		newDurationOpts().
 			withDefault(24*time.Hour))
+	boolFlag(flags, "use-archive-mode", "Use VCS archive downloads instead of git clone/merge operations.",
+		newBoolOpts().
+			withDefault(false))
+	stringFlag(flags, "archive-cache-dir", "Directory for archive cache (when use-archive-mode is enabled).",
+		newStringOpts().
+			withDefault("/tmp/kubechecks/archives"))
+	durationFlag(flags, "archive-cache-ttl", "Time-to-live for cached archives.",
+		newDurationOpts().
+			withDefault(1*time.Hour))
 	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
 		newStringOpts().
 			withDefault(""))
