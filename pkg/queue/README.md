@@ -348,9 +348,140 @@ If queues consistently fill up:
 - Check: `kubechecks_queue_repo_worker_requests_failed_total`
 - Look for panic messages in logs
 
+## Archive Mode
+
+Starting with the archive mode feature, kubechecks can use VCS API archive downloads instead of git clone/merge operations. This significantly improves performance and reduces disk I/O.
+
+### How Archive Mode Works
+
+When archive mode is enabled (`--archive-mode=true`):
+
+1. **PR arrives** → Queue system enqueues request (same as before)
+2. **Worker picks up request** → Uses `pkg/archive` instead of `pkg/git`
+3. **Archive download**:
+   - **GitHub**: Downloads merge commit SHA archive via GitHub API
+   - **GitLab**: Downloads preview merge via `refs/merge-requests/<iid>/merge` ref
+4. **Cache hit optimization**: Archives are cached by merge commit SHA
+5. **Processing**: Checks run against extracted archive (same as git checkout)
+
+### Archive Mode vs Git Mode
+
+| Aspect | Git Mode (Legacy) | Archive Mode (New) |
+|--------|-------------------|-------------------|
+| **Operation** | `git clone` + `git merge` | HTTP download + extract |
+| **Speed** | ~10-30s for clone | ~2-5s for download |
+| **Disk I/O** | High (full .git dir) | Low (no .git dir) |
+| **Cache Key** | Clone URL + Branch | Merge commit SHA |
+| **Conflicts** | Detected via git merge | Detected via VCS API |
+| **Changed Files** | `git diff` | VCS API (PR files endpoint) |
+| **Network** | Git protocol | HTTPS REST API |
+| **Auth** | Git credentials | VCS API token |
+
+### Configuration
+
+```bash
+# Enable archive mode
+--archive-mode=true
+
+# Archive cache directory
+--archive-cache-dir=/tmp/kubechecks/archives
+
+# Archive cache TTL
+--archive-cache-ttl=1h
+```
+
+Environment variables:
+```bash
+KUBECHECKS_ARCHIVE_MODE=true
+KUBECHECKS_ARCHIVE_CACHE_DIR=/tmp/kubechecks/archives
+KUBECHECKS_ARCHIVE_CACHE_TTL=1h
+```
+
+### Archive Cache Behavior
+
+Archives are cached by merge commit SHA (globally unique):
+- **Cache hit**: Reuse extracted archive (instant)
+- **Cache miss**: Download and extract (2-5s)
+- **TTL-based cleanup**: Removes stale archives every 15 minutes
+- **Reference counting**: Archives in use are never cleaned up
+
+### VCS-Specific Implementation
+
+#### GitHub
+- **Archive URL**: `https://api.github.com/repos/{owner}/{repo}/zipball/{sha}`
+- **Auth Header**: `Authorization: Bearer <token>`
+- **Merge SHA**: Uses GitHub's `merge_commit_sha` from PR API
+- **Changed Files**: Uses `GET /repos/{owner}/{repo}/pulls/{number}/files`
+
+#### GitLab
+- **Archive URL**: `https://gitlab.com/api/v4/projects/{project_encoded}/repository/archive.zip?sha=refs/merge-requests/{iid}/merge`
+- **Auth Header**: `PRIVATE-TOKEN: <token>`
+- **Merge Ref**: Uses `refs/merge-requests/<iid>/merge` (preview merge state)
+- **Changed Files**: Uses `GET /projects/{id}/merge_requests/{iid}/diffs`
+
+**Note**: GitLab's `merge_commit_sha` is null until MR is actually merged, so we use the special merge ref instead.
+
+### Sequential Processing with Archive Mode
+
+Archive mode maintains the same sequential processing guarantees:
+
+```
+Time 0s: PR #5 arrives → Download archive (3s)
+Time 3s: PR #5 processing starts → Run checks (15s)
+Time 18s: PR #5 completes, PR #6 starts → Download archive (cache hit = 0s)
+Time 18s: PR #6 processing starts → Run checks (12s)
+```
+
+**Benefits of archive mode + queue system**:
+- No git conflicts (archives are immutable snapshots)
+- Faster cache hits (no git fetch needed)
+- Better parallelism (no shared .git directories)
+
+### Fallback Behavior
+
+If archive mode fails (e.g., API rate limit, network issues), kubechecks will:
+1. Log the error with details (HTTP status, response body)
+2. Fail the check (no automatic fallback to git mode)
+3. Post error message to PR
+
+To handle failures, you can:
+- Monitor archive download metrics
+- Increase API rate limits if needed
+- Re-trigger check by commenting `kubechecks replan`
+
+### Metrics
+
+Archive mode adds new metrics:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `kubechecks_archive_cache_hits_total` | Counter | Archive cache hit count |
+| `kubechecks_archive_cache_misses_total` | Counter | Archive cache miss count |
+| `kubechecks_archive_cache_size` | Gauge | Number of cached archives |
+| `kubechecks_archive_cache_size_bytes` | Gauge | Total disk space used by cache |
+| `kubechecks_archive_download_duration_seconds` | Histogram | Time to download archive |
+| `kubechecks_archive_extract_duration_seconds` | Histogram | Time to extract archive |
+
+### Monitoring Archive Mode
+
+```promql
+# Cache hit rate
+rate(kubechecks_archive_cache_hits_total[5m]) /
+(rate(kubechecks_archive_cache_hits_total[5m]) + rate(kubechecks_archive_cache_misses_total[5m]))
+
+# Average download time
+rate(kubechecks_archive_download_duration_seconds_sum[5m]) /
+rate(kubechecks_archive_download_duration_seconds_count[5m])
+
+# Cache disk usage
+kubechecks_archive_cache_size_bytes / (1024 * 1024 * 1024)  # GB
+```
+
 ## Related Packages
 
-- **`pkg/git`**: Repository cache and git operations
+- **`pkg/git`**: Repository cache and git operations (legacy mode)
+- **`pkg/archive`**: Archive download and caching (archive mode)
 - **`pkg/events`**: Check event processing
 - **`pkg/checks`**: Individual check processors (diff, schema, policy, etc.)
 - **`pkg/server`**: Webhook handlers that enqueue requests
+- **`pkg/vcs`**: VCS client abstraction (GitHub, GitLab)
