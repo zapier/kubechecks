@@ -255,8 +255,8 @@ func (rm *PersistentRepoManager) UpdateBaseBranch(ctx context.Context, pr *Persi
 		Str("path", pr.Directory).
 		Msg("updating base branch in cached repository")
 
-	// Checkout the base branch if different
-	if pr.BranchName != baseBranch {
+	// Checkout the base branch if different (and not empty)
+	if baseBranch != "" && pr.BranchName != baseBranch {
 		log.Debug().
 			Str("from", pr.BranchName).
 			Str("to", baseBranch).
