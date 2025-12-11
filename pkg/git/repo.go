@@ -196,6 +196,8 @@ func (r *Repo) Update(ctx context.Context) error {
 
 	repoFetchSuccess.Inc()
 	log.Debug().
+		Caller().
+		Str("url", r.CloneURL).
 		Str("branch", r.BranchName).
 		Msg("updated branch to latest")
 
