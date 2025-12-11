@@ -383,15 +383,21 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	}
 
 	// Construct archive URL
-	// GitLab format: https://gitlab.com/{project_path}/-/archive/{sha}/{project_name}-{sha}.zip
+	// GitLab format: https://gitlab.com/{project_path}/-/archive/{sha}/{project_slug}-{sha}.zip
+	// Extract project slug (last part of path) instead of using display name which may have spaces
+	projectSlug := pr.FullName
+	if idx := strings.LastIndex(pr.FullName, "/"); idx != -1 {
+		projectSlug = pr.FullName[idx+1:]
+	}
+
 	var archiveURL string
 	if c.cfg.VcsBaseUrl != "" {
 		// Self-hosted GitLab
 		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
-		archiveURL = fmt.Sprintf("%s/%s/-/archive/%s/%s-%s.zip", baseURL, pr.FullName, mergeCommitSHA, pr.Name, mergeCommitSHA)
+		archiveURL = fmt.Sprintf("%s/%s/-/archive/%s/%s-%s.zip", baseURL, pr.FullName, mergeCommitSHA, projectSlug, mergeCommitSHA)
 	} else {
 		// GitLab.com
-		archiveURL = fmt.Sprintf("https://gitlab.com/%s/-/archive/%s/%s-%s.zip", pr.FullName, mergeCommitSHA, pr.Name, mergeCommitSHA)
+		archiveURL = fmt.Sprintf("https://gitlab.com/%s/-/archive/%s/%s-%s.zip", pr.FullName, mergeCommitSHA, projectSlug, mergeCommitSHA)
 	}
 
 	log.Debug().
