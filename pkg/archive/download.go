@@ -124,11 +124,7 @@ func (d *Downloader) extract(zipData []byte, targetDir string) (string, error) {
 			log.Warn().Err(removeErr).Str("file", tmpFile.Name()).Msg("failed to remove temp file")
 		}
 	}()
-	defer func() {
-		if closeErr := tmpFile.Close(); closeErr != nil {
-			log.Warn().Err(closeErr).Msg("failed to close temp file")
-		}
-	}()
+	// Note: We explicitly close tmpFile below (before opening zip reader), so no defer close needed
 
 	// Write zip data to temp file
 	if _, err := tmpFile.Write(zipData); err != nil {
