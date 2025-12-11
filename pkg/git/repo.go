@@ -13,6 +13,10 @@ import (
 	"strings"
 	"sync"
 
+	gogit "github.com/go-git/go-git/v5"
+	gogitconfig "github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	gogithttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
@@ -54,6 +58,26 @@ func New(cfg config.ServerConfig, cloneUrl, branchName string) *Repo {
 	}
 }
 
+// getAuth returns authentication options for go-git operations
+// Returns nil for anonymous/public access when no token is configured
+func (r *Repo) getAuth() *gogithttp.BasicAuth {
+	// If no token configured, use anonymous access (for public repos)
+	if r.Config.VcsToken == "" {
+		return nil
+	}
+
+	// Extract username from clone URL if present, otherwise use default
+	username := "git"
+	if parsed, err := url.Parse(r.CloneURL); err == nil && parsed.User != nil {
+		username = parsed.User.Username()
+	}
+
+	return &gogithttp.BasicAuth{
+		Username: username,
+		Password: r.Config.VcsToken,
+	}
+}
+
 func (r *Repo) Clone(ctx context.Context) error {
 	var err error
 
@@ -68,22 +92,29 @@ func (r *Repo) Clone(ctx context.Context) error {
 		Str("temp-dir", r.Directory).
 		Str("clone-url", r.CloneURL).
 		Str("branch", r.BranchName).
-		Msg("cloning git repo")
+		Msg("cloning git repo with go-git")
 
-	//  Attempt to locally clone the repo based on the provided information stored within
 	_, span := tracer.Start(ctx, "CloneRepo")
 	defer span.End()
 
-	args := []string{"clone", r.CloneURL, r.Directory}
-	if r.BranchName != "HEAD" {
-		args = append(args, "--branch", r.BranchName)
+	// Prepare clone options
+	cloneOpts := &gogit.CloneOptions{
+		URL:  r.CloneURL,
+		Auth: r.getAuth(),
 	}
 
-	cmd := r.execGitCommand(args...)
-	out, err := cmd.CombinedOutput()
+	// If branch is specified and not HEAD, checkout that branch after clone
+	// Note: We don't use SingleBranch=true because it doesn't set up refs/remotes/origin/HEAD
+	// which is needed by GetRemoteHead(). For policy repos, having all branches is acceptable.
+	if r.BranchName != "HEAD" && r.BranchName != "" {
+		cloneOpts.ReferenceName = plumbing.NewBranchReferenceName(r.BranchName)
+	}
+
+	// Clone the repository
+	_, err = gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
 	if err != nil {
-		log.Error().Err(err).Msgf("unable to clone repository, %s", out)
-		return err
+		log.Error().Err(err).Msg("unable to clone repository with go-git")
+		return errors.Wrap(err, "failed to clone repository")
 	}
 
 	if log.Trace().Enabled() {
@@ -92,7 +123,7 @@ func (r *Repo) Clone(ctx context.Context) error {
 		}
 	}
 
-	log.Info().Msg("repo has been cloned")
+	log.Info().Msg("repo has been cloned with go-git")
 	return nil
 }
 
@@ -107,32 +138,70 @@ func printFile(s string, d fs.DirEntry, err error) error {
 }
 
 func (r *Repo) GetRemoteHead() (string, error) {
-	cmd := r.execGitCommand("symbolic-ref", "refs/remotes/origin/HEAD", "--short")
-	out, err := cmd.CombinedOutput()
+	repo, err := gogit.PlainOpen(r.Directory)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to determine which branch HEAD points to")
+		return "", errors.Wrap(err, "failed to open repository")
 	}
 
-	branchName := strings.TrimSpace(string(out))
-	branchName = strings.TrimPrefix(branchName, "origin/")
+	// Try to get the symbolic reference for origin/HEAD first
+	ref, err := repo.Reference(plumbing.ReferenceName("refs/remotes/origin/HEAD"), true)
+	if err == nil {
+		// Extract branch name from reference (e.g., refs/remotes/origin/main -> main)
+		branchName := ref.Name().String()
+		branchName = strings.TrimPrefix(branchName, "refs/remotes/origin/")
+		return branchName, nil
+	}
 
-	return branchName, nil
+	// If refs/remotes/origin/HEAD doesn't exist (go-git doesn't create it),
+	// query the remote to find the default branch
+	remote, err := repo.Remote("origin")
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get remote 'origin'")
+	}
+
+	// List remote refs to find HEAD
+	refs, err := remote.List(&gogit.ListOptions{
+		Auth: r.getAuth(),
+	})
+	if err != nil {
+		return "", errors.Wrap(err, "failed to list remote refs")
+	}
+
+	// Find the HEAD ref
+	for _, ref := range refs {
+		if ref.Name() == plumbing.HEAD {
+			// HEAD points to the default branch
+			targetBranch := ref.Target().Short()
+			return targetBranch, nil
+		}
+	}
+
+	return "", errors.New("failed to determine remote HEAD")
 }
 
 func (r *Repo) GetCurrentBranch() (string, error) {
-	cmd := r.execGitCommand("rev-parse", "--abbrev-ref", "HEAD")
-	out, err := cmd.CombinedOutput()
+	repo, err := gogit.PlainOpen(r.Directory)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to open repository")
+	}
+
+	// Get the HEAD reference
+	head, err := repo.Head()
 	if err != nil {
 		return "", errors.Wrap(err, "failed to determine which branch HEAD points to")
 	}
 
-	branchName := strings.TrimSpace(string(out))
+	// Extract branch name from reference (e.g., refs/heads/main -> main)
+	branchName := head.Name().Short()
 
 	return branchName, nil
 }
 
 func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
 	// Merge the last commit into a tmp branch off of the target branch
+	// NOTE: Still using git binary for merge as go-git's merge support is limited
+	// Archive mode doesn't use this method (VCS provides pre-merged state)
+	// This is only used by persistent mode for PR checks
 	_, span := tracer.Start(ctx, "Repo - RepoMergeIntoTarget",
 		trace.WithAttributes(
 			attribute.String("branch_name", r.BranchName),
@@ -178,19 +247,57 @@ func (r *Repo) Update(ctx context.Context) error {
 	timer := prometheus.NewTimer(repoFetchDuration)
 	defer timer.ObserveDuration()
 
-	// Fetch latest changes from remote
-	fetchCmd := r.execGitCommand("fetch", "origin", r.BranchName)
-	if out, err := fetchCmd.CombinedOutput(); err != nil {
+	// Open the repository
+	repo, err := gogit.PlainOpen(r.Directory)
+	if err != nil {
 		repoFetchFailed.Inc()
-		log.Error().Err(err).Msgf("failed to fetch branch %s: %s", r.BranchName, out)
+		return errors.Wrap(err, "failed to open repository")
+	}
+
+	// Fetch latest changes from remote
+	fetchOpts := &gogit.FetchOptions{
+		RemoteName: "origin",
+		Auth:       r.getAuth(),
+	}
+
+	// If branch is specified, fetch only that branch
+	if r.BranchName != "HEAD" && r.BranchName != "" {
+		fetchOpts.RefSpecs = []gogitconfig.RefSpec{
+			gogitconfig.RefSpec(fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", r.BranchName, r.BranchName)),
+		}
+	}
+
+	if err := repo.FetchContext(ctx, fetchOpts); err != nil && err != gogit.NoErrAlreadyUpToDate {
+		repoFetchFailed.Inc()
+		log.Error().Err(err).Msgf("failed to fetch branch %s", r.BranchName)
 		return errors.Wrapf(err, "failed to fetch branch %s", r.BranchName)
 	}
 
-	// Reset to match remote branch (fast-forward or force update)
-	resetCmd := r.execGitCommand("reset", "--hard", fmt.Sprintf("origin/%s", r.BranchName))
-	if out, err := resetCmd.CombinedOutput(); err != nil {
+	// Get the worktree
+	worktree, err := repo.Worktree()
+	if err != nil {
 		repoFetchFailed.Inc()
-		log.Error().Err(err).Msgf("failed to reset to origin/%s: %s", r.BranchName, out)
+		return errors.Wrap(err, "failed to get worktree")
+	}
+
+	// Get the reference to origin/branch
+	remoteBranch := fmt.Sprintf("refs/remotes/origin/%s", r.BranchName)
+	ref, err := repo.Reference(plumbing.ReferenceName(remoteBranch), true)
+	if err != nil {
+		repoFetchFailed.Inc()
+		log.Error().Err(err).Msgf("failed to get reference to %s", remoteBranch)
+		return errors.Wrapf(err, "failed to get reference to %s", remoteBranch)
+	}
+
+	// Reset to match remote branch (hard reset)
+	resetOpts := &gogit.ResetOptions{
+		Commit: ref.Hash(),
+		Mode:   gogit.HardReset,
+	}
+
+	if err := worktree.Reset(resetOpts); err != nil {
+		repoFetchFailed.Inc()
+		log.Error().Err(err).Msgf("failed to reset to origin/%s", r.BranchName)
 		return errors.Wrapf(err, "failed to reset to origin/%s", r.BranchName)
 	}
 
@@ -199,7 +306,7 @@ func (r *Repo) Update(ctx context.Context) error {
 		Caller().
 		Str("url", r.CloneURL).
 		Str("branch", r.BranchName).
-		Msg("updated branch to latest")
+		Msg("updated branch to latest with go-git")
 
 	return nil
 }
@@ -337,13 +444,18 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 
 // GetCurrentCommitSHA returns the current commit SHA
 func (r *Repo) GetCurrentCommitSHA() (string, error) {
-	cmd := r.execGitCommand("rev-parse", "HEAD")
-	out, err := cmd.CombinedOutput()
+	repo, err := gogit.PlainOpen(r.Directory)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to open repository")
+	}
+
+	// Get the HEAD reference
+	head, err := repo.Head()
 	if err != nil {
 		return "", errors.Wrap(err, "failed to get current commit SHA")
 	}
 
-	sha := strings.TrimSpace(string(out))
+	sha := head.Hash().String()
 	// Return first 8 characters for short SHA
 	if len(sha) >= 8 {
 		return sha[:8], nil
