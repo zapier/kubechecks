@@ -327,6 +327,52 @@ func (_c *MockClient_Email_Call) RunAndReturn(run func() string) *MockClient_Ema
 	return _c
 }
 
+// GetAuthHeaders provides a mock function for the type MockClient
+func (_mock *MockClient) GetAuthHeaders() map[string]string {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAuthHeaders")
+	}
+
+	var r0 map[string]string
+	if returnFunc, ok := ret.Get(0).(func() map[string]string); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]string)
+		}
+	}
+	return r0
+}
+
+// MockClient_GetAuthHeaders_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAuthHeaders'
+type MockClient_GetAuthHeaders_Call struct {
+	*mock.Call
+}
+
+// GetAuthHeaders is a helper method to define mock.On call
+func (_e *MockClient_Expecter) GetAuthHeaders() *MockClient_GetAuthHeaders_Call {
+	return &MockClient_GetAuthHeaders_Call{Call: _e.mock.On("GetAuthHeaders")}
+}
+
+func (_c *MockClient_GetAuthHeaders_Call) Run(run func()) *MockClient_GetAuthHeaders_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockClient_GetAuthHeaders_Call) Return(stringToString map[string]string) *MockClient_GetAuthHeaders_Call {
+	_c.Call.Return(stringToString)
+	return _c
+}
+
+func (_c *MockClient_GetAuthHeaders_Call) RunAndReturn(run func() map[string]string) *MockClient_GetAuthHeaders_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetHookByUrl provides a mock function for the type MockClient
 func (_mock *MockClient) GetHookByUrl(ctx context.Context, repoName string, webhookUrl string) (*vcs.WebHookConfig, error) {
 	ret := _mock.Called(ctx, repoName, webhookUrl)
