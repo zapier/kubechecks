@@ -379,41 +379,34 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 		return "", fmt.Errorf("MR cannot be merged (status: %s)", mr.DetailedMergeStatus)
 	}
 
-	// Use merge commit SHA if available, otherwise use the source branch SHA
-	mergeCommitSHA := mr.MergeCommitSHA
-	if mergeCommitSHA == "" {
-		// If merge commit SHA is not available, use the latest commit on source branch
-		mergeCommitSHA = mr.SHA
-		log.Warn().
-			Str("repo", pr.FullName).
-			Int("mr_number", pr.CheckID).
-			Msg("merge_commit_sha not available, using source branch SHA")
-	}
+	// Use GitLab's special ref for preview merges: refs/merge-requests/<iid>/merge
+	// This gives us the merged state without actually merging the MR
+	// Note: merge_commit_sha is null until MR is actually merged, so we can't use it
+	mergeRef := fmt.Sprintf("refs/merge-requests/%d/merge", pr.CheckID)
 
-	// Construct archive URL
-	// GitLab format: https://gitlab.com/{project_path}/-/archive/{sha}/{project_slug}-{sha}.zip
-	// Extract project slug (last part of path) instead of using display name which may have spaces
-	projectSlug := pr.FullName
-	if idx := strings.LastIndex(pr.FullName, "/"); idx != -1 {
-		projectSlug = pr.FullName[idx+1:]
-	}
+	// URL-encode the project path (replace / with %2F)
+	projectPathEncoded := strings.ReplaceAll(pr.FullName, "/", "%2F")
 
+	// Construct archive URL using GitLab API
+	// Format: https://gitlab.com/api/v4/projects/{project_path_encoded}/repository/archive.zip?sha={ref}
 	var archiveURL string
 	if c.cfg.VcsBaseUrl != "" {
 		// Self-hosted GitLab
 		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
-		archiveURL = fmt.Sprintf("%s/%s/-/archive/%s/%s-%s.zip", baseURL, pr.FullName, mergeCommitSHA, projectSlug, mergeCommitSHA)
+		archiveURL = fmt.Sprintf("%s/api/v4/projects/%s/repository/archive.zip?sha=%s",
+			baseURL, projectPathEncoded, mergeRef)
 	} else {
 		// GitLab.com
-		archiveURL = fmt.Sprintf("https://gitlab.com/%s/-/archive/%s/%s-%s.zip", pr.FullName, mergeCommitSHA, projectSlug, mergeCommitSHA)
+		archiveURL = fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/archive.zip?sha=%s",
+			projectPathEncoded, mergeRef)
 	}
 
 	log.Debug().
 		Str("repo", pr.FullName).
 		Int("mr_number", pr.CheckID).
-		Str("merge_commit_sha", mergeCommitSHA).
+		Str("merge_ref", mergeRef).
 		Str("archive_url", archiveURL).
-		Msg("generated archive URL")
+		Msg("generated archive URL using merge ref")
 
 	return archiveURL, nil
 }
