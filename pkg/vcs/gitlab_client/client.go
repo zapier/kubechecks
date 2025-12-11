@@ -315,13 +315,91 @@ func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullR
 }
 
 // GetPullRequestFiles returns the list of files changed in a merge request
-// TODO: Implement GitLab archive support
 func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
-	return nil, errors.New("archive mode not yet implemented for GitLab")
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Msg("fetching MR files from GitLab API")
+
+	// List all diffs for the merge request
+	diffs, _, err := c.c.MergeRequests.ListMergeRequestDiffs(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list MR diffs from GitLab")
+	}
+
+	// Extract file paths from diffs
+	var allFiles []string
+	filesSeen := make(map[string]bool) // Deduplicate files
+
+	for _, diff := range diffs {
+		// Use NewPath for added/modified files, OldPath for deleted files
+		filePath := diff.NewPath
+		if filePath == "" || filePath == "/dev/null" {
+			filePath = diff.OldPath
+		}
+		if filePath != "" && filePath != "/dev/null" && !filesSeen[filePath] {
+			allFiles = append(allFiles, filePath)
+			filesSeen[filePath] = true
+		}
+	}
+
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Int("file_count", len(allFiles)).
+		Msg("fetched MR files from GitLab API")
+
+	return allFiles, nil
 }
 
 // DownloadArchive returns the archive URL for downloading a repository at a specific commit
-// TODO: Implement GitLab archive support
 func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
-	return "", errors.New("archive mode not yet implemented for GitLab")
+	// Get merge request details to find merge commit SHA
+	mr, _, err := c.c.MergeRequests.GetMergeRequest(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get MR details from GitLab")
+	}
+
+	// Check if MR has conflicts
+	if mr.HasConflicts {
+		return "", errors.New("MR has conflicts and cannot be merged")
+	}
+
+	// Check if MR can be merged using DetailedMergeStatus
+	// Possible values: unchecked, checking, can_be_merged, cannot_be_merged, etc.
+	if mr.DetailedMergeStatus != "" && mr.DetailedMergeStatus != "mergeable" && mr.DetailedMergeStatus != "can_be_merged" {
+		return "", fmt.Errorf("MR cannot be merged (status: %s)", mr.DetailedMergeStatus)
+	}
+
+	// Use merge commit SHA if available, otherwise use the source branch SHA
+	mergeCommitSHA := mr.MergeCommitSHA
+	if mergeCommitSHA == "" {
+		// If merge commit SHA is not available, use the latest commit on source branch
+		mergeCommitSHA = mr.SHA
+		log.Warn().
+			Str("repo", pr.FullName).
+			Int("mr_number", pr.CheckID).
+			Msg("merge_commit_sha not available, using source branch SHA")
+	}
+
+	// Construct archive URL
+	// GitLab format: https://gitlab.com/{project_path}/-/archive/{sha}/{project_name}-{sha}.zip
+	var archiveURL string
+	if c.cfg.VcsBaseUrl != "" {
+		// Self-hosted GitLab
+		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
+		archiveURL = fmt.Sprintf("%s/%s/-/archive/%s/%s-%s.zip", baseURL, pr.FullName, mergeCommitSHA, pr.Name, mergeCommitSHA)
+	} else {
+		// GitLab.com
+		archiveURL = fmt.Sprintf("https://gitlab.com/%s/-/archive/%s/%s-%s.zip", pr.FullName, mergeCommitSHA, pr.Name, mergeCommitSHA)
+	}
+
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Str("merge_commit_sha", mergeCommitSHA).
+		Str("archive_url", archiveURL).
+		Msg("generated archive URL")
+
+	return archiveURL, nil
 }
