@@ -111,10 +111,17 @@ func (r *Repo) Clone(ctx context.Context) error {
 	}
 
 	// Clone the repository
-	_, err = gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
+	repo, err := gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to clone repository with go-git")
 		return errors.Wrap(err, "failed to clone repository")
+	}
+
+	// Set up refs/remotes/origin/HEAD symbolic reference
+	// This is needed by GetRemoteHead() and mirrors what git binary does automatically
+	if err := r.setupRemoteHead(repo); err != nil {
+		log.Warn().Err(err).Msg("failed to set up refs/remotes/origin/HEAD, continuing anyway")
+		// Don't fail the clone operation, GetRemoteHead() has fallback logic
 	}
 
 	if log.Trace().Enabled() {
@@ -124,6 +131,52 @@ func (r *Repo) Clone(ctx context.Context) error {
 	}
 
 	log.Info().Msg("repo has been cloned with go-git")
+	return nil
+}
+
+// setupRemoteHead creates the refs/remotes/origin/HEAD symbolic reference
+// that points to the default branch. This mirrors what git binary does automatically.
+func (r *Repo) setupRemoteHead(repo *gogit.Repository) error {
+	// Query the remote to find the default branch
+	remote, err := repo.Remote("origin")
+	if err != nil {
+		return errors.Wrap(err, "failed to get origin remote")
+	}
+
+	refs, err := remote.List(&gogit.ListOptions{
+		Auth: r.getAuth(),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to list remote refs")
+	}
+
+	// Find the HEAD reference
+	var defaultBranch string
+	for _, ref := range refs {
+		if ref.Name() == plumbing.HEAD {
+			defaultBranch = ref.Target().Short()
+			break
+		}
+	}
+
+	if defaultBranch == "" {
+		return errors.New("remote HEAD not found")
+	}
+
+	// Create the symbolic reference refs/remotes/origin/HEAD -> refs/remotes/origin/{defaultBranch}
+	originHeadRef := plumbing.NewSymbolicReference(
+		plumbing.NewRemoteReferenceName("origin", "HEAD"),
+		plumbing.NewRemoteReferenceName("origin", defaultBranch),
+	)
+
+	if err := repo.Storer.SetReference(originHeadRef); err != nil {
+		return errors.Wrap(err, "failed to set refs/remotes/origin/HEAD")
+	}
+
+	log.Debug().
+		Str("default-branch", defaultBranch).
+		Msg("set up refs/remotes/origin/HEAD")
+
 	return nil
 }
 
