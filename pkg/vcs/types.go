@@ -37,6 +37,13 @@ type Client interface {
 	// LoadHook creates an EventRequest from the ID of an actual request
 	LoadHook(ctx context.Context, repoAndId string) (PullRequest, error)
 
+	// GetPullRequestFiles returns the list of files changed in a pull request
+	// Returns slice of file paths relative to repository root
+	GetPullRequestFiles(ctx context.Context, pr PullRequest) ([]string, error)
+	// DownloadArchive downloads a repository archive for a specific commit SHA
+	// Returns the archive URL that can be used to download the zip file
+	DownloadArchive(ctx context.Context, pr PullRequest) (string, error)
+
 	Username() string
 	CloneUsername() string
 	Email() string

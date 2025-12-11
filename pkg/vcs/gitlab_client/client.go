@@ -313,3 +313,15 @@ func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullR
 		Config: c.cfg,
 	}
 }
+
+// GetPullRequestFiles returns the list of files changed in a merge request
+// TODO: Implement GitLab archive support
+func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
+	return nil, errors.New("archive mode not yet implemented for GitLab")
+}
+
+// DownloadArchive returns the archive URL for downloading a repository at a specific commit
+// TODO: Implement GitLab archive support
+func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
+	return "", errors.New("archive mode not yet implemented for GitLab")
+}

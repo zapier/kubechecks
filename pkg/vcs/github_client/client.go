@@ -573,3 +573,90 @@ func unPtr[T interface{ string | int }](ps *T) T {
 	}
 	return *ps
 }
+
+// GetPullRequestFiles returns the list of files changed in a pull request
+func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "GetPullRequestFiles")
+	defer span.End()
+
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("pr_number", pr.CheckID).
+		Msg("fetching PR files from GitHub API")
+
+	// List files changed in the PR
+	opts := &github.ListOptions{PerPage: 100}
+	var allFiles []string
+
+	for {
+		files, resp, err := c.googleClient.PullRequests.ListFiles(ctx, pr.Owner, pr.Name, pr.CheckID, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to list PR files")
+		}
+
+		for _, file := range files {
+			if file.Filename != nil {
+				allFiles = append(allFiles, *file.Filename)
+			}
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("pr_number", pr.CheckID).
+		Int("file_count", len(allFiles)).
+		Msg("fetched PR files from GitHub API")
+
+	return allFiles, nil
+}
+
+// DownloadArchive returns the archive URL for downloading a repository at a specific commit
+func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
+	ctx, span := tracer.Start(ctx, "DownloadArchive")
+	defer span.End()
+
+	// Get PR details to find merge_commit_sha
+	ghPR, _, err := c.googleClient.PullRequests.Get(ctx, pr.Owner, pr.Name, pr.CheckID)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get PR details")
+	}
+
+	// Check if PR is mergeable
+	if ghPR.MergeCommitSHA == nil || *ghPR.MergeCommitSHA == "" {
+		return "", errors.New("PR does not have a merge commit SHA (may have conflicts)")
+	}
+
+	if ghPR.Mergeable != nil && !*ghPR.Mergeable {
+		return "", errors.New("PR is not mergeable (has conflicts)")
+	}
+
+	mergeCommitSHA := *ghPR.MergeCommitSHA
+
+	// Construct archive URL
+	// Format: https://github.com/{owner}/{repo}/archive/{sha}.zip
+	// Or for enterprise: https://{base_url}/{owner}/{repo}/archive/{sha}.zip
+	var archiveURL string
+	if c.cfg.VcsBaseUrl != "" {
+		// GitHub Enterprise
+		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/api/v3")
+		baseURL = strings.TrimSuffix(baseURL, "/")
+		archiveURL = fmt.Sprintf("%s/%s/%s/archive/%s.zip", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
+	} else {
+		// GitHub.com
+		archiveURL = fmt.Sprintf("https://github.com/%s/%s/archive/%s.zip", pr.Owner, pr.Name, mergeCommitSHA)
+	}
+
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("pr_number", pr.CheckID).
+		Str("merge_commit_sha", mergeCommitSHA).
+		Str("archive_url", archiveURL).
+		Msg("generated archive URL")
+
+	return archiveURL, nil
+}
