@@ -5,4 +5,4 @@ ARG TARGETARCH
 
 COPY kubechecks-${TARGETARCH} /usr/local/bin/kubechecks
 
-ENTRYPOINT ["/usr/local/bin/kubechecks" "controller"]
+ENTRYPOINT ["/usr/local/bin/kubechecks"]
