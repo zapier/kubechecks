@@ -12,7 +12,6 @@ import (
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/git"
 	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
@@ -88,15 +87,6 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		client.email = vcs.DefaultVcsEmail
 	}
 
-	cloneURL, err := git.BuildCloneURL(cfg.VcsBaseUrl, client.username, gitlabToken)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to build clone url")
-	}
-
-	if err = git.SetCredentials(ctx, cfg, client.email, client.username, cloneURL); err != nil {
-		return nil, errors.Wrap(err, "failed to set git credentials")
-	}
-
 	return client, nil
 }
 
@@ -104,6 +94,14 @@ func (c *Client) Email() string         { return c.email }
 func (c *Client) Username() string      { return c.username }
 func (c *Client) CloneUsername() string { return c.username }
 func (c *Client) GetName() string       { return "gitlab" }
+
+// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
+func (c *Client) GetAuthHeaders() map[string]string {
+	// GitLab uses PRIVATE-TOKEN header for authentication
+	return map[string]string{
+		"PRIVATE-TOKEN": c.cfg.VcsToken,
+	}
+}
 
 // VerifyHook returns an err if the webhook isn't valid
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
@@ -185,7 +183,7 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 
 	for _, hook := range webhooks {
 		if hook.URL == webhookUrl {
-			events := []string{}
+			var events []string
 			// TODO: translate GL specific event names to VCS agnostic
 			if hook.MergeRequestsEvents {
 				events = append(events, string(gitlab.MergeRequestEventTargetType))
@@ -312,4 +310,93 @@ func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullR
 
 		Config: c.cfg,
 	}
+}
+
+// GetPullRequestFiles returns the list of files changed in a merge request
+func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Msg("fetching MR files from GitLab API")
+
+	// List all diffs for the merge request
+	diffs, _, err := c.c.MergeRequests.ListMergeRequestDiffs(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list MR diffs from GitLab")
+	}
+
+	// Extract file paths from diffs
+	var allFiles []string
+	filesSeen := make(map[string]bool) // Deduplicate files
+
+	for _, diff := range diffs {
+		// Use NewPath for added/modified files, OldPath for deleted files
+		filePath := diff.NewPath
+		if filePath == "" || filePath == "/dev/null" {
+			filePath = diff.OldPath
+		}
+		if filePath != "" && filePath != "/dev/null" && !filesSeen[filePath] {
+			allFiles = append(allFiles, filePath)
+			filesSeen[filePath] = true
+		}
+	}
+
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Int("file_count", len(allFiles)).
+		Msg("fetched MR files from GitLab API")
+
+	return allFiles, nil
+}
+
+// DownloadArchive returns the archive URL for downloading a repository at a specific commit
+func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
+	// Get merge request details to find merge commit SHA
+	mr, _, err := c.c.MergeRequests.GetMergeRequest(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get MR details from GitLab")
+	}
+
+	// Check if MR has conflicts
+	if mr.HasConflicts {
+		return "", errors.New("MR has conflicts and cannot be merged")
+	}
+
+	// Check if MR can be merged using DetailedMergeStatus
+	// Possible values: unchecked, checking, can_be_merged, cannot_be_merged, etc.
+	if mr.DetailedMergeStatus != "" && mr.DetailedMergeStatus != "mergeable" && mr.DetailedMergeStatus != "can_be_merged" {
+		return "", fmt.Errorf("MR cannot be merged (status: %s)", mr.DetailedMergeStatus)
+	}
+
+	// Use GitLab's special ref for preview merges: refs/merge-requests/<iid>/merge
+	// This gives us the merged state without actually merging the MR
+	// Note: merge_commit_sha is null until MR is actually merged, so we can't use it
+	mergeRef := fmt.Sprintf("refs/merge-requests/%d/merge", pr.CheckID)
+
+	// URL-encode the project path (replace / with %2F)
+	projectPathEncoded := strings.ReplaceAll(pr.FullName, "/", "%2F")
+
+	// Construct archive URL using GitLab API
+	// Format: https://gitlab.com/api/v4/projects/{project_path_encoded}/repository/archive.zip?sha={ref}
+	var archiveURL string
+	if c.cfg.VcsBaseUrl != "" {
+		// Self-hosted GitLab
+		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
+		archiveURL = fmt.Sprintf("%s/api/v4/projects/%s/repository/archive.zip?sha=%s",
+			baseURL, projectPathEncoded, mergeRef)
+	} else {
+		// GitLab.com
+		archiveURL = fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/archive.zip?sha=%s",
+			projectPathEncoded, mergeRef)
+	}
+
+	log.Debug().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Str("merge_ref", mergeRef).
+		Str("archive_url", archiveURL).
+		Msg("generated archive URL using merge ref")
+
+	return archiveURL, nil
 }
