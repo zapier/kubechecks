@@ -44,7 +44,7 @@ func NewServer(ctr container.Container, processors []checks.ProcessorEntry) *Ser
 
 	log.Info().
 		Int("repo_worker_queue_size", queueSize).
-		Msg("initialized repo worker ueue manager")
+		Msg("initialized repo worker queue manager")
 
 	return &Server{
 		ctr:          ctr,

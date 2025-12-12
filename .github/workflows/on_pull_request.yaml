@@ -28,7 +28,35 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
 
+      - name: Prepare output dirs
+        run: |
+          mkdir -p out/linux-amd64
+          mkdir -p out/linux-arm64
+
+      - name: Build linux/amd64
+        run: |
+          time env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build \
+              -trimpath \
+              -ldflags="-s -w \
+                -X github.com/zapier/kubechecks/pkg.GitCommit=${GIT_COMMIT} \
+                -X github.com/zapier/kubechecks/pkg.GitTag=${GIT_TAG}" \
+              -o out/linux-amd64/kubechecks 
+
+      - name: Build linux/arm64
+        run: |
+          time env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+            go build \
+              -trimpath \
+              -ldflags="-s -w \
+                -X github.com/zapier/kubechecks/pkg.GitCommit=${GIT_COMMIT} \
+                -X github.com/zapier/kubechecks/pkg.GitTag=${GIT_TAG}" \
+              -o out/linux-arm64/kubechecks
       - uses: ./.github/actions/build-image
         id: build-image
         with:
