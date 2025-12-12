@@ -353,23 +353,7 @@ func (r *Repo) Wipe() {
 	pkg.WipeDir(r.Directory)
 }
 
-func (r *Repo) censorVcsToken(args []string) []string {
-	return censorVcsToken(r.Config, args)
-}
-
-func censorVcsToken(cfg config.ServerConfig, args []string) []string {
-	vcsToken := cfg.VcsToken
-	if len(vcsToken) == 0 {
-		return args
-	}
-
-	var argsToLog []string
-	for _, arg := range args {
-		argsToLog = append(argsToLog, strings.Replace(arg, vcsToken, "********", 10))
-	}
-	return argsToLog
-}
-
+// BuildCloneURL constructs a clone URL with embedded credentials
 func BuildCloneURL(baseURL, user, password string) (string, error) {
 	var hostname, scheme string
 
