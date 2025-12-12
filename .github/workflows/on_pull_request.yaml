@@ -101,7 +101,10 @@ jobs:
         with:
           name: kubechecks-arm64
           path: bin-arm64
-
+      - name: Fix permissions
+        run: |
+          chmod +x bin-amd64/kubechecks
+          chmod +x bin-arm64/kubechecks
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
