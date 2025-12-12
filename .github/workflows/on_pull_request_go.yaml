@@ -13,11 +13,6 @@ jobs:
   ci-golang:
     runs-on: ubuntu-24.04
     steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-
       - name: Checkout code
         uses: actions/checkout@v5
 
