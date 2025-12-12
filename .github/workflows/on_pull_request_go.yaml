@@ -24,11 +24,6 @@ jobs:
       - name: Parse tool versions
         uses: wistia/parse-tool-versions@v1.0
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GOLANG_TOOL_VERSION }}
-          cache: true
       - name: Cache Go modules + build cache
         uses: actions/cache@v4
         with:
