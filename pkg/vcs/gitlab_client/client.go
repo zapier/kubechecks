@@ -12,7 +12,6 @@ import (
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/git"
 	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
@@ -86,15 +85,6 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 	}
 	if client.email == "" {
 		client.email = vcs.DefaultVcsEmail
-	}
-
-	cloneURL, err := git.BuildCloneURL(cfg.VcsBaseUrl, client.username, gitlabToken)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to build clone url")
-	}
-
-	if err = git.SetCredentials(ctx, cfg, client.email, client.username, cloneURL); err != nil {
-		return nil, errors.Wrap(err, "failed to set git credentials")
 	}
 
 	return client, nil
@@ -193,7 +183,7 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 
 	for _, hook := range webhooks {
 		if hook.URL == webhookUrl {
-			events := []string{}
+			var events []string
 			// TODO: translate GL specific event names to VCS agnostic
 			if hook.MergeRequestsEvents {
 				events = append(events, string(gitlab.MergeRequestEventTargetType))

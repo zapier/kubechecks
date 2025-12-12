@@ -2,23 +2,19 @@ package github_client
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/cenkalti/backoff/v4"
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v74/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
-	"github.com/zapier/kubechecks/pkg/git"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/oauth2"
 
@@ -107,146 +103,7 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		client.email = vcs.DefaultVcsEmail
 	}
 
-	var vcsUsername, vcsToken string
-	if cfg.IsGithubApp() {
-		vcsUsername = appUsername
-		response, err := getGithubAppToken(ctx, cfg)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to get app token")
-		}
-
-		vcsToken = response.Token
-		// this is so that we can censor the token in the logs
-		cfg.VcsToken = vcsToken
-
-		expirationDuration := time.Until(response.ExpiresAt)
-		interval := expirationDuration / 2
-
-		log.Info().
-			Str("interval", interval.String()).
-			Msg("beginning refresh token loop")
-		go client.refreshToken(ctx, cfg, interval)
-	} else {
-		vcsUsername = client.username
-		vcsToken = cfg.VcsToken
-	}
-
-	if err = client.setCredentials(ctx, cfg, vcsUsername, vcsToken); err != nil {
-		return nil, errors.Wrap(err, "failed to set credentials")
-	}
-
 	return client, nil
-}
-
-func (c *Client) setCredentials(ctx context.Context, cfg config.ServerConfig, vcsUsername, vcsToken string) error {
-	_, span := tracer.Start(ctx, "github_client.setCredentials")
-	defer span.End()
-
-	cloneURL, err := git.BuildCloneURL(cfg.VcsBaseUrl, vcsUsername, vcsToken)
-	if err != nil {
-		return errors.Wrap(err, "failed to build clone url")
-	}
-
-	if err = git.SetCredentials(ctx, cfg, c.email, c.username, cloneURL); err != nil {
-		return errors.Wrap(err, "failed to set git credentials")
-	}
-
-	return nil
-}
-
-const appUsername = "x-access-token"
-
-func (c *Client) refreshToken(ctx context.Context, cfg config.ServerConfig, interval time.Duration) {
-	t := time.NewTicker(interval)
-	defer t.Stop()
-
-	bo := backoff.NewConstantBackOff(time.Minute)
-
-	logger := log.With().Str("process", "refresh-token").Logger()
-
-	logger.Info().
-		Str("interval", interval.String()).
-		Msg("refreshing github app token in a loop")
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Warn().Msg("context canceled")
-			return
-		case <-t.C:
-			logger.Info().Msg("refreshing github app token")
-			if err := backoff.Retry(func() error {
-				response, err := getGithubAppToken(ctx, cfg)
-				if err != nil {
-					logger.Warn().Err(err).Msg("failed to refresh github app token")
-					return errors.Wrap(err, "failed to refresh github app token")
-				}
-
-				// this is so that we can censor the token in the logs
-				cfg.VcsToken = response.Token
-				if err = c.setCredentials(ctx, cfg, appUsername, response.Token); err != nil {
-					logger.Warn().Err(err).Msg("failed to set git credentials")
-					return errors.Wrap(err, "failed to set git credentials")
-				}
-
-				return nil
-			}, bo); err != nil {
-				log.Fatal().Err(err).Msg("failed to renew app token")
-			}
-		}
-	}
-}
-
-var ErrInvalidStatusCode = errors.New("invalid http status code")
-
-func getGithubAppToken(ctx context.Context, cfg config.ServerConfig) (accessTokenResponse, error) {
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	stringAppId := fmt.Sprintf("%d", cfg.GithubAppID)
-	jwt, err := pkg.CreateJWT(cfg.GithubPrivateKey, stringAppId)
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to create jwt")
-	}
-	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", cfg.GithubInstallationID)
-
-	req, err := http.NewRequest(http.MethodPost, url, nil)
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to create request")
-	}
-	req.Header.Add("Accept", "application/vnd.github+json")
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", jwt))
-	req.Header.Add("X-GitHub-Api-Version", "2022-11-28")
-	req = req.WithContext(ctx)
-
-	resp, err := httpClient.Do(req) // nolint:bodyclose // linter can't figure out that we are doing this
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to get response")
-	}
-	defer pkg.WithErrorLogging(resp.Body.Close, "failed to close response body")
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to read response")
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		return accessTokenResponse{}, errors.Wrapf(ErrInvalidStatusCode, "received a %d: %s", resp.StatusCode, string(body))
-	}
-
-	var result accessTokenResponse
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to unmarshal response")
-	}
-
-	return result, nil
-}
-
-type accessTokenResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, error) {

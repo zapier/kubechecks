@@ -262,7 +262,7 @@ func (rm *PersistentRepoManager) UpdateBaseBranch(ctx context.Context, pr *Persi
 			Str("to", baseBranch).
 			Msg("checking out different branch")
 
-		if err := pr.Repo.execGitCommand("checkout", baseBranch).Run(); err != nil {
+		if err := pr.Repo.Checkout(baseBranch); err != nil {
 			return errors.Wrapf(err, "failed to checkout branch %s", baseBranch)
 		}
 		pr.BranchName = baseBranch

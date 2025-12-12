@@ -230,22 +230,6 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	return repo, nil
 }
 
-func (ce *CheckEvent) mergeIntoTarget(ctx context.Context, repo *git.Repo, branch string) error {
-	if err := repo.MergeIntoTarget(ctx, fmt.Sprintf("origin/%s", branch)); err != nil {
-		return errors.Wrap(err, "failed to merge into target")
-	}
-
-	parsed, err := canonicalize(repo.CloneURL)
-	if err != nil {
-		return errors.Wrap(err, "failed to canonicalize url")
-	}
-
-	reposKey := generateRepoKey(parsed, branch)
-	ce.clonedRepos[reposKey] = repo
-
-	return nil
-}
-
 func (ce *CheckEvent) Process(ctx context.Context) error {
 	start := time.Now()
 
@@ -255,80 +239,55 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	var repo *git.Repo
 	var err error
 
-	// Check if archive mode is enabled
-	if ce.ctr.Config.UseArchiveMode && ce.ctr.ArchiveManager != nil {
-		// Archive mode: Download merge commit archive from VCS
-		ce.logger.Info().Msg("using archive mode for PR processing")
+	// Archive mode: Download merge commit archive from VCS
+	ce.logger.Info().Msg("using archive mode for PR processing")
 
-		// Validate PR can be processed in archive mode (check for conflicts)
-		if err = ce.ctr.ArchiveManager.ValidatePullRequest(ctx, ce.pullRequest); err != nil {
-			ce.logger.Error().Err(err).Msg("PR has conflicts, cannot use archive mode")
-			if postErr := ce.ctr.ArchiveManager.PostConflictMessage(ctx, ce.pullRequest); postErr != nil {
-				ce.logger.Error().Err(postErr).Msg("failed to post conflict message")
-			}
-			return errors.Wrap(err, "PR has conflicts")
+	// Validate PR can be processed in archive mode (check for conflicts)
+	if err = ce.ctr.ArchiveManager.ValidatePullRequest(ctx, ce.pullRequest); err != nil {
+		ce.logger.Error().Err(err).Msg("PR has conflicts, cannot use archive mode")
+		if postErr := ce.ctr.ArchiveManager.PostConflictMessage(ctx, ce.pullRequest); postErr != nil {
+			ce.logger.Error().Err(postErr).Msg("failed to post conflict message")
 		}
-
-		// Download and extract archive (contains merged state)
-		repo, err = ce.ctr.ArchiveManager.Clone(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef, ce.pullRequest)
-		if err != nil {
-			return errors.Wrap(err, "failed to download archive")
-		}
-
-		// Store the archived repo in clonedRepos map so getRepo() can find it
-		// This prevents workers from re-cloning with git
-		parsed, err := canonicalize(ce.pullRequest.CloneURL)
-		if err != nil {
-			return errors.Wrap(err, "failed to canonicalize clone URL")
-		}
-		ce.repoLock.Lock()
-		// Store under the HeadRef key (the branch being checked)
-		ce.clonedRepos[generateRepoKey(parsed, ce.pullRequest.HeadRef)] = repo
-		// Store under BaseRef if different
-		if ce.pullRequest.HeadRef != ce.pullRequest.BaseRef {
-			ce.clonedRepos[generateRepoKey(parsed, ce.pullRequest.BaseRef)] = repo
-		}
-		// IMPORTANT: Also store under "HEAD" key because ArgoCD often requests "HEAD"
-		// which means "the default branch" (usually same as BaseRef)
-		ce.clonedRepos[generateRepoKey(parsed, "HEAD")] = repo
-		ce.logger.Debug().
-			Str("head_ref", ce.pullRequest.HeadRef).
-			Str("base_ref", ce.pullRequest.BaseRef).
-			Msg("archived repo stored in clonedRepos under multiple keys (HeadRef, BaseRef, HEAD)")
-		ce.repoLock.Unlock()
-
-		// Get changed files from VCS API (replaces git diff)
-		ce.fileList, err = ce.ctr.ArchiveManager.GetChangedFiles(ctx, ce.pullRequest)
-		if err != nil {
-			return errors.Wrap(err, "failed to get changed files from VCS API")
-		}
-		ce.logger.Info().
-			Int("file_count", len(ce.fileList)).
-			Str("files", strings.Join(ce.fileList, ", ")).
-			Msg("Changed files retrieved from VCS API (archive mode)")
-	} else {
-		// Traditional git mode: Clone + Merge + Diff
-		ce.logger.Info().Msg("using git mode for PR processing")
-
-		// Cleanup temp branches when done
-		defer ce.cleanupTempBranches(ctx)
-
-		// Clone the repo's BaseRef (main, etc.) locally into the temp dir we just made
-		repo, err = ce.getRepo(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
-		if err != nil {
-			return errors.Wrap(err, "failed to clone repo")
-		}
-
-		// Merge the most recent changes into the branch we just cloned
-		if err = ce.mergeIntoTarget(ctx, repo, ce.pullRequest.HeadRef); err != nil {
-			return errors.Wrap(err, "failed to merge into target")
-		}
-
-		// Get the diff between the two branches, storing them within the CheckEvent (also returns but discarded here)
-		if err = ce.UpdateListOfChangedFiles(ctx, repo); err != nil {
-			return errors.Wrap(err, "failed to get list of changed files")
-		}
+		return errors.Wrap(err, "PR has conflicts")
 	}
+
+	// Download and extract archive (contains merged state)
+	repo, err = ce.ctr.ArchiveManager.Clone(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef, ce.pullRequest)
+	if err != nil {
+		return errors.Wrap(err, "failed to download archive")
+	}
+
+	// Store the archived repo in clonedRepos map so getRepo() can find it
+	// This prevents workers from re-cloning with git
+	parsed, err := canonicalize(ce.pullRequest.CloneURL)
+	if err != nil {
+		return errors.Wrap(err, "failed to canonicalize clone URL")
+	}
+	ce.repoLock.Lock()
+	// Store under the HeadRef key (the branch being checked)
+	ce.clonedRepos[generateRepoKey(parsed, ce.pullRequest.HeadRef)] = repo
+	// Store under BaseRef if different
+	if ce.pullRequest.HeadRef != ce.pullRequest.BaseRef {
+		ce.clonedRepos[generateRepoKey(parsed, ce.pullRequest.BaseRef)] = repo
+	}
+	// IMPORTANT: Also store under "HEAD" key because ArgoCD often requests "HEAD"
+	// which means "the default branch" (usually same as BaseRef)
+	ce.clonedRepos[generateRepoKey(parsed, "HEAD")] = repo
+	ce.logger.Debug().
+		Str("head_ref", ce.pullRequest.HeadRef).
+		Str("base_ref", ce.pullRequest.BaseRef).
+		Msg("archived repo stored in clonedRepos under multiple keys (HeadRef, BaseRef, HEAD)")
+	ce.repoLock.Unlock()
+
+	// Get changed files from VCS API (replaces git diff)
+	ce.fileList, err = ce.ctr.ArchiveManager.GetChangedFiles(ctx, ce.pullRequest)
+	if err != nil {
+		return errors.Wrap(err, "failed to get changed files from VCS API")
+	}
+	ce.logger.Info().
+		Int("file_count", len(ce.fileList)).
+		Str("files", strings.Join(ce.fileList, ", ")).
+		Msg("Changed files retrieved from VCS API (archive mode)")
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
 	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef, generateMatcher); err != nil {

@@ -1,17 +1,14 @@
 package git
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	gogit "github.com/go-git/go-git/v5"
 	gogitconfig "github.com/go-git/go-git/v5/config"
@@ -20,12 +17,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
-	"github.com/zapier/kubechecks/telemetry"
 )
 
 // HTTPClient interface for HTTP operations to enable testing
@@ -250,46 +243,38 @@ func (r *Repo) GetCurrentBranch() (string, error) {
 	return branchName, nil
 }
 
-func (r *Repo) MergeIntoTarget(ctx context.Context, ref string) error {
-	// Merge the last commit into a tmp branch off of the target branch
-	// NOTE: Still using git binary for merge as go-git's merge support is limited
-	// Archive mode doesn't use this method (VCS provides pre-merged state)
-	// This is only used by persistent mode for PR checks
-	_, span := tracer.Start(ctx, "Repo - RepoMergeIntoTarget",
-		trace.WithAttributes(
-			attribute.String("branch_name", r.BranchName),
-			attribute.String("clone_url", r.CloneURL),
-			attribute.String("directory", r.Directory),
-			attribute.String("sha", ref),
-			attribute.String("temp_branch", r.TempBranch),
-		))
-	defer span.End()
+// Checkout checks out a branch using go-git
+func (r *Repo) Checkout(branchName string) error {
+	log.Debug().
+		Str("branch", branchName).
+		Str("path", r.Directory).
+		Msg("checking out branch with go-git")
 
-	// If we have a temp branch, ensure we're on it before merging
-	// This is critical for concurrent PR checks using the same persistent repo
-	if r.TempBranch != "" {
-		log.Debug().
-			Str("temp_branch", r.TempBranch).
-			Str("ref", ref).
-			Msg("checking out temp branch before merge")
-
-		cmd := r.execGitCommand("checkout", r.TempBranch)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			telemetry.SetError(span, err, "checkout temp branch")
-			log.Error().Err(err).Msgf("unable to checkout temp branch %s: %s", r.TempBranch, out)
-			return errors.Wrapf(err, "failed to checkout temp branch %s", r.TempBranch)
-		}
-	}
-
-	mergeCommand := []string{"merge", ref}
-	cmd := r.execGitCommand(mergeCommand...)
-	out, err := cmd.CombinedOutput()
+	// Open the repository
+	repo, err := gogit.PlainOpen(r.Directory)
 	if err != nil {
-		telemetry.SetError(span, err, "merge commit into branch")
-		log.Error().Err(err).Msgf("unable to merge %s, %s", ref, out)
-		return err
+		return errors.Wrap(err, "failed to open repository")
 	}
+
+	// Get the worktree
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return errors.Wrap(err, "failed to get worktree")
+	}
+
+	// Checkout the branch
+	checkoutOpts := &gogit.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(branchName),
+		Force:  false, // Don't force, preserve local changes if any
+	}
+
+	if err := worktree.Checkout(checkoutOpts); err != nil {
+		return errors.Wrapf(err, "failed to checkout branch %s", branchName)
+	}
+
+	log.Debug().
+		Str("branch", branchName).
+		Msg("successfully checked out branch")
 
 	return nil
 }
@@ -364,31 +349,12 @@ func (r *Repo) Update(ctx context.Context) error {
 	return nil
 }
 
-func (r *Repo) execGitCommand(args ...string) *exec.Cmd {
-	argsToLog := r.censorVcsToken(args)
-
-	log.Debug().Strs("args", argsToLog).Msg("building command")
-	cmd := exec.Command("git", args...)
-	if r.Directory != "" {
-		cmd.Dir = r.Directory
-	}
-	return cmd
-}
-
 func (r *Repo) Wipe() {
 	pkg.WipeDir(r.Directory)
 }
 
 func (r *Repo) censorVcsToken(args []string) []string {
 	return censorVcsToken(r.Config, args)
-}
-
-func execCommand(cfg config.ServerConfig, name string, args ...string) *exec.Cmd {
-	argsToLog := censorVcsToken(cfg, args)
-
-	log.Debug().Strs("args", argsToLog).Msg("building command")
-	cmd := exec.Command(name, args...)
-	return cmd
 }
 
 func censorVcsToken(cfg config.ServerConfig, args []string) []string {
@@ -402,50 +368,6 @@ func censorVcsToken(cfg config.ServerConfig, args []string) []string {
 		argsToLog = append(argsToLog, strings.Replace(arg, vcsToken, "********", 10))
 	}
 	return argsToLog
-}
-
-// SetCredentials ensures Git auth is set up for cloning
-func SetCredentials(ctx context.Context, cfg config.ServerConfig, email, username, cloneUrl string) error {
-	_, span := tracer.Start(ctx, "SetCredentials")
-	defer span.End()
-
-	cmd := execCommand(cfg, "git", "config", "--global", "user.email", email)
-	err := cmd.Run()
-	if err != nil {
-		return errors.Wrap(err, "failed to set git email address")
-	}
-
-	cmd = execCommand(cfg, "git", "config", "--global", "user.name", username)
-	err = cmd.Run()
-	if err != nil {
-		return errors.Wrap(err, "failed to set git user name")
-	}
-
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		return errors.Wrap(err, "unable to get home directory")
-	}
-	outfile, err := os.Create(fmt.Sprintf("%s/.git-credentials", homedir))
-	if err != nil {
-		return errors.Wrap(err, "unable to create credentials file")
-	}
-	defer pkg.WithErrorLogging(outfile.Close, "failed to close output file")
-
-	cmd = execCommand(cfg, "echo", cloneUrl)
-	cmd.Stdout = outfile
-	err = cmd.Run()
-	if err != nil {
-		return errors.Wrap(err, "unable to set git credentials")
-	}
-
-	cmd = execCommand(cfg, "git", "config", "--global", "credential.helper", "store")
-	err = cmd.Run()
-	if err != nil {
-		return errors.Wrap(err, "unable to set git credential usage")
-	}
-	log.Debug().Msg("git credentials set")
-
-	return nil
 }
 
 func BuildCloneURL(baseURL, user, password string) (string, error) {
@@ -466,30 +388,67 @@ func (r *Repo) GetListOfChangedFiles(ctx context.Context) ([]string, error) {
 	_, span := tracer.Start(ctx, "RepoGetListOfChangedFiles")
 	defer span.End()
 
-	var fileList []string
-
-	cmd := r.execGitCommand("diff", "--name-only", fmt.Sprintf("origin/%s...HEAD", r.BranchName))
-	pipe, _ := cmd.StdoutPipe()
-	var wg sync.WaitGroup
-	scanner := bufio.NewScanner(pipe)
-	wg.Add(1)
-	go func() {
-		for scanner.Scan() {
-			line := scanner.Text()
-			fileList = append(fileList, line)
-		}
-		wg.Done()
-	}()
-	err := cmd.Start()
+	// Open the repository
+	repo, err := gogit.PlainOpen(r.Directory)
 	if err != nil {
-		log.Error().Err(err).Msg("unable to start diff command")
-		return nil, err
+		log.Error().Err(err).Msg("failed to open repository")
+		return nil, errors.Wrap(err, "failed to open repository")
 	}
-	wg.Wait()
-	err = cmd.Wait()
+
+	// Get HEAD commit
+	headRef, err := repo.Head()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to get HEAD")
+		return nil, errors.Wrap(err, "failed to get HEAD")
+	}
+
+	// Get origin/<branch> commit
+	remoteBranchRef := fmt.Sprintf("refs/remotes/origin/%s", r.BranchName)
+	baseRef, err := repo.Reference(plumbing.ReferenceName(remoteBranchRef), true)
+	if err != nil {
+		log.Error().Err(err).Str("ref", remoteBranchRef).Msg("failed to get base branch reference")
+		return nil, errors.Wrapf(err, "failed to get reference %s", remoteBranchRef)
+	}
+
+	// Get commit objects
+	headCommit, err := repo.CommitObject(headRef.Hash())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get HEAD commit")
+	}
+
+	baseCommit, err := repo.CommitObject(baseRef.Hash())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get base commit")
+	}
+
+	// Get trees
+	headTree, err := headCommit.Tree()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get HEAD tree")
+	}
+
+	baseTree, err := baseCommit.Tree()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get base tree")
+	}
+
+	// Calculate diff
+	changes, err := baseTree.Diff(headTree)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to diff branches")
-		return nil, err
+		return nil, errors.Wrap(err, "failed to diff trees")
+	}
+
+	// Extract file paths
+	var fileList []string
+	for _, change := range changes {
+		// Include both From and To names to handle renames
+		if change.From.Name != "" {
+			fileList = append(fileList, change.From.Name)
+		}
+		if change.To.Name != "" && change.To.Name != change.From.Name {
+			fileList = append(fileList, change.To.Name)
+		}
 	}
 
 	return fileList, nil
@@ -535,12 +494,38 @@ func (r *Repo) CreateTempBranch(ctx context.Context, prIdentifier, commitSHA str
 		Str("from_branch", r.BranchName).
 		Msg("creating temporary branch")
 
-	// Create and checkout temp branch
-	cmd := r.execGitCommand("checkout", "-b", tempBranch)
-	out, err := cmd.CombinedOutput()
+	// Open the repository
+	repo, err := gogit.PlainOpen(r.Directory)
 	if err != nil {
-		log.Error().Err(err).Msgf("failed to create temp branch: %s", out)
-		return "", errors.Wrapf(err, "failed to create temp branch %s", tempBranch)
+		return "", errors.Wrap(err, "failed to open repository")
+	}
+
+	// Get current HEAD
+	headRef, err := repo.Head()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get HEAD")
+	}
+
+	// Create new branch reference
+	branchRef := plumbing.NewBranchReferenceName(tempBranch)
+	ref := plumbing.NewHashReference(branchRef, headRef.Hash())
+	if err := repo.Storer.SetReference(ref); err != nil {
+		log.Error().Err(err).Msgf("failed to create temp branch reference")
+		return "", errors.Wrapf(err, "failed to create branch %s", tempBranch)
+	}
+
+	// Checkout the new branch
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get worktree")
+	}
+
+	checkoutOpts := &gogit.CheckoutOptions{
+		Branch: branchRef,
+	}
+	if err := worktree.Checkout(checkoutOpts); err != nil {
+		log.Error().Err(err).Msg("failed to checkout temp branch")
+		return "", errors.Wrapf(err, "failed to checkout branch %s", tempBranch)
 	}
 
 	log.Debug().
@@ -548,40 +533,6 @@ func (r *Repo) CreateTempBranch(ctx context.Context, prIdentifier, commitSHA str
 		Msg("temporary branch created successfully")
 
 	return tempBranch, nil
-}
-
-// FetchAndMergePR fetches a PR branch and merges it into the current temp branch
-func (r *Repo) FetchAndMergePR(ctx context.Context, prBranch string) error {
-	_, span := tracer.Start(ctx, "FetchAndMergePR")
-	defer span.End()
-
-	log.Debug().
-		Str("pr_branch", prBranch).
-		Str("current_branch", r.TempBranch).
-		Msg("fetching and merging PR branch")
-
-	// Fetch the PR branch
-	cmd := r.execGitCommand("fetch", "origin", prBranch)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Error().Err(err).Msgf("failed to fetch PR branch: %s", out)
-		return errors.Wrapf(err, "failed to fetch PR branch %s", prBranch)
-	}
-
-	// Merge it into current temp branch
-	mergeRef := fmt.Sprintf("origin/%s", prBranch)
-	cmd = r.execGitCommand("merge", mergeRef)
-	out, err = cmd.CombinedOutput()
-	if err != nil {
-		log.Error().Err(err).Msgf("failed to merge PR branch: %s", out)
-		return errors.Wrapf(err, "failed to merge %s", mergeRef)
-	}
-
-	log.Debug().
-		Str("pr_branch", prBranch).
-		Msg("PR branch merged successfully")
-
-	return nil
 }
 
 // CleanupTempBranch removes a temporary branch and returns to the base branch
@@ -598,19 +549,23 @@ func (r *Repo) CleanupTempBranch(ctx context.Context, tempBranch, baseBranch str
 		Str("base_branch", baseBranch).
 		Msg("cleaning up temporary branch")
 
-	// Checkout base branch first
-	cmd := r.execGitCommand("checkout", baseBranch)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Warn().Err(err).Msgf("failed to checkout base branch during cleanup: %s", out)
+	// Checkout base branch first using go-git
+	if err := r.Checkout(baseBranch); err != nil {
+		log.Warn().Err(err).Msg("failed to checkout base branch during cleanup")
 		// Continue with cleanup anyway
 	}
 
-	// Delete the temp branch
-	cmd = r.execGitCommand("branch", "-D", tempBranch)
-	out, err = cmd.CombinedOutput()
+	// Delete the temp branch using go-git
+	repo, err := gogit.PlainOpen(r.Directory)
 	if err != nil {
-		log.Warn().Err(err).Msgf("failed to delete temp branch: %s", out)
+		log.Warn().Err(err).Msg("failed to open repository for branch cleanup")
+		return errors.Wrap(err, "failed to open repository")
+	}
+
+	// Delete the branch reference
+	branchRef := plumbing.NewBranchReferenceName(tempBranch)
+	if err := repo.Storer.RemoveReference(branchRef); err != nil {
+		log.Warn().Err(err).Msg("failed to delete temp branch")
 		return errors.Wrapf(err, "failed to delete temp branch %s", tempBranch)
 	}
 
