@@ -18,7 +18,7 @@ env:
   FS_TAG: 0.0.0-pr${{ github.event.pull_request.number }}
 
 jobs:
-  build:
+  build-binaries:
     runs-on: ubuntu-24.04
 
     permissions:
@@ -26,46 +26,114 @@ jobs:
       packages: write
       pull-requests: write
 
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+
+    env:
+      GIT_COMMIT: ${{ github.sha }}
+      GIT_TAG: ${{ github.ref_name }}
+
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-go@v5
+
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.25.x"
-          cache: true
+          cache: false
 
-      - name: Prepare output dirs
-        run: |
-          mkdir -p out/linux-amd64
-          mkdir -p out/linux-arm64
-
-      - name: Build linux/amd64
-        run: |
-          time env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-            go build \
-              -trimpath \
-              -ldflags="-s -w \
-                -X github.com/zapier/kubechecks/pkg.GitCommit=${GIT_COMMIT} \
-                -X github.com/zapier/kubechecks/pkg.GitTag=${GIT_TAG}" \
-              -o out/linux-amd64/kubechecks 
-
-      - name: Build linux/arm64
-        run: |
-          time env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-            go build \
-              -trimpath \
-              -ldflags="-s -w \
-                -X github.com/zapier/kubechecks/pkg.GitCommit=${GIT_COMMIT} \
-                -X github.com/zapier/kubechecks/pkg.GitTag=${GIT_TAG}" \
-              -o out/linux-arm64/kubechecks
-      - uses: ./.github/actions/build-image
-        id: build-image
+      - name: Cache Go modules + build cache
+        uses: actions/cache@v4
         with:
-          push: '${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}'
-          image_tag: ${{ env.FS_TAG }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-linux-${{ matrix.arch }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-
+
+      - name: Build for ${{ matrix.arch }}
+        run: |
+          mkdir -p out/linux-${{ matrix.arch }}
+          time env CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build \
+              -trimpath \
+              -ldflags="-s -w \
+                -X github.com/zapier/kubechecks/pkg.GitCommit=${GIT_COMMIT} \
+                -X github.com/zapier/kubechecks/pkg.GitTag=${GIT_TAG}" \
+              -o out/linux-${{ matrix.arch }}/kubechecks \
+              .
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubechecks-${{ matrix.arch }}
+          path: out/linux-${{ matrix.arch }}/kubechecks
+
+  build-image:
+    needs: build-binaries
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/kubechecks
+      FS_TAG: 0.0.0-pr${{ github.event.pull_request.number }}
+
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: kubechecks-amd64
+          path: bin-amd64
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: kubechecks-arm64
+          path: bin-arm64
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare build context
+        run: |
+          mkdir -p docker-context
+          cp bin-amd64/kubechecks docker-context/kubechecks-amd64
+          cp bin-arm64/kubechecks docker-context/kubechecks-arm64
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker-context
+          file: ./Dockerfile.runtime
+          push: ${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.FS_TAG }}
 
       - uses: mshick/add-pr-comment@v2
+        if: github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
         with:
           message: |
-            Temporary image available at `${{ steps.build-image.outputs.image }}`.
-        if: github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+            Temporary image available at:
+            `ghcr.io/${{ github.repository_owner }}/kubechecks:${{ env.FS_TAG }}`

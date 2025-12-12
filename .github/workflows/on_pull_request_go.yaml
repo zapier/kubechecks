@@ -29,7 +29,16 @@ jobs:
         with:
           go-version: ${{ env.GOLANG_TOOL_VERSION }}
           cache: true
-
+      - name: Cache Go modules + build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-linux-${{ matrix.arch }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
