@@ -2,7 +2,7 @@ package git
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -466,10 +466,8 @@ func generateRepoKey(cloneURL string) string {
 	return normalized
 }
 
-// sanitizeRepoName creates a safe directory name from clone URL using MD5 hash
+// sanitizeRepoName creates a safe directory name from clone URL using SHA256 hash
 func sanitizeRepoName(cloneURL string) string {
-	// Use MD5 hash for simple, deterministic, and collision-resistant directory names
-	// Output: 32 hex characters (e.g., "c50de427c98fda747bb0bf6f07571e08")
-	hash := md5.Sum([]byte(cloneURL))
-	return fmt.Sprintf("%x", hash)
+	// Use SHA256 hash for deterministic and collision-resistant directory names
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(cloneURL)))
 }

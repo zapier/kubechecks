@@ -16,7 +16,7 @@ import (
 )
 
 // ProcessFunc is the function signature for processing a check request
-type ProcessFunc func(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry)
+type ProcessFunc func(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry) error
 
 // CheckRequest represents a PR check request to be queued
 type CheckRequest struct {
@@ -251,28 +251,20 @@ func (rq *RepoQueue) processRequest(request *CheckRequest) {
 		Dur("queued_for", time.Since(request.Timestamp)).
 		Msg("worker processing request")
 
-	// Process the check event using the configured process function
-	// We don't have error return, so we assume success unless panic
-	defer func() {
-		if r := recover(); r != nil {
-			repoWorkerRequestsFailed.Inc()
-			log.Error().
-				Interface("panic", r).
-				Str("repo", request.PullRequest.CloneURL).
-				Int("check_id", request.PullRequest.CheckID).
-				Msg("worker panicked processing request")
-			panic(r) // Re-panic after logging
-		}
-	}()
-
-	rq.processFunc(
+	err := rq.processFunc(
 		context.Background(),
 		request.PullRequest,
 		request.Container,
 		request.Processors,
 	)
-
-	repoWorkerRequestsProcessed.Inc()
+	if err != nil {
+		repoWorkerRequestsFailed.Inc()
+		log.Error().
+			Str("repo", request.PullRequest.CloneURL).
+			Int("check_id", request.PullRequest.CheckID).
+			Msg("worker recovered from panic, continuing to process next request")
+		return
+	}
 
 	// Update metrics
 	rq.mu.Lock()

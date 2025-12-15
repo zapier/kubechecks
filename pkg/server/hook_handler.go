@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -108,7 +109,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 type RepoDirectory struct {
 }
 
-func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry) {
+func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry) error {
 	ctx, span := tracer.Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
 			attribute.Int("mr_id", pr.CheckID),
@@ -130,7 +131,9 @@ func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Co
 	if err := cEvent.Process(ctx); err != nil {
 		span.RecordError(err)
 		log.Error().Caller().Err(err).Msg("failed to process the request")
+		return errors.Wrap(err, "failed to process the request")
 	}
+	return nil
 }
 
 // passesLabelFilter checks if the given mergeEvent has a label that starts with "kubechecks:"

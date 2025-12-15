@@ -454,11 +454,9 @@ func (r *Repo) GetCurrentCommitSHA() (string, error) {
 		return "", errors.Wrap(err, "failed to get current commit SHA")
 	}
 
+	// Return full SHA for better traceability and zero collision risk
+	// Branch names have no practical length limit, and the SHA is used for debugging
 	sha := head.Hash().String()
-	// Return first 8 characters for short SHA
-	if len(sha) >= 8 {
-		return sha[:8], nil
-	}
 	return sha, nil
 }
 

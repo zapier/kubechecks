@@ -235,7 +235,8 @@ func (d *Downloader) extractFile(file *zip.File, targetDir string) error {
 	path := filepath.Join(targetDir, file.Name)
 
 	// Prevent path traversal
-	if !strings.HasPrefix(path, filepath.Clean(targetDir)+string(os.PathSeparator)) {
+	rel, err := filepath.Rel(filepath.Clean(targetDir), path)
+	if err != nil || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." || filepath.IsAbs(rel) {
 		return fmt.Errorf("invalid file path (path traversal detected): %s", file.Name)
 	}
 
