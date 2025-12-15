@@ -3,6 +3,8 @@ package archive
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -50,9 +52,20 @@ func (m *Manager) Clone(ctx context.Context, cloneURL, branchName string, pr vcs
 		return nil, errors.Wrap(err, "failed to get archive URL from VCS")
 	}
 
-	// Get merge commit SHA (for cache key)
-	// The archive URL contains the commit SHA, extract it or use a placeholder
-	mergeCommitSHA := pr.SHA // Fallback to PR SHA
+	// Extract merge commit SHA from archive URL for cache key
+	// Archive URLs contain the SHA: https://github.com/owner/repo/archive/{sha}.zip
+	// IMPORTANT: Must use merge commit SHA, not HEAD SHA, as cache key!
+	// Otherwise, cache returns stale archives when new commits are pushed to existing PR
+	mergeCommitSHA, err := extractSHAFromArchiveURL(archiveURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to extract merge commit SHA from archive URL")
+	}
+
+	log.Debug().
+		Str("archive_url", archiveURL).
+		Str("merge_commit_sha", mergeCommitSHA).
+		Str("head_sha", pr.SHA).
+		Msg("extracted merge commit SHA from archive URL")
 
 	// Get authentication headers for archive download
 	authHeaders := m.vcsClient.GetAuthHeaders()
@@ -152,4 +165,49 @@ func (m *Manager) PostConflictMessage(ctx context.Context, pr vcs.PullRequest) e
 		Msg("posted conflict resolution message")
 
 	return nil
+}
+
+// extractSHAFromArchiveURL extracts the commit SHA from an archive URL
+// Supports GitHub and GitLab archive URL formats:
+// - GitHub: https://github.com/owner/repo/archive/{sha}.zip
+// - GitLab: https://gitlab.com/api/v4/projects/{encoded}/repository/archive.zip?sha={ref}
+func extractSHAFromArchiveURL(archiveURL string) (string, error) {
+	// Try GitHub format first: /archive/{sha}.zip or /archive/{sha}.tar.gz
+	if strings.Contains(archiveURL, "/archive/") {
+		// Extract filename from URL path
+		parts := strings.Split(archiveURL, "/archive/")
+		if len(parts) < 2 {
+			return "", fmt.Errorf("invalid GitHub archive URL format: %s", archiveURL)
+		}
+
+		// Get the SHA part (e.g., "abc123.zip" -> "abc123")
+		filename := parts[len(parts)-1]
+		sha := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+		if sha == "" {
+			return "", fmt.Errorf("empty SHA extracted from archive URL: %s", archiveURL)
+		}
+
+		return sha, nil
+	}
+
+	// Try GitLab format: ?sha={ref}
+	if strings.Contains(archiveURL, "?sha=") || strings.Contains(archiveURL, "&sha=") {
+		// Extract SHA from query parameter
+		parts := strings.Split(archiveURL, "sha=")
+		if len(parts) < 2 {
+			return "", fmt.Errorf("invalid GitLab archive URL format: %s", archiveURL)
+		}
+
+		// Get SHA (handle case where there might be more query params after)
+		sha := strings.Split(parts[1], "&")[0]
+
+		if sha == "" {
+			return "", fmt.Errorf("empty SHA extracted from archive URL: %s", archiveURL)
+		}
+
+		return sha, nil
+	}
+
+	return "", fmt.Errorf("unrecognized archive URL format: %s", archiveURL)
 }
