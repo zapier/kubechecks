@@ -269,13 +269,11 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, errors.Wrap(err, "failed to send metadata")
 	}
 
-	log.Info().Msg("sending file")
 	err = sendFile(ctx, stream, f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send manifest stream file: %w", err)
 	}
 
-	log.Info().Msg("receiving repsonse")
 	response, err := stream.CloseAndRecv()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get response")

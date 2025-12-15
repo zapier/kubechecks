@@ -81,29 +81,38 @@ func (qm *QueueManager) Enqueue(ctx context.Context, params EnqueueParams) error
 	}
 	repoKey := fmt.Sprintf("%s/%s", repoURL.Host, repoURL.Path)
 
-	// Get or create queue for this repo
-	qm.mu.Lock()
+	// Get or create queue for this repo using double-checked locking for better concurrency
+	// Fast path: read lock to check if queue exists
+	qm.mu.RLock()
 	queue, exists := qm.queues[repoKey]
+	qm.mu.RUnlock()
+
 	if !exists {
-		queue = &RepoQueue{
-			repoURL:     params.PullRequest.CloneURL,
-			queue:       make(chan *CheckRequest, qm.queueSize),
-			done:        make(chan struct{}),
-			queuedAt:    time.Now(),
-			processFunc: qm.processFunc,
+		// Slow path: write lock to create queue
+		qm.mu.Lock()
+		// Double-check in case another goroutine created it while we were waiting for the lock
+		queue, exists = qm.queues[repoKey]
+		if !exists {
+			queue = &RepoQueue{
+				repoURL:     params.PullRequest.CloneURL,
+				queue:       make(chan *CheckRequest, qm.queueSize),
+				done:        make(chan struct{}),
+				queuedAt:    time.Now(),
+				processFunc: qm.processFunc,
+			}
+			qm.queues[repoKey] = queue
+
+			// Start dedicated worker goroutine for this repo
+			queue.wg.Add(1)
+			go queue.startWorker()
+
+			log.Info().
+				Str("repo", params.PullRequest.CloneURL).
+				Int("queue_size", qm.queueSize).
+				Msg("created new queue and started worker")
 		}
-		qm.queues[repoKey] = queue
-
-		// Start dedicated worker goroutine for this repo
-		queue.wg.Add(1)
-		go queue.startWorker()
-
-		log.Info().
-			Str("repo", params.PullRequest.CloneURL).
-			Int("queue_size", qm.queueSize).
-			Msg("created new queue and started worker")
+		qm.mu.Unlock()
 	}
-	qm.mu.Unlock()
 
 	// Create check request
 	request := &CheckRequest{

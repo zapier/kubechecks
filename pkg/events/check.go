@@ -274,6 +274,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	// which means "the default branch" (usually same as BaseRef)
 	ce.clonedRepos[generateRepoKey(parsed, "HEAD")] = repo
 	ce.logger.Debug().
+		Caller().
 		Str("head_ref", ce.pullRequest.HeadRef).
 		Str("base_ref", ce.pullRequest.BaseRef).
 		Msg("archived repo stored in clonedRepos under multiple keys (HeadRef, BaseRef, HEAD)")

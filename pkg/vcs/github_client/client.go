@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	giturls "github.com/chainguard-dev/git-urls"
@@ -488,17 +489,90 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	ctx, span := tracer.Start(ctx, "DownloadArchive")
 	defer span.End()
 
-	// Get PR details to find merge_commit_sha
-	ghPR, _, err := c.googleClient.PullRequests.Get(ctx, pr.Owner, pr.Name, pr.CheckID)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to get PR details")
+	// Retry configuration for waiting on GitHub to compute merge commit SHA
+	const (
+		maxRetries     = 5
+		initialBackoff = 500 * time.Millisecond
+		maxBackoff     = 8 * time.Second
+	)
+
+	var ghPR *github.PullRequest
+	var err error
+	backoff := initialBackoff
+
+	// Retry loop: GitHub needs time to compute merge_commit_sha after PR creation/update
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Get PR details to find merge_commit_sha
+		ghPR, _, err = c.googleClient.PullRequests.Get(ctx, pr.Owner, pr.Name, pr.CheckID)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to get PR details")
+		}
+
+		// CRITICAL: Validate that GitHub has processed the latest commit
+		// When a new commit is pushed, GitHub may return outdated merge_commit_sha from the previous commit
+		// We must verify that the HEAD SHA matches the expected SHA from the webhook
+		headSHAMatches := ghPR.Head != nil && ghPR.Head.SHA != nil && *ghPR.Head.SHA == pr.SHA
+		mergeCommitAvailable := ghPR.MergeCommitSHA != nil && *ghPR.MergeCommitSHA != ""
+
+		if headSHAMatches && mergeCommitAvailable {
+			// Success - merge commit SHA is ready AND corresponds to the current HEAD
+			log.Debug().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("pr_number", pr.CheckID).
+				Str("head_sha", pr.SHA).
+				Str("merge_commit_sha", *ghPR.MergeCommitSHA).
+				Msg("merge commit SHA is current and ready")
+			break
+		}
+
+		// If this is the last attempt, fail with detailed info
+		if attempt == maxRetries {
+			var reason string
+			if !headSHAMatches {
+				apiHeadSHA := "nil"
+				if ghPR.Head != nil && ghPR.Head.SHA != nil {
+					apiHeadSHA = *ghPR.Head.SHA
+				}
+				reason = fmt.Sprintf("HEAD SHA mismatch (expected: %s, got: %s)", pr.SHA, apiHeadSHA)
+			} else if !mergeCommitAvailable {
+				reason = "merge commit SHA not available"
+			}
+
+			log.Warn().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("pr_number", pr.CheckID).
+				Int("attempts", attempt+1).
+				Str("reason", reason).
+				Msg("failed to get current merge commit SHA after retries")
+			return "", fmt.Errorf("PR merge commit SHA not ready (may have conflicts or GitHub still processing): %s", reason)
+		}
+
+		// Wait before retrying (exponential backoff)
+		log.Debug().
+			Caller().
+			Str("repo", pr.FullName).
+			Int("pr_number", pr.CheckID).
+			Int("attempt", attempt+1).
+			Dur("backoff", backoff).
+			Bool("head_sha_matches", headSHAMatches).
+			Bool("merge_commit_available", mergeCommitAvailable).
+			Msg("merge commit SHA not yet current, retrying...")
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(backoff):
+			// Exponential backoff with cap
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
 	}
 
 	// Check if PR is mergeable
-	if ghPR.MergeCommitSHA == nil || *ghPR.MergeCommitSHA == "" {
-		return "", errors.New("PR does not have a merge commit SHA (may have conflicts)")
-	}
-
 	if ghPR.Mergeable != nil && !*ghPR.Mergeable {
 		return "", errors.New("PR is not mergeable (has conflicts)")
 	}

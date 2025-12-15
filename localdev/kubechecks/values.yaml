@@ -40,7 +40,7 @@ deployment:
     pullPolicy: IfNotPresent
     name: "kubechecks"
     tag: ""
-
+  args: []
 secrets:
   create: true
   env:
