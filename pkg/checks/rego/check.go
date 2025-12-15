@@ -90,6 +90,7 @@ func dumpFiles(manifests []string) (string, error) {
 	}
 
 	log.Debug().
+		Caller().
 		Int("manifest_count", len(manifests)).
 		Msg("dumping manifests")
 
@@ -102,6 +103,7 @@ func dumpFiles(manifests []string) (string, error) {
 		fullPath := filepath.Join(result, filename)
 		manifestBytes := []byte(manifest)
 		log.Debug().
+			Caller().
 			Str("path", fullPath).
 			Int("index", index).
 			Int("size", len(manifestBytes)).
@@ -133,6 +135,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	}
 
 	log.Debug().
+		Caller().
 		Strs("policiesPaths", c.locations).
 		Str("manifestsPath", manifestsPath).
 		Str("app", request.App.Name).

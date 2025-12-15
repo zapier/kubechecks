@@ -167,6 +167,7 @@ func (r *Repo) setupRemoteHead(repo *gogit.Repository) error {
 	}
 
 	log.Debug().
+		Caller().
 		Str("default-branch", defaultBranch).
 		Msg("set up refs/remotes/origin/HEAD")
 
@@ -190,7 +191,7 @@ func (r *Repo) GetRemoteHead() (string, error) {
 	}
 
 	// Try to get the symbolic reference for origin/HEAD first
-	ref, err := repo.Reference(plumbing.ReferenceName("refs/remotes/origin/HEAD"), true)
+	ref, err := repo.Reference("refs/remotes/origin/HEAD", true)
 	if err == nil {
 		// Extract branch name from reference (e.g., refs/remotes/origin/main -> main)
 		branchName := ref.Name().String()
@@ -246,6 +247,7 @@ func (r *Repo) GetCurrentBranch() (string, error) {
 // Checkout checks out a branch using go-git
 func (r *Repo) Checkout(branchName string) error {
 	log.Debug().
+		Caller().
 		Str("branch", branchName).
 		Str("path", r.Directory).
 		Msg("checking out branch with go-git")
@@ -273,6 +275,7 @@ func (r *Repo) Checkout(branchName string) error {
 	}
 
 	log.Debug().
+		Caller().
 		Str("branch", branchName).
 		Msg("successfully checked out branch")
 
@@ -305,7 +308,7 @@ func (r *Repo) Update(ctx context.Context) error {
 		}
 	}
 
-	if err := repo.FetchContext(ctx, fetchOpts); err != nil && err != gogit.NoErrAlreadyUpToDate {
+	if err := repo.FetchContext(ctx, fetchOpts); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
 		repoFetchFailed.Inc()
 		log.Error().Err(err).Msgf("failed to fetch branch %s", r.BranchName)
 		return errors.Wrapf(err, "failed to fetch branch %s", r.BranchName)
@@ -344,7 +347,7 @@ func (r *Repo) Update(ctx context.Context) error {
 		Caller().
 		Str("url", r.CloneURL).
 		Str("branch", r.BranchName).
-		Msg("updated branch to latest with go-git")
+		Msg("updated branch to latest")
 
 	return nil
 }
@@ -474,6 +477,7 @@ func (r *Repo) CreateTempBranch(ctx context.Context, prIdentifier, commitSHA str
 	tempBranch := fmt.Sprintf("temp-pr-%s-%s", safePRID, safeSHA)
 
 	log.Debug().
+		Caller().
 		Str("temp_branch", tempBranch).
 		Str("from_branch", r.BranchName).
 		Msg("creating temporary branch")
@@ -513,6 +517,7 @@ func (r *Repo) CreateTempBranch(ctx context.Context, prIdentifier, commitSHA str
 	}
 
 	log.Debug().
+		Caller().
 		Str("temp_branch", tempBranch).
 		Msg("temporary branch created successfully")
 
@@ -529,6 +534,7 @@ func (r *Repo) CleanupTempBranch(ctx context.Context, tempBranch, baseBranch str
 	}
 
 	log.Debug().
+		Caller().
 		Str("temp_branch", tempBranch).
 		Str("base_branch", baseBranch).
 		Msg("cleaning up temporary branch")
@@ -554,6 +560,7 @@ func (r *Repo) CleanupTempBranch(ctx context.Context, tempBranch, baseBranch str
 	}
 
 	log.Debug().
+		Caller().
 		Str("temp_branch", tempBranch).
 		Msg("temporary branch cleaned up successfully")
 

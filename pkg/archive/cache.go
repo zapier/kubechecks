@@ -90,6 +90,7 @@ func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA st
 			entry.lastUsed = time.Now()
 
 			log.Debug().
+				Caller().
 				Str("archive_url", archiveURL).
 				Str("merge_commit_sha", mergeCommitSHA).
 				Str("path", entry.extractedPath).
@@ -159,6 +160,7 @@ func (c *Cache) Release(archiveURL, mergeCommitSHA string) {
 	entry.lastUsed = time.Now()
 
 	log.Debug().
+		Caller().
 		Str("archive_url", archiveURL).
 		Str("merge_commit_sha", mergeCommitSHA).
 		Int32("ref_count", newCount).
@@ -188,7 +190,7 @@ func (c *Cache) startCleanupRoutine() {
 
 // cleanupStaleArchives removes archives that haven't been used recently
 func (c *Cache) cleanupStaleArchives() {
-	log.Debug().Msg("starting cleanup of stale archives")
+	log.Debug().Caller().Msg("starting cleanup of stale archives")
 
 	c.lock.Lock()
 	defer c.lock.Unlock()

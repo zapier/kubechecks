@@ -171,6 +171,7 @@ func (rm *PersistentRepoManager) GetOrCloneRepo(ctx context.Context, cloneURL, b
 			// Cache hit - reuse existing repo
 			repoCacheHits.Inc()
 			log.Debug().
+				Caller().
 				Str("url", cloneURL).
 				Str("branch", baseBranch).
 				Msg("using cached repository")
@@ -250,6 +251,7 @@ func (rm *PersistentRepoManager) UpdateBaseBranch(ctx context.Context, pr *Persi
 	defer span.End()
 
 	log.Debug().
+		Caller().
 		Str("url", pr.CloneURL).
 		Str("branch", baseBranch).
 		Str("path", pr.Directory).
@@ -258,6 +260,7 @@ func (rm *PersistentRepoManager) UpdateBaseBranch(ctx context.Context, pr *Persi
 	// Checkout the base branch if different (and not empty)
 	if baseBranch != "" && pr.BranchName != baseBranch {
 		log.Debug().
+			Caller().
 			Str("from", pr.BranchName).
 			Str("to", baseBranch).
 			Msg("checking out different branch")
@@ -277,6 +280,7 @@ func (rm *PersistentRepoManager) UpdateBaseBranch(ctx context.Context, pr *Persi
 	pr.lastUsed = time.Now()
 
 	log.Debug().
+		Caller().
 		Str("url", pr.CloneURL).
 		Str("branch", baseBranch).
 		Msg("base branch updated successfully")
@@ -301,6 +305,7 @@ func (rm *PersistentRepoManager) ReleaseRepo(cloneURL string) {
 	pr.lastUsed = time.Now()
 
 	log.Debug().
+		Caller().
 		Str("url", cloneURL).
 		Int32("ref_count", newCount).
 		Msg("released repository reference")
@@ -342,6 +347,7 @@ func (rm *PersistentRepoManager) CleanupTempBranchForRepo(ctx context.Context, r
 	pr.lastUsed = time.Now()
 
 	log.Debug().
+		Caller().
 		Str("url", repo.CloneURL).
 		Str("temp_branch", repo.TempBranch).
 		Int32("ref_count", newCount).
@@ -369,7 +375,7 @@ func (rm *EphemeralRepoManager) Clone(ctx context.Context, cloneUrl, branchName 
 func (rm *PersistentRepoManager) Cleanup() {
 	// Persistent repos are not cleaned up per-request
 	// They're cleaned up by background goroutine based on TTL
-	log.Debug().Msg("persistent repo manager: cleanup is no-op (managed by background routine)")
+	log.Debug().Caller().Msg("persistent repo manager: cleanup is no-op (managed by background routine)")
 }
 
 // Cleanup implements RepoManager interface for EphemeralRepoManager
@@ -394,7 +400,7 @@ func (rm *PersistentRepoManager) Shutdown() {
 // Shutdown implements RepoManager interface for EphemeralRepoManager
 func (rm *EphemeralRepoManager) Shutdown() {
 	// No-op for ephemeral manager
-	log.Debug().Msg("ephemeral repo manager: shutdown is no-op")
+	log.Debug().Caller().Msg("ephemeral repo manager: shutdown is no-op")
 }
 
 // startCleanupRoutine runs background cleanup for stale repos
@@ -415,7 +421,7 @@ func (rm *PersistentRepoManager) startCleanupRoutine() {
 
 // cleanupStaleRepos removes repos that haven't been used recently
 func (rm *PersistentRepoManager) cleanupStaleRepos() {
-	log.Debug().Msg("starting cleanup of stale repositories")
+	log.Debug().Caller().Msg("starting cleanup of stale repositories")
 
 	rm.lock.Lock()
 	defer rm.lock.Unlock()

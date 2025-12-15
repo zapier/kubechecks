@@ -48,7 +48,7 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 	if gitlabToken == "" {
 		return nil, ErrNoToken
 	}
-	log.Debug().Msgf("Token Length - %d", len(gitlabToken))
+	log.Debug().Caller().Msgf("Token Length - %d", len(gitlabToken))
 
 	var gitlabOptions []gitlab.ClientOptionFunc
 
@@ -315,6 +315,7 @@ func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullR
 // GetPullRequestFiles returns the list of files changed in a merge request
 func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
 	log.Debug().
+		Caller().
 		Str("repo", pr.FullName).
 		Int("mr_number", pr.CheckID).
 		Msg("fetching MR files from GitLab API")
@@ -342,6 +343,7 @@ func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([
 	}
 
 	log.Debug().
+		Caller().
 		Str("repo", pr.FullName).
 		Int("mr_number", pr.CheckID).
 		Int("file_count", len(allFiles)).
@@ -365,6 +367,7 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 
 	// Check if MR can be merged using DetailedMergeStatus
 	// Possible values: unchecked, checking, can_be_merged, cannot_be_merged, etc.
+	// Draft status will prevent merge as well.
 	if mr.DetailedMergeStatus != "" && mr.DetailedMergeStatus != "mergeable" && mr.DetailedMergeStatus != "can_be_merged" {
 		return "", fmt.Errorf("MR cannot be merged (status: %s)", mr.DetailedMergeStatus)
 	}
@@ -392,6 +395,7 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	}
 
 	log.Debug().
+		Caller().
 		Str("repo", pr.FullName).
 		Int("mr_number", pr.CheckID).
 		Str("merge_ref", mergeRef).

@@ -50,7 +50,7 @@ func (a *ArgoClient) GetKubernetesVersionByApplication(ctx context.Context, app 
 
 	// Get destination cluster
 	// Some app specs have a Name defined, some have a Server defined, some have both, take a valid one and use it
-	log.Debug().Msgf("for appname %s, server dest says: %s and name dest says: %s", app.Name, app.Spec.Destination.Server, app.Spec.Destination.Name)
+	log.Debug().Caller().Msgf("for appname %s, server dest says: %s and name dest says: %s", app.Name, app.Spec.Destination.Server, app.Spec.Destination.Name)
 	var clusterRequest *cluster.ClusterQuery
 	if app.Spec.Destination.Server != "" {
 		clusterRequest = &cluster.ClusterQuery{Server: app.Spec.Destination.Server}

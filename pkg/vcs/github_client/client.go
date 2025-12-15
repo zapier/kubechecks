@@ -122,7 +122,7 @@ func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Clien
 	// Initialize the GitHub client with access token if app key is not provided
 	vcsToken := cfg.VcsToken
 	if vcsToken != "" {
-		log.Debug().Msgf("Token Length - %d", len(vcsToken))
+		log.Debug().Caller().Msgf("Token Length - %d", len(vcsToken))
 		ts := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: vcsToken},
 		)
@@ -277,7 +277,7 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, status pk
 		log.Err(err).Msg("could not set Github commit status")
 		return err
 	}
-	log.Debug().Interface("status", repoStatus).Msg("Github commit status set")
+	log.Debug().Caller().Interface("status", repoStatus).Msg("Github commit status set")
 	return nil
 }
 
@@ -446,6 +446,7 @@ func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([
 	defer span.End()
 
 	log.Debug().
+		Caller().
 		Str("repo", pr.FullName).
 		Int("pr_number", pr.CheckID).
 		Msg("fetching PR files from GitHub API")
@@ -473,6 +474,7 @@ func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([
 	}
 
 	log.Debug().
+		Caller().
 		Str("repo", pr.FullName).
 		Int("pr_number", pr.CheckID).
 		Int("file_count", len(allFiles)).
@@ -518,6 +520,7 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	}
 
 	log.Debug().
+		Caller().
 		Str("repo", pr.FullName).
 		Int("pr_number", pr.CheckID).
 		Str("merge_commit_sha", mergeCommitSHA).

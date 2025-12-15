@@ -86,6 +86,7 @@ func (m *Manager) Clone(ctx context.Context, cloneURL, branchName string, pr vcs
 // This replaces the git diff operation
 func (m *Manager) GetChangedFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
 	log.Debug().
+		Caller().
 		Str("repo", pr.FullName).
 		Int("pr_number", pr.CheckID).
 		Msg("fetching changed files from VCS API")
@@ -106,7 +107,7 @@ func (m *Manager) GetChangedFiles(ctx context.Context, pr vcs.PullRequest) ([]st
 
 // Cleanup is a no-op for archive manager (cache has its own TTL-based cleanup)
 func (m *Manager) Cleanup() {
-	log.Debug().Msg("archive manager: cleanup is managed by background TTL routine")
+	log.Debug().Caller().Msg("archive manager: cleanup is managed by background TTL routine")
 }
 
 // Shutdown stops the archive cache
@@ -133,8 +134,8 @@ func (m *Manager) ValidatePullRequest(ctx context.Context, pr vcs.PullRequest) e
 
 // PostConflictMessage posts a message to the PR when it has conflicts
 func (m *Manager) PostConflictMessage(ctx context.Context, pr vcs.PullRequest) error {
-	message := fmt.Sprintf("⚠️ This PR has merge conflicts and cannot be checked.\n\n"+
-		"Please resolve conflicts with the base branch (%s) before running checks.\n\n"+
+	message := fmt.Sprintf("⚠️ This request cannot be checked.\n\n"+
+		"PR/MR may be in draft, or resolve conflicts with the base branch (%s) before running checks.\n\n"+
 		"To re-trigger checks after resolving conflicts, comment `%s`.",
 		pr.BaseRef,
 		m.cfg.ReplanCommentMessage,

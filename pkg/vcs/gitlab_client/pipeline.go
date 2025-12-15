@@ -20,10 +20,11 @@ func (c *Client) GetLastPipelinesForCommit(ctx context.Context, projectName stri
 		return nil
 	}
 
-	log.Debug().Int("pipline_count", len(pipelines)).Msg("gitlab client: retrieve pipelines for commit")
+	log.Debug().Caller().Int("pipline_count", len(pipelines)).Msg("gitlab client: retrieve pipelines for commit")
 
 	for _, p := range pipelines {
 		log.Debug().
+			Caller().
 			Int("pipeline_id", p.ID).
 			Str("source", p.Source).
 			Msg("gitlab client: pipeline details")

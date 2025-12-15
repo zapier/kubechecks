@@ -33,6 +33,7 @@ func NewDownloader() *Downloader {
 // Returns the path to the extracted directory
 func (d *Downloader) DownloadAndExtract(ctx context.Context, archiveURL, targetDir string, authHeaders map[string]string) (string, error) {
 	log.Debug().
+		Caller().
 		Str("url", archiveURL).
 		Str("target_dir", targetDir).
 		Msg("downloading and extracting archive")
@@ -89,6 +90,7 @@ func (d *Downloader) download(ctx context.Context, archiveURL string, authHeader
 
 	// Log response details for debugging
 	log.Debug().
+		Caller().
 		Str("url", archiveURL).
 		Int("status_code", resp.StatusCode).
 		Str("content_type", resp.Header.Get("Content-Type")).
@@ -108,6 +110,7 @@ func (d *Downloader) download(ctx context.Context, archiveURL string, authHeader
 		previewLen = len(data)
 	}
 	log.Debug().
+		Caller().
 		Str("url", archiveURL).
 		Int("bytes_read", len(data)).
 		Str("first_bytes_hex", fmt.Sprintf("%x", data[:previewLen])).
@@ -129,6 +132,7 @@ func (d *Downloader) download(ctx context.Context, archiveURL string, authHeader
 	archiveDownloadSizeBytes.Observe(float64(len(data)))
 
 	log.Debug().
+		Caller().
 		Str("url", archiveURL).
 		Int("size_bytes", len(data)).
 		Msg("archive downloaded")
@@ -212,6 +216,7 @@ func (d *Downloader) extract(zipData []byte, targetDir string) (string, error) {
 	archiveExtractSuccess.Inc()
 
 	log.Debug().
+		Caller().
 		Str("target_dir", targetDir).
 		Int("file_count", fileCount).
 		Str("top_level_dir", topLevelDir).

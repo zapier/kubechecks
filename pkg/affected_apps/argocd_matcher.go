@@ -34,9 +34,10 @@ func NewArgocdMatcher(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo) (*Argocd
 
 func logCounts(repoApps *appdir.AppDirectory) {
 	if repoApps == nil {
-		log.Debug().Msg("found no apps")
+		log.Debug().Caller().Msg("found no apps")
 	} else {
-		log.Debug().Int("apps", repoApps.AppsCount()).
+		log.Debug().Caller().
+			Int("apps", repoApps.AppsCount()).
 			Int("app_files", repoApps.AppFilesCount()).
 			Int("app_dirs", repoApps.AppDirsCount()).
 			Msg("mapped apps")
@@ -44,10 +45,10 @@ func logCounts(repoApps *appdir.AppDirectory) {
 }
 
 func getKustomizeApps(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo, repoPath string) *appdir.AppDirectory {
-	log.Debug().Msgf("creating fs for %s", repoPath)
+	log.Debug().Caller().Msgf("creating fs for %s", repoPath)
 	fs := os.DirFS(repoPath)
 
-	log.Debug().Msg("following kustomize apps")
+	log.Debug().Caller().Msg("following kustomize apps")
 	kustomizeAppFiles := vcsToArgoMap.WalkKustomizeApps(repo.CloneURL, fs)
 
 	logCounts(kustomizeAppFiles)
@@ -55,7 +56,7 @@ func getKustomizeApps(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo, repoPath
 }
 
 func getArgocdApps(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo) *appdir.AppDirectory {
-	log.Debug().Msgf("looking for %s repos", repo.CloneURL)
+	log.Debug().Caller().Msgf("looking for %s repos", repo.CloneURL)
 	repoApps := vcsToArgoMap.GetAppsInRepo(repo.CloneURL)
 
 	logCounts(repoApps)
@@ -63,13 +64,13 @@ func getArgocdApps(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo) *appdir.App
 }
 
 func getArgocdAppSets(vcsToArgoMap appdir.VcsToArgoMap, repo *git.Repo) *appdir.AppSetDirectory {
-	log.Debug().Msgf("looking for %s repos", repo.CloneURL)
+	log.Debug().Caller().Msgf("looking for %s repos", repo.CloneURL)
 	repoApps := vcsToArgoMap.GetAppSetsInRepo(repo.CloneURL)
 
 	if repoApps == nil {
-		log.Debug().Msg("found no appSets")
+		log.Debug().Caller().Msg("found no appSets")
 	} else {
-		log.Debug().Msgf("found %d appSets", repoApps.Count())
+		log.Debug().Caller().Msgf("found %d appSets", repoApps.Count())
 	}
 	return repoApps
 }

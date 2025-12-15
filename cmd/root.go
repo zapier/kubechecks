@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -162,10 +164,14 @@ func setupLogOutput() {
 
 	zerolog.SetGlobalLevel(level)
 
+	// short the caller output to file:line only
+	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
+		return filepath.Base(file) + ":" + strconv.Itoa(line)
+	}
 	output := zerolog.ConsoleWriter{Out: os.Stdout}
 	log.Logger = log.Output(output)
 
-	log.Debug().Msg("Debug level logging enabled.")
+	log.Debug().Caller().Msg("Debug level logging enabled.")
 	log.Trace().Msg("Trace level logging enabled.")
 	log.Info().Msg("Initialized logger.")
 

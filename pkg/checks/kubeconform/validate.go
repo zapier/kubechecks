@@ -34,7 +34,7 @@ func getSchemaLocations(ctr container.Container) []string {
 		location := locations[index]
 		oldLocation := location
 		if location == "default" || strings.Contains(location, "{{") {
-			log.Debug().Str("location", location).Msg("location requires no processing to be valid")
+			log.Debug().Caller().Str("location", location).Msg("location requires no processing to be valid")
 			continue
 		}
 
@@ -45,7 +45,7 @@ func getSchemaLocations(ctr container.Container) []string {
 		location += "{{ .NormalizedKubernetesVersion }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
 		locations[index] = location
 
-		log.Debug().Str("old", oldLocation).Str("new", location).Msg("processed schema location")
+		log.Debug().Caller().Str("old", oldLocation).Str("new", location).Msg("processed schema location")
 	}
 
 	return locations
@@ -55,7 +55,11 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
-	log.Debug().Str("app_name", appName).Str("k8s_version", targetKubernetesVersion).Msg("ArgoCDAppValidate")
+	log.Debug().
+		Caller().
+		Str("app_name", appName).
+		Str("k8s_version", targetKubernetesVersion).
+		Msg("ArgoCDAppValidate")
 
 	schemaCachePath, err := os.MkdirTemp("", "kubechecks-schema-cache-")
 	if err != nil {
@@ -81,9 +85,9 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		schemaLocations = getSchemaLocations(ctr)
 	)
 
-	log.Debug().Msgf("cache location: %s", vOpts.Cache)
-	log.Debug().Msgf("target kubernetes version: %s", targetKubernetesVersion)
-	log.Debug().Msgf("schema locations: %s", strings.Join(schemaLocations, ", "))
+	log.Debug().Caller().Msgf("cache location: %s", vOpts.Cache)
+	log.Debug().Caller().Msgf("target kubernetes version: %s", targetKubernetesVersion)
+	log.Debug().Caller().Msgf("schema locations: %s", strings.Join(schemaLocations, ", "))
 
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {

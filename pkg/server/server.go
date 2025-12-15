@@ -112,7 +112,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	log.Info().Msg("starting HTTP server on :8080")
-	if err := s.echo.Start(":8080"); err != nil && err != http.ErrServerClosed {
+	if err := s.echo.Start(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 

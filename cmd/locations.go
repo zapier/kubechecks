@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -29,7 +30,10 @@ func processLocations(ctx context.Context, ctr container.Container, locations []
 		}
 	}
 
-	log.Debug().Strs("locations", locations).Msg("locations after processing")
+	log.Debug().
+		Caller().
+		Strs("locations", locations).
+		Msg("locations after processing")
 
 	return nil
 }
@@ -70,13 +74,40 @@ func maybeCloneGitUrl(ctx context.Context, repoManager cloner, repoRefreshDurati
 				case <-tick:
 				}
 
-				if err := repo.Update(ctx); err != nil {
-					log.Warn().
-						Err(err).
+				// If the repo directory was cleaned up (e.g., due to TTL expiration),
+				// try to re-clone it to restore functionality
+				if _, statErr := os.Stat(repo.Directory); os.IsNotExist(statErr) {
+					log.Info().
 						Str("path", repo.Directory).
 						Str("url", repo.CloneURL).
-						Msg("failed to update repo")
+						Msg("repo directory missing, attempting to re-clone")
+
+					// Attempt to re-clone the repository
+					newRepo, cloneErr := repoManager.Clone(ctx, cloneUrl, query.Get("branch"))
+					if cloneErr != nil {
+						log.Error().
+							Err(cloneErr).
+							Str("url", cloneUrl).
+							Msg("failed to re-clone repo after directory cleanup")
+						continue
+					}
+
+					// Update the repo reference to point to the new clone
+					repo = newRepo
+					log.Info().
+						Str("path", repo.Directory).
+						Str("url", repo.CloneURL).
+						Msg("successfully re-cloned repo")
+				} else {
+					if err := repo.Update(ctx); err != nil {
+						log.Warn().
+							Err(err).
+							Str("path", repo.Directory).
+							Str("url", repo.CloneURL).
+							Msg("failed to update repo")
+					}
 				}
+
 			}
 		}()
 	}

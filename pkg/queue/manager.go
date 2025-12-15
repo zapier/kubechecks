@@ -215,11 +215,13 @@ notify:
 			if _, err := request.Container.VcsClient.PostMessage(notifyCtx, request.PullRequest, message); err != nil {
 				log.Error().
 					Err(err).
+					Caller().
 					Str("repo", request.PullRequest.CloneURL).
 					Int("check_id", request.PullRequest.CheckID).
 					Msg("failed to post shutdown notification")
 			} else {
 				log.Debug().
+					Caller().
 					Str("repo", request.PullRequest.CloneURL).
 					Int("check_id", request.PullRequest.CheckID).
 					Msg("posted shutdown notification")

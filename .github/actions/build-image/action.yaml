@@ -35,20 +35,33 @@ runs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
-        driver-opts: |
-          image=moby/buildkit:latest
-          network=host
+        driver: docker-container
+        buildkitd-config-inline: |
+          [worker.oci]
+            max-parallelism = 4
 
     # Parse .tool-versions file for version numbers
     - name: Parse tool versions
       uses: wistia/parse-tool-versions@v1.0
 
-    # Setup Go with caching
+    # Setup Go with caching disabled (using manual cache below)
     - name: Set up Go
       uses: actions/setup-go@v6.1.0
       with:
         go-version: ${{ env.GOLANG_TOOL_VERSION }}
-        cache: true
+        cache: false
+
+    # Cache Go modules and build cache using GitHub Actions native cache
+    - name: Cache Go modules + build cache
+      uses: actions/cache@v4
+      shell: bash
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
 
     # Login to GitHub Container Registry
     - name: Login to registry

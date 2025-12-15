@@ -33,7 +33,7 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 	// another service is also setting it.
 	var pipelineStatus *gitlab.PipelineInfo
 	getStatusFn := func() error {
-		log.Debug().Msg("getting pipeline status")
+		log.Debug().Caller().Msg("getting pipeline status")
 		pipelineStatus = c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
 		if pipelineStatus == nil {
 			return errNoPipelineStatus
@@ -50,6 +50,7 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 	}
 
 	log.Debug().
+		Caller().
 		Str("project", pr.FullName).
 		Str("commit_sha", pr.SHA).
 		Str("kubechecks_status", description).

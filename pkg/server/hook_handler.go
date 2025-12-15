@@ -41,7 +41,7 @@ func (h *VCSHookHandler) AttachHandlers(grp *echo.Group) {
 
 func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	ctx := context.Background()
-	log.Debug().Msg("Received hook request")
+	log.Debug().Caller().Msg("Received hook request")
 	// Always verify, even if no secret (no op if no secret)
 	payload, err := h.ctr.VcsClient.VerifyHook(c.Request(), h.ctr.Config.WebhookSecret)
 	if err != nil {
@@ -53,7 +53,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 	if err != nil {
 		switch err {
 		case vcs.ErrInvalidType:
-			log.Debug().Msg("Ignoring event, not a supported request")
+			log.Debug().Caller().Msg("Ignoring event, not a supported request")
 			return c.String(http.StatusOK, "Skipped")
 		default:
 			// TODO: do something ELSE with the error
@@ -129,7 +129,7 @@ func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Co
 	cEvent := events.NewCheckEvent(pr, ctr, repoMgr, processors)
 	if err := cEvent.Process(ctx); err != nil {
 		span.RecordError(err)
-		log.Error().Err(err).Msg("failed to process the request")
+		log.Error().Caller().Err(err).Msg("failed to process the request")
 	}
 }
 
@@ -141,7 +141,7 @@ func (h *VCSHookHandler) passesLabelFilter(repo vcs.PullRequest) bool {
 	foundKubechecksLabel := false
 
 	for _, label := range repo.Labels {
-		log.Debug().Str("check_label", label).Msg("checking label for match")
+		log.Debug().Caller().Str("check_label", label).Msg("checking label for match")
 		// Check if label starts with "kubechecks:"
 		if strings.HasPrefix(label, "kubechecks:") {
 			foundKubechecksLabel = true
@@ -149,7 +149,7 @@ func (h *VCSHookHandler) passesLabelFilter(repo vcs.PullRequest) bool {
 			// Get the remaining string after "kubechecks:"
 			remainingString := strings.TrimPrefix(label, "kubechecks:")
 			if remainingString == h.ctr.Config.LabelFilter {
-				log.Debug().Str("mr_label", label).Msg("label is match for our filter")
+				log.Debug().Caller().Str("mr_label", label).Msg("label is match for our filter")
 				return true
 			}
 		}

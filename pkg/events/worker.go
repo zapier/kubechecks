@@ -81,7 +81,7 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 	defer func() {
 		if r := recover(); r != nil {
 			desc := fmt.Sprintf("panic while checking %s", appName)
-			w.logger.Error().Any("error", r).
+			w.logger.Error().Caller().Any("error", r).
 				Str("app", appName).Msgf("panic while running check")
 			println(string(debug.Stack()))
 
@@ -95,10 +95,10 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 		}
 	}()
 
-	rootLogger.Debug().Msg("Getting manifests")
+	rootLogger.Debug().Caller().Msg("Getting manifests")
 	jsonManifests, err := w.ctr.ArgoClient.GetManifests(ctx, appName, app, w.pullRequest, w.getRepo)
 	if err != nil {
-		rootLogger.Error().Err(err).Msg("Unable to get manifests")
+		rootLogger.Error().Caller().Err(err).Str("app", appName).Str("repo", w.pullRequest.Name).Msg("Unable to get manifests")
 		w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
 			State:   pkg.StateError,
 			Summary: "Unable to get manifests",
@@ -113,7 +113,7 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 
 	k8sVersion, err := w.ctr.ArgoClient.GetKubernetesVersionByApplication(ctx, app)
 	if err != nil {
-		rootLogger.Error().Err(err).Msg("Error retrieving the Kubernetes version")
+		rootLogger.Error().Caller().Err(err).Msg("Error retrieving the Kubernetes version")
 		k8sVersion = w.ctr.Config.FallbackK8sVersion
 	} else {
 		k8sVersion = fmt.Sprintf("%s.0", k8sVersion)

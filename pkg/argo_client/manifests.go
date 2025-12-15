@@ -36,7 +36,7 @@ func (a *ArgoClient) GetManifests(ctx context.Context, name string, app v1alpha1
 	ctx, span := tracer.Start(ctx, "GetManifests")
 	defer span.End()
 
-	log.Debug().Str("name", name).Msg("GetManifests")
+	log.Debug().Caller().Str("name", name).Msg("GetManifests")
 
 	start := time.Now()
 	defer func() {
@@ -108,7 +108,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	// 1. first source must be a non-ref source
 	// 2. there must be one and only one non-ref source
 	// 3. ref sources that match the pull requests' repo and target branch need to have their target branch swapped to the head branch of the pull request
-
+	log.Info().Str("app", app.Name).Msg("generating manifests")
 	clusterCloser, clusterClient := a.GetClusterClient()
 	defer pkg.WithErrorLogging(clusterCloser.Close, "failed to close connection")
 
@@ -121,7 +121,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	settingsCloser, settingsClient := a.GetSettingsClient()
 	defer pkg.WithErrorLogging(settingsCloser.Close, "failed to close connection")
 
-	log.Info().Msg("get settings")
+	log.Debug().Caller().Str("app", app.Name).Msg("get settings")
 	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
 	if err != nil {
 		getManifestsFailed.WithLabelValues(app.Name).Inc()
@@ -136,7 +136,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		repoTarget = pullRequest.HeadRef
 	}
 
-	log.Info().Msg("get repo")
+	log.Debug().Caller().Str("app", app.Name).Msg("get repo")
 	repo, err := getRepo(ctx, source.RepoURL, repoTarget)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get repo")
@@ -144,17 +144,17 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 
 	var packageDir string
 	if a.cfg.ArgoCDSendFullRepository {
-		log.Info().Msg("sending full repository")
+		log.Debug().Caller().Str("app", app.Name).Msg("sending full repository")
 		packageDir = repo.Directory
 	} else {
-		log.Info().Msg("packaging app")
+		log.Debug().Caller().Str("app", app.Name).Msg("packaging app")
 		packageDir, err = packageApp(ctx, source, refs, repo, getRepo)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to package application")
 		}
 	}
 
-	log.Info().Msg("compressing files")
+	log.Debug().Caller().Str("app", app.Name).Msg("compressing files")
 
 	exclude := []string{}
 	if !a.cfg.ArgoCDIncludeDotGit {
@@ -165,7 +165,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	if err != nil {
 		return nil, fmt.Errorf("failed to compress files: %w", err)
 	}
-	log.Info().Msgf("%d files compressed", filesWritten)
+	log.Debug().Caller().Str("app", app.Name).Msgf("%d files compressed", filesWritten)
 	//if filesWritten == 0 {
 	//	return nil, fmt.Errorf("no files to send")
 	//}
@@ -242,14 +242,14 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	}
 	defer pkg.WithErrorLogging(conn.Close, "failed to close connection")
 
-	log.Info().Msg("generating manifest with files")
+	log.Debug().Caller().Str("app", app.Name).Msg("generating manifest with files")
 	stream, err := repoClient.GenerateManifestWithFiles(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get manifests with files")
 	}
 	defer pkg.WithErrorLogging(stream.CloseSend, "failed to close stream")
 
-	log.Info().Msg("sending request")
+	log.Debug().Caller().Str("app", app.Name).Msg("sending request to repo server")
 	if err := stream.Send(&repoapiclient.ManifestRequestWithFiles{
 		Part: &repoapiclient.ManifestRequestWithFiles_Request{
 			Request: &q,
@@ -258,7 +258,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, errors.Wrap(err, "failed to send request")
 	}
 
-	log.Info().Msg("sending metadata")
+	log.Debug().Caller().Str("app", app.Name).Msg("sending metadata to repo server")
 	if err := stream.Send(&repoapiclient.ManifestRequestWithFiles{
 		Part: &repoapiclient.ManifestRequestWithFiles_Metadata{
 			Metadata: &repoapiclient.ManifestFileMetadata{
@@ -281,7 +281,7 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return nil, errors.Wrap(err, "failed to get response")
 	}
 
-	log.Info().Msg("done!")
+	log.Debug().Caller().Str("app", app.Name).Msg("finished generating manifests")
 	return response.Manifests, nil
 }
 
@@ -375,7 +375,7 @@ func processLocalHelmDependency(
 	}
 
 	// Copy the entire dependency directory
-	log.Debug().Msgf("copying helm dependency from %s to %s", absDepPath, destDepPath)
+	log.Debug().Caller().Msgf("copying helm dependency from %s to %s", absDepPath, destDepPath)
 	if err := copyDir(filesys.MakeFsOnDisk(), absDepPath, destDepPath); err != nil {
 		return errors.Wrapf(err, "failed to copy helm dependency from %s to %s", absDepPath, destDepPath)
 	}
@@ -455,7 +455,7 @@ func packageApp(
 		// Handle local helm dependencies from Chart.yaml
 		chartPath := filepath.Join(srcAppPath, "Chart.yaml")
 		if _, err := os.Stat(chartPath); err == nil {
-			log.Debug().Msg("processing helm dependencies")
+			log.Debug().Caller().Str("chartPath", chartPath).Msg("processing helm dependencies")
 			deps, err := parseChartYAML(chartPath)
 			if err != nil {
 				return "", errors.Wrap(err, "failed to parse Chart.yaml")
@@ -463,7 +463,7 @@ func packageApp(
 
 			for _, dep := range deps {
 				if strings.HasPrefix(dep.Repository, "file://") {
-					log.Debug().Msgf("processing local helm dependency %s", dep.Repository)
+					log.Debug().Caller().Str("chartPath", chartPath).Msgf("processing local helm dependency %s", dep.Repository)
 					if err := processLocalHelmDependency(srcAppPath, destAppDir, dep.Repository); err != nil {
 						return "", errors.Wrapf(err, "failed to process local helm dependency %s", dep.Name)
 					}
@@ -559,7 +559,9 @@ func processValueReference(
 
 func ignoreValuesFileCopyError(source v1alpha1.ApplicationSource, valueFile string, err error) bool {
 	if errors.Is(err, os.ErrNotExist) && source.Helm.IgnoreMissingValueFiles {
-		log.Debug().Str("valueFile", valueFile).Msg("ignore missing values file, because source.Helm.IgnoreMissingValueFiles is true")
+		log.Debug().Caller().
+			Str("valueFile", valueFile).
+			Msg("ignore missing values file, because source.Helm.IgnoreMissingValueFiles is true")
 		return true
 	}
 
