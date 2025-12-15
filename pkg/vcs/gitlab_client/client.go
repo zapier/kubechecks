@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
@@ -354,22 +355,98 @@ func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([
 
 // DownloadArchive returns the archive URL for downloading a repository at a specific commit
 func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
-	// Get merge request details to find merge commit SHA
-	mr, _, err := c.c.MergeRequests.GetMergeRequest(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
-	if err != nil {
-		return "", errors.Wrap(err, "failed to get MR details from GitLab")
-	}
+	// Retry configuration for waiting on GitLab to check merge status
+	const (
+		maxRetries     = 5
+		initialBackoff = 500 * time.Millisecond
+		maxBackoff     = 8 * time.Second
+	)
 
-	// Check if MR has conflicts
-	if mr.HasConflicts {
-		return "", errors.New("MR has conflicts and cannot be merged")
-	}
+	var mr *gitlab.MergeRequest
+	var err error
+	backoff := initialBackoff
 
-	// Check if MR can be merged using DetailedMergeStatus
-	// Possible values: unchecked, checking, can_be_merged, cannot_be_merged, etc.
-	// Draft status will prevent merge as well.
-	if mr.DetailedMergeStatus != "" && mr.DetailedMergeStatus != "mergeable" && mr.DetailedMergeStatus != "can_be_merged" {
-		return "", fmt.Errorf("MR cannot be merged (status: %s)", mr.DetailedMergeStatus)
+	// Retry loop: GitLab needs time to check merge status after MR creation/update
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Get merge request details
+		mr, _, err = c.c.MergeRequests.GetMergeRequest(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+		if err != nil {
+			return "", errors.Wrap(err, "failed to get MR details from GitLab")
+		}
+
+		// Check if MR has conflicts
+		if mr.HasConflicts {
+			return "", errors.New("MR has conflicts and cannot be merged")
+		}
+
+		// Check DetailedMergeStatus
+		// Reference: https://docs.gitlab.com/api/merge_requests/#merge-status
+		status := mr.DetailedMergeStatus
+
+		// Success: MR is ready to be merged
+		// These statuses mean GitLab has finished checking and MR can proceed
+		successStatuses := []string{
+			"",          // Empty means ready (legacy behavior)
+			"mergeable", // The branch can merge cleanly
+		}
+		if containsStatus(successStatuses, status) {
+			log.Debug().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("mr_number", pr.CheckID).
+				Str("merge_status", status).
+				Msg("MR merge status is ready")
+			break
+		}
+
+		// Transient statuses: GitLab is still processing, need to retry
+		// These are temporary states that will change as GitLab processes the MR
+		transientStatuses := []string{
+			"unchecked",         // Git has not yet tested if valid merge is possible
+			"checking",          // Git is testing if valid merge is possible
+			"approvals_syncing", // MR approvals are syncing
+			"preparing",         // MR diff is being created
+			"ci_still_running",  // CI/CD pipeline is still running
+		}
+		if containsStatus(transientStatuses, status) {
+			// If this is the last attempt, fail
+			if attempt == maxRetries {
+				log.Warn().
+					Caller().
+					Str("repo", pr.FullName).
+					Int("mr_number", pr.CheckID).
+					Int("attempts", attempt+1).
+					Str("status", status).
+					Msg("MR merge status still transient after retries")
+				return "", fmt.Errorf("MR merge status not ready after retries (status: %s, waited ~%v)", status, time.Duration(attempt+1)*initialBackoff)
+			}
+
+			// Wait before retrying (exponential backoff)
+			log.Debug().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("mr_number", pr.CheckID).
+				Int("attempt", attempt+1).
+				Dur("backoff", backoff).
+				Str("status", status).
+				Msg("MR merge status still processing, retrying...")
+
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(backoff):
+				// Exponential backoff with cap
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			continue
+		}
+
+		// Permanent failure statuses: cannot be merged, must be fixed by user
+		// All other statuses indicate conditions that require user intervention
+		return "", fmt.Errorf("MR cannot be merged (status: %s)", status)
 	}
 
 	// Use GitLab's special ref for preview merges: refs/merge-requests/<iid>/merge
@@ -403,4 +480,14 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 		Msg("generated archive URL using merge ref")
 
 	return archiveURL, nil
+}
+
+// containsStatus checks if a status string is in the list of statuses
+func containsStatus(statuses []string, status string) bool {
+	for _, s := range statuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
 }
