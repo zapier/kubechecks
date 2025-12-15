@@ -77,7 +77,7 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		KubernetesVersion:    targetKubernetesVersion,
 		Strict:               true,
 		IgnoreMissingSchemas: false,
-		Debug:                log.Debug().Enabled(),
+		Debug:                log.Debug().Caller().Enabled(),
 	}
 
 	var (
