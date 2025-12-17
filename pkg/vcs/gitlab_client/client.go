@@ -358,8 +358,8 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	// Retry configuration for waiting on GitLab to check merge status
 	const (
 		maxRetries     = 5
-		initialBackoff = 500 * time.Millisecond
-		maxBackoff     = 8 * time.Second
+		initialBackoff = 5 * time.Second
+		maxBackoff     = 60 * time.Second
 	)
 
 	var mr *gitlab.MergeRequest
@@ -374,51 +374,33 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 			return "", errors.Wrap(err, "failed to get MR details from GitLab")
 		}
 
-		// Check if MR has conflicts
-		if mr.HasConflicts {
-			return "", errors.New("MR has conflicts and cannot be merged")
-		}
+		// Check MR readiness
+		readiness := checkMRReadiness(mr)
 
-		// Check DetailedMergeStatus
-		// Reference: https://docs.gitlab.com/api/merge_requests/#merge-status
-		status := mr.DetailedMergeStatus
-
-		// Success: MR is ready to be merged
-		// These statuses mean GitLab has finished checking and MR can proceed
-		successStatuses := []string{
-			"",          // Empty means ready (legacy behavior)
-			"mergeable", // The branch can merge cleanly
-		}
-		if containsStatus(successStatuses, status) {
+		switch readiness.Status {
+		case mrReady:
+			// MR is ready - proceed with download
 			log.Debug().
 				Caller().
 				Str("repo", pr.FullName).
 				Int("mr_number", pr.CheckID).
-				Str("merge_status", status).
-				Msg("MR merge status is ready")
+				Str("detailed_status", readiness.DetailedStatus).
+				Str("reason", readiness.Reason).
+				Msg("MR is ready")
 			break
-		}
 
-		// Transient statuses: GitLab is still processing, need to retry
-		// These are temporary states that will change as GitLab processes the MR
-		transientStatuses := []string{
-			"unchecked",         // Git has not yet tested if valid merge is possible
-			"checking",          // Git is testing if valid merge is possible
-			"approvals_syncing", // MR approvals are syncing
-			"preparing",         // MR diff is being created
-			"ci_still_running",  // CI/CD pipeline is still running
-		}
-		if containsStatus(transientStatuses, status) {
-			// If this is the last attempt, fail
+		case mrTransient:
+			// MR is still being processed - retry if attempts remain
 			if attempt == maxRetries {
 				log.Warn().
 					Caller().
 					Str("repo", pr.FullName).
 					Int("mr_number", pr.CheckID).
 					Int("attempts", attempt+1).
-					Str("status", status).
-					Msg("MR merge status still transient after retries")
-				return "", fmt.Errorf("MR merge status not ready after retries (status: %s, waited ~%v)", status, time.Duration(attempt+1)*initialBackoff)
+					Str("detailed_status", readiness.DetailedStatus).
+					Str("reason", readiness.Reason).
+					Msg("MR status still transient after retries")
+				return "", fmt.Errorf("MR not ready after retries: %s (detailed_status: %s)", readiness.Reason, readiness.DetailedStatus)
 			}
 
 			// Wait before retrying (exponential backoff)
@@ -428,25 +410,24 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 				Int("mr_number", pr.CheckID).
 				Int("attempt", attempt+1).
 				Dur("backoff", backoff).
-				Str("status", status).
-				Msg("MR merge status still processing, retrying...")
+				Str("detailed_status", readiness.DetailedStatus).
+				Msg("MR status transient, retrying...")
 
 			select {
 			case <-ctx.Done():
 				return "", ctx.Err()
 			case <-time.After(backoff):
-				// Exponential backoff with cap
 				backoff *= 2
 				if backoff > maxBackoff {
 					backoff = maxBackoff
 				}
 			}
 			continue
-		}
 
-		// Permanent failure statuses: cannot be merged, must be fixed by user
-		// All other statuses indicate conditions that require user intervention
-		return "", fmt.Errorf("MR cannot be merged (status: %s)", status)
+		case mrFailed:
+			// MR cannot be merged - permanent failure
+			return "", fmt.Errorf("MR cannot be merged: %s (detailed_status: %s)", readiness.Reason, readiness.DetailedStatus)
+		}
 	}
 
 	// Use GitLab's special ref for preview merges: refs/merge-requests/<iid>/merge
@@ -490,4 +471,84 @@ func containsStatus(statuses []string, status string) bool {
 		}
 	}
 	return false
+}
+
+// MRReadinessStatus represents the readiness state of a merge request
+type MRReadinessStatus int
+
+const (
+	mrReady     MRReadinessStatus = iota // MR is ready to proceed
+	mrTransient                          // MR is being processed, retry needed
+	mrFailed                             // MR cannot be merged, permanent failure
+)
+
+// MRReadiness contains the readiness status and details
+type MRReadiness struct {
+	Status         MRReadinessStatus
+	DetailedStatus string
+	Reason         string
+}
+
+// checkMRReadiness determines if an MR is ready for archive download
+// Returns the readiness status with reason for better error messages and logging
+func checkMRReadiness(mr *gitlab.MergeRequest) MRReadiness {
+	// Check for conflicts first
+	if mr.HasConflicts {
+		return MRReadiness{
+			Status:         mrFailed,
+			DetailedStatus: "conflict",
+			Reason:         "MR has conflicts",
+		}
+	}
+
+	detailedStatus := mr.DetailedMergeStatus
+
+	// SUCCESS: MR is ready to proceed with checks
+	successStatuses := []string{
+		"",          // Empty means ready (legacy behavior)
+		"mergeable", // The branch can merge cleanly
+	}
+	if containsStatus(successStatuses, detailedStatus) {
+		return MRReadiness{
+			Status:         mrReady,
+			DetailedStatus: detailedStatus,
+			Reason:         "MR is mergeable",
+		}
+	}
+
+	// CI STATES: Allow when kubechecks is part of the CI pipeline
+	// Kubechecks needs to run to make the CI pass
+	ciStatuses := []string{
+		"ci_must_pass",     // CI required - kubechecks might be the CI
+		"ci_still_running", // CI running - kubechecks might be waiting
+	}
+	if containsStatus(ciStatuses, detailedStatus) {
+		return MRReadiness{
+			Status:         mrReady,
+			DetailedStatus: detailedStatus,
+			Reason:         "CI state - kubechecks may be part of CI pipeline",
+		}
+	}
+
+	// TRANSIENT: GitLab is still processing
+	transientStatuses := []string{
+		"unchecked",         // Git has not yet tested if valid merge is possible
+		"checking",          // Git is testing if valid merge is possible
+		"approvals_syncing", // MR approvals are syncing
+		"preparing",         // MR diff is being created
+	}
+	if containsStatus(transientStatuses, detailedStatus) {
+		return MRReadiness{
+			Status:         mrTransient,
+			DetailedStatus: detailedStatus,
+			Reason:         "GitLab is still processing MR",
+		}
+	}
+
+	// PERMANENT FAILURE: All other statuses require user intervention
+	return MRReadiness{
+		Status:         mrFailed,
+		DetailedStatus: detailedStatus,
+		Reason:         fmt.Sprintf("MR status requires user action: %s", detailedStatus),
+	}
 }
