@@ -367,6 +367,7 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	backoff := initialBackoff
 
 	// Retry loop: GitLab needs time to check merge status after MR creation/update
+retryLoop:
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		// Get merge request details
 		mr, _, err = c.c.MergeRequests.GetMergeRequest(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
@@ -387,7 +388,7 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 				Str("detailed_status", readiness.DetailedStatus).
 				Str("reason", readiness.Reason).
 				Msg("MR is ready")
-			break
+			break retryLoop
 
 		case mrTransient:
 			// MR is still being processed - retry if attempts remain
