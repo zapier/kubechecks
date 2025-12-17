@@ -55,11 +55,11 @@ type CheckEvent struct {
 }
 
 type repoManager interface {
-	Clone(ctx context.Context, cloneURL, branchName string, shallow bool) (*git.Repo, error)
+	Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 }
 
 func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
-	log.Debug().Msg("using the argocd matcher")
+	log.Debug().Caller().Msg("using the argocd matcher")
 	m, err := affected_apps.NewArgocdMatcher(ce.ctr.VcsToArgoMap, repo)
 	if err != nil {
 		return errors.Wrap(err, "failed to create argocd matcher")
@@ -69,7 +69,7 @@ func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to load repo config")
 	} else if cfg != nil {
-		log.Debug().Msg("using the config matcher")
+		log.Debug().Caller().Msg("using the config matcher")
 		configMatcher := affected_apps.NewConfigMatcher(cfg, ce.ctr)
 		ce.matcher = affected_apps.NewMultiMatcher(ce.matcher, configMatcher)
 	}
@@ -128,12 +128,12 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 	ce.affectedItems, err = ce.matcher.AffectedApps(ctx, ce.fileList, targetBranch, repo)
 	if err != nil {
 		telemetry.SetError(span, err, "Get Affected Apps")
-		ce.logger.Error().Err(err).Msg("could not get list of affected apps and appsets")
+		ce.logger.Error().Caller().Err(err).Msg("could not get list of affected apps and appsets")
 	}
 	for _, appSet := range ce.affectedItems.ApplicationSets {
 		apps, err := ce.generator.GenerateApplicationSetApps(ctx, appSet, &ce.ctr)
 		if err != nil {
-			ce.logger.Error().Err(err).Msg("could not generate apps from appSet")
+			ce.logger.Error().Caller().Err(err).Msg("could not generate apps from appSet")
 			continue
 		}
 		ce.affectedItems.Applications = append(ce.affectedItems.Applications, apps...)
@@ -146,10 +146,10 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 		attribute.String("affectedAppSets", fmt.Sprintf("%+v", ce.affectedItems.ApplicationSets)),
 	)
 	for _, app := range ce.affectedItems.Applications {
-		ce.logger.Debug().Msgf("Affected apps: %+v", app.Name)
+		ce.logger.Debug().Caller().Msgf("Affected apps: %+v", app.Name)
 	}
 	for _, appset := range ce.affectedItems.ApplicationSets {
-		ce.logger.Debug().Msgf("Affected appSets: %+v", appset.Name)
+		ce.logger.Debug().Caller().Msgf("Affected appSets: %+v", appset.Name)
 	}
 
 	return err
@@ -176,7 +176,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 		err  error
 		repo *git.Repo
 	)
-	ce.logger.Info().Stack().Str("branchName", branchName).Msg("cloning repo")
+	ce.logger.Info().Stack().Caller().Str("branchName", branchName).Msg("cloning repo")
 	ce.repoLock.Lock()
 	defer ce.repoLock.Unlock()
 
@@ -196,7 +196,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 		return repo, nil
 	}
 
-	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName, ce.ctr.Config.RepoShallowClone)
+	repo, err = ce.repoManager.Clone(ctx, cloneURL, branchName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to clone repo")
 	}
@@ -230,43 +230,65 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	return repo, nil
 }
 
-func (ce *CheckEvent) mergeIntoTarget(ctx context.Context, repo *git.Repo, branch string) error {
-	if err := repo.MergeIntoTarget(ctx, fmt.Sprintf("origin/%s", branch)); err != nil {
-		return errors.Wrap(err, "failed to merge into target")
-	}
-
-	parsed, err := canonicalize(repo.CloneURL)
-	if err != nil {
-		return errors.Wrap(err, "failed to canonicalize url")
-	}
-
-	reposKey := generateRepoKey(parsed, branch)
-	ce.clonedRepos[reposKey] = repo
-
-	return nil
-}
-
 func (ce *CheckEvent) Process(ctx context.Context) error {
 	start := time.Now()
 
 	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 
-	// Clone the repo's BaseRef (main, etc.) locally into the temp dir we just made
-	repo, err := ce.getRepo(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef)
+	var repo *git.Repo
+	var err error
+
+	// Archive mode: Download merge commit archive from VCS
+	ce.logger.Info().Msg("using archive mode for PR processing")
+
+	// Validate PR can be processed in archive mode (check for conflicts)
+	if err = ce.ctr.ArchiveManager.ValidatePullRequest(ctx, ce.pullRequest); err != nil {
+		ce.logger.Error().Caller().Err(err).Msg("Can not proceed with the download, PR/MR is not ready. (e.g. conflict, draft)")
+		if postErr := ce.ctr.ArchiveManager.PostConflictMessage(ctx, ce.pullRequest); postErr != nil {
+			ce.logger.Error().Caller().Err(postErr).Msg("failed to post conflict message")
+		}
+		return errors.Wrap(err, "Failed to validate pull request for archive processing")
+	}
+
+	// Download and extract archive (contains merged state)
+	repo, err = ce.ctr.ArchiveManager.Clone(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef, ce.pullRequest)
 	if err != nil {
-		return errors.Wrap(err, "failed to clone repo")
+		return errors.Wrap(err, "failed to download archive")
 	}
 
-	// Merge the most recent changes into the branch we just cloned
-	if err = ce.mergeIntoTarget(ctx, repo, ce.pullRequest.HeadRef); err != nil {
-		return errors.Wrap(err, "failed to merge into target")
+	// Store the archived repo in clonedRepos map so getRepo() can find it
+	// This prevents workers from re-cloning with git
+	parsed, err := canonicalize(ce.pullRequest.CloneURL)
+	if err != nil {
+		return errors.Wrap(err, "failed to canonicalize clone URL")
 	}
+	ce.repoLock.Lock()
+	// Store under the HeadRef key (the branch being checked)
+	ce.clonedRepos[generateRepoKey(parsed, ce.pullRequest.HeadRef)] = repo
+	// Store under BaseRef if different
+	if ce.pullRequest.HeadRef != ce.pullRequest.BaseRef {
+		ce.clonedRepos[generateRepoKey(parsed, ce.pullRequest.BaseRef)] = repo
+	}
+	// IMPORTANT: Also store under "HEAD" key because ArgoCD often requests "HEAD"
+	// which means "the default branch" (usually same as BaseRef)
+	ce.clonedRepos[generateRepoKey(parsed, "HEAD")] = repo
+	ce.logger.Debug().
+		Caller().
+		Str("head_ref", ce.pullRequest.HeadRef).
+		Str("base_ref", ce.pullRequest.BaseRef).
+		Msg("archived repo stored in clonedRepos under multiple keys (HeadRef, BaseRef, HEAD)")
+	ce.repoLock.Unlock()
 
-	// Get the diff between the two branches, storing them within the CheckEvent (also returns but discarded here)
-	if err = ce.UpdateListOfChangedFiles(ctx, repo); err != nil {
-		return errors.Wrap(err, "failed to get list of changed files")
+	// Get changed files from VCS API (replaces git diff)
+	ce.fileList, err = ce.ctr.ArchiveManager.GetChangedFiles(ctx, ce.pullRequest)
+	if err != nil {
+		return errors.Wrap(err, "failed to get changed files from VCS API")
 	}
+	ce.logger.Info().
+		Int("file_count", len(ce.fileList)).
+		Str("files", strings.Join(ce.fileList, ", ")).
+		Msg("Changed files retrieved from VCS API (archive mode)")
 
 	// Generate a list of affected apps, storing them within the CheckEvent (also returns but discarded here)
 	if err = ce.GenerateListOfAffectedApps(ctx, repo, ce.pullRequest.BaseRef, generateMatcher); err != nil {
@@ -274,7 +296,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	if err = ce.ctr.VcsClient.TidyOutdatedComments(ctx, ce.pullRequest); err != nil {
-		ce.logger.Error().Err(err).Msg("Failed to tidy outdated comments")
+		ce.logger.Error().Caller().Err(err).Msg("Failed to tidy outdated comments")
 	}
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
@@ -318,14 +340,11 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	close(ce.appChannel)
 
-	ce.logger.Debug().Msg("finished an app/appsets")
-
 	ce.logger.Debug().
+		Caller().
 		Int("all apps", len(ce.addedAppsSet)).
 		Int32("sent apps", ce.appsSent).
 		Msg("completed apps")
-
-	ce.logger.Debug().Msg("Closing channels")
 
 	ce.logger.Info().Msg("Finished")
 
@@ -377,9 +396,9 @@ func (ce *CheckEvent) queueApp(app v1alpha1.Application) {
 	ce.wg.Add(1)
 	atomic.AddInt32(&ce.appsSent, 1)
 
-	logger.Debug().Msg("producing app on channel")
+	logger.Debug().Caller().Msg("producing app on channel")
 	ce.appChannel <- &app
-	logger.Debug().Msg("finished producing app")
+	logger.Debug().Caller().Msg("finished producing app")
 }
 
 // CommitStatus sets the commit status on the MR

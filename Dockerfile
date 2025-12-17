@@ -8,13 +8,11 @@ ARG ALPINE_VERSION=3.21
 # Stage: go-deps
 # Cache Go module downloads with BuildKit cache mount
 # Always runs on build platform (amd64) for fast cross-compilation
+# Note: git binary no longer needed - go-git is a regular Go module
 # ============================================================================
 FROM --platform=$BUILDPLATFORM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS go-deps
 
 WORKDIR /src
-
-# Install git (needed for go mod download with private repos)
-RUN apk add --no-cache git
 
 # Enable Go modules and disable CGO for static binary
 ENV GO111MODULE=on
@@ -90,16 +88,15 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # ============================================================================
 # Stage: production
-# Minimal runtime image with Alpine + git + ca-certificates
-# Total size target: ~50MB (5MB Alpine + 35MB git + tools + binary)
+# Minimal runtime image with Alpine + ca-certificates
+# Total size target: ~15MB (5MB Alpine + tools + binary)
+# Note: git binary no longer needed - using go-git library instead
 # ============================================================================
 FROM alpine:${ALPINE_VERSION} AS production
 
 # Install only what's needed at runtime:
-# - git: Required for cloning repos (pkg/git/repo.go)
 # - ca-certificates: Required for HTTPS
 RUN apk add --no-cache \
-    git \
     ca-certificates \
     && rm -rf /var/cache/apk/*
 
@@ -129,12 +126,12 @@ CMD ["/app/kubechecks", "controller"]
 # Stage: debug
 # Debug image with delve for local development with Tilt
 # Includes Go toolchain and source code for live_update hot reload
+# Note: git binary no longer needed - using go-git library instead
 # ============================================================================
 FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS debug
 
 # Install runtime dependencies and build tools
 RUN apk add --no-cache \
-    git \
     ca-certificates \
     && rm -rf /var/cache/apk/*
 

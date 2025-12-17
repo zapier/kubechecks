@@ -8,11 +8,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/git"
 	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
@@ -49,7 +49,7 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 	if gitlabToken == "" {
 		return nil, ErrNoToken
 	}
-	log.Debug().Msgf("Token Length - %d", len(gitlabToken))
+	log.Debug().Caller().Msgf("Token Length - %d", len(gitlabToken))
 
 	var gitlabOptions []gitlab.ClientOptionFunc
 
@@ -88,15 +88,6 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		client.email = vcs.DefaultVcsEmail
 	}
 
-	cloneURL, err := git.BuildCloneURL(cfg.VcsBaseUrl, client.username, gitlabToken)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to build clone url")
-	}
-
-	if err = git.SetCredentials(ctx, cfg, client.email, client.username, cloneURL); err != nil {
-		return nil, errors.Wrap(err, "failed to set git credentials")
-	}
-
 	return client, nil
 }
 
@@ -104,6 +95,14 @@ func (c *Client) Email() string         { return c.email }
 func (c *Client) Username() string      { return c.username }
 func (c *Client) CloneUsername() string { return c.username }
 func (c *Client) GetName() string       { return "gitlab" }
+
+// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
+func (c *Client) GetAuthHeaders() map[string]string {
+	// GitLab uses PRIVATE-TOKEN header for authentication
+	return map[string]string{
+		"PRIVATE-TOKEN": c.cfg.VcsToken,
+	}
+}
 
 // VerifyHook returns an err if the webhook isn't valid
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
@@ -185,7 +184,7 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 
 	for _, hook := range webhooks {
 		if hook.URL == webhookUrl {
-			events := []string{}
+			var events []string
 			// TODO: translate GL specific event names to VCS agnostic
 			if hook.MergeRequestsEvents {
 				events = append(events, string(gitlab.MergeRequestEventTargetType))
@@ -311,5 +310,246 @@ func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullR
 		Labels:        labels,
 
 		Config: c.cfg,
+	}
+}
+
+// GetPullRequestFiles returns the list of files changed in a merge request
+func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Msg("fetching MR files from GitLab API")
+
+	// List all diffs for the merge request
+	diffs, _, err := c.c.MergeRequests.ListMergeRequestDiffs(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list MR diffs from GitLab")
+	}
+
+	// Extract file paths from diffs
+	var allFiles []string
+	filesSeen := make(map[string]bool) // Deduplicate files
+
+	for _, diff := range diffs {
+		// Use NewPath for added/modified files, OldPath for deleted files
+		filePath := diff.NewPath
+		if filePath == "" || filePath == "/dev/null" {
+			filePath = diff.OldPath
+		}
+		if filePath != "" && filePath != "/dev/null" && !filesSeen[filePath] {
+			allFiles = append(allFiles, filePath)
+			filesSeen[filePath] = true
+		}
+	}
+
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Int("file_count", len(allFiles)).
+		Msg("fetched MR files from GitLab API")
+
+	return allFiles, nil
+}
+
+// DownloadArchive returns the archive URL for downloading a repository at a specific commit
+func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
+	// Retry configuration for waiting on GitLab to check merge status
+	const (
+		maxRetries     = 5
+		initialBackoff = 5 * time.Second
+		maxBackoff     = 60 * time.Second
+	)
+
+	var mr *gitlab.MergeRequest
+	var err error
+	backoff := initialBackoff
+
+	// Retry loop: GitLab needs time to check merge status after MR creation/update
+retryLoop:
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Get merge request details
+		mr, _, err = c.c.MergeRequests.GetMergeRequest(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+		if err != nil {
+			return "", errors.Wrap(err, "failed to get MR details from GitLab")
+		}
+
+		// Check MR readiness
+		readiness := checkMRReadiness(mr)
+
+		switch readiness.Status {
+		case mrReady:
+			// MR is ready - proceed with download
+			log.Debug().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("mr_number", pr.CheckID).
+				Str("detailed_status", readiness.DetailedStatus).
+				Str("reason", readiness.Reason).
+				Msg("MR is ready")
+			break retryLoop
+
+		case mrTransient:
+			// MR is still being processed - retry if attempts remain
+			if attempt == maxRetries {
+				log.Warn().
+					Caller().
+					Str("repo", pr.FullName).
+					Int("mr_number", pr.CheckID).
+					Int("attempts", attempt+1).
+					Str("detailed_status", readiness.DetailedStatus).
+					Str("reason", readiness.Reason).
+					Msg("MR status still transient after retries")
+				return "", fmt.Errorf("MR not ready after retries: %s (detailed_status: %s)", readiness.Reason, readiness.DetailedStatus)
+			}
+
+			// Wait before retrying (exponential backoff)
+			log.Debug().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("mr_number", pr.CheckID).
+				Int("attempt", attempt+1).
+				Dur("backoff", backoff).
+				Str("detailed_status", readiness.DetailedStatus).
+				Msg("MR status transient, retrying...")
+
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(backoff):
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			continue
+
+		case mrFailed:
+			// MR cannot be merged - permanent failure
+			return "", fmt.Errorf("MR cannot be merged: %s (detailed_status: %s)", readiness.Reason, readiness.DetailedStatus)
+		}
+	}
+
+	// Use GitLab's special ref for preview merges: refs/merge-requests/<iid>/merge
+	// This gives us the merged state without actually merging the MR
+	// Note: merge_commit_sha is null until MR is actually merged, so we can't use it
+	mergeRef := fmt.Sprintf("refs/merge-requests/%d/merge", pr.CheckID)
+
+	// URL-encode the project path (replace / with %2F)
+	projectPathEncoded := strings.ReplaceAll(pr.FullName, "/", "%2F")
+
+	// Construct archive URL using GitLab API
+	// Format: https://gitlab.com/api/v4/projects/{project_path_encoded}/repository/archive.zip?sha={ref}
+	var archiveURL string
+	if c.cfg.VcsBaseUrl != "" {
+		// Self-hosted GitLab
+		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
+		archiveURL = fmt.Sprintf("%s/api/v4/projects/%s/repository/archive.zip?sha=%s",
+			baseURL, projectPathEncoded, mergeRef)
+	} else {
+		// GitLab.com
+		archiveURL = fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/archive.zip?sha=%s",
+			projectPathEncoded, mergeRef)
+	}
+
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Str("merge_ref", mergeRef).
+		Str("archive_url", archiveURL).
+		Msg("generated archive URL using merge ref")
+
+	return archiveURL, nil
+}
+
+// containsStatus checks if a status string is in the list of statuses
+func containsStatus(statuses []string, status string) bool {
+	for _, s := range statuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
+}
+
+// MRReadinessStatus represents the readiness state of a merge request
+type MRReadinessStatus int
+
+const (
+	mrReady     MRReadinessStatus = iota // MR is ready to proceed
+	mrTransient                          // MR is being processed, retry needed
+	mrFailed                             // MR cannot be merged, permanent failure
+)
+
+// MRReadiness contains the readiness status and details
+type MRReadiness struct {
+	Status         MRReadinessStatus
+	DetailedStatus string
+	Reason         string
+}
+
+// checkMRReadiness determines if an MR is ready for archive download
+// Returns the readiness status with reason for better error messages and logging
+func checkMRReadiness(mr *gitlab.MergeRequest) MRReadiness {
+	// Check for conflicts first
+	if mr.HasConflicts {
+		return MRReadiness{
+			Status:         mrFailed,
+			DetailedStatus: "conflict",
+			Reason:         "MR has conflicts",
+		}
+	}
+
+	detailedStatus := mr.DetailedMergeStatus
+
+	// SUCCESS: MR is ready to proceed with checks
+	successStatuses := []string{
+		"",          // Empty means ready (legacy behavior)
+		"mergeable", // The branch can merge cleanly
+	}
+	if containsStatus(successStatuses, detailedStatus) {
+		return MRReadiness{
+			Status:         mrReady,
+			DetailedStatus: detailedStatus,
+			Reason:         "MR is mergeable",
+		}
+	}
+
+	// CI STATES: Allow when kubechecks is part of the CI pipeline
+	// Kubechecks needs to run to make the CI pass
+	ciStatuses := []string{
+		"ci_must_pass",     // CI required - kubechecks might be the CI
+		"ci_still_running", // CI running - kubechecks might be waiting
+	}
+	if containsStatus(ciStatuses, detailedStatus) {
+		return MRReadiness{
+			Status:         mrReady,
+			DetailedStatus: detailedStatus,
+			Reason:         "CI state - kubechecks may be part of CI pipeline",
+		}
+	}
+
+	// TRANSIENT: GitLab is still processing
+	transientStatuses := []string{
+		"unchecked",         // Git has not yet tested if valid merge is possible
+		"checking",          // Git is testing if valid merge is possible
+		"approvals_syncing", // MR approvals are syncing
+		"preparing",         // MR diff is being created
+	}
+	if containsStatus(transientStatuses, detailedStatus) {
+		return MRReadiness{
+			Status:         mrTransient,
+			DetailedStatus: detailedStatus,
+			Reason:         "GitLab is still processing MR",
+		}
+	}
+
+	// PERMANENT FAILURE: All other statuses require user intervention
+	return MRReadiness{
+		Status:         mrFailed,
+		DetailedStatus: detailedStatus,
+		Reason:         fmt.Sprintf("MR status requires user action: %s", detailedStatus),
 	}
 }

@@ -21,7 +21,7 @@ func aiDiffSummary(ctx context.Context, mrNote *msg.Message, cfg config.ServerCo
 	ctx, span := tracer.Start(ctx, "aiDiffSummary")
 	defer span.End()
 
-	log.Debug().Str("name", name).Msg("generating ai diff summary for application...")
+	log.Debug().Caller().Str("name", name).Msg("generating ai diff summary for application...")
 	if mrNote == nil {
 		return
 	}

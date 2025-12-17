@@ -2,7 +2,6 @@ package github_client
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,13 +11,11 @@ import (
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/cenkalti/backoff/v4"
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/google/go-github/v74/github"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/shurcooL/githubv4"
-	"github.com/zapier/kubechecks/pkg/git"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/oauth2"
 
@@ -107,146 +104,7 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		client.email = vcs.DefaultVcsEmail
 	}
 
-	var vcsUsername, vcsToken string
-	if cfg.IsGithubApp() {
-		vcsUsername = appUsername
-		response, err := getGithubAppToken(ctx, cfg)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to get app token")
-		}
-
-		vcsToken = response.Token
-		// this is so that we can censor the token in the logs
-		cfg.VcsToken = vcsToken
-
-		expirationDuration := time.Until(response.ExpiresAt)
-		interval := expirationDuration / 2
-
-		log.Info().
-			Str("interval", interval.String()).
-			Msg("beginning refresh token loop")
-		go client.refreshToken(ctx, cfg, interval)
-	} else {
-		vcsUsername = client.username
-		vcsToken = cfg.VcsToken
-	}
-
-	if err = client.setCredentials(ctx, cfg, vcsUsername, vcsToken); err != nil {
-		return nil, errors.Wrap(err, "failed to set credentials")
-	}
-
 	return client, nil
-}
-
-func (c *Client) setCredentials(ctx context.Context, cfg config.ServerConfig, vcsUsername, vcsToken string) error {
-	_, span := tracer.Start(ctx, "github_client.setCredentials")
-	defer span.End()
-
-	cloneURL, err := git.BuildCloneURL(cfg.VcsBaseUrl, vcsUsername, vcsToken)
-	if err != nil {
-		return errors.Wrap(err, "failed to build clone url")
-	}
-
-	if err = git.SetCredentials(ctx, cfg, c.email, c.username, cloneURL); err != nil {
-		return errors.Wrap(err, "failed to set git credentials")
-	}
-
-	return nil
-}
-
-const appUsername = "x-access-token"
-
-func (c *Client) refreshToken(ctx context.Context, cfg config.ServerConfig, interval time.Duration) {
-	t := time.NewTicker(interval)
-	defer t.Stop()
-
-	bo := backoff.NewConstantBackOff(time.Minute)
-
-	logger := log.With().Str("process", "refresh-token").Logger()
-
-	logger.Info().
-		Str("interval", interval.String()).
-		Msg("refreshing github app token in a loop")
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Warn().Msg("context canceled")
-			return
-		case <-t.C:
-			logger.Info().Msg("refreshing github app token")
-			if err := backoff.Retry(func() error {
-				response, err := getGithubAppToken(ctx, cfg)
-				if err != nil {
-					logger.Warn().Err(err).Msg("failed to refresh github app token")
-					return errors.Wrap(err, "failed to refresh github app token")
-				}
-
-				// this is so that we can censor the token in the logs
-				cfg.VcsToken = response.Token
-				if err = c.setCredentials(ctx, cfg, appUsername, response.Token); err != nil {
-					logger.Warn().Err(err).Msg("failed to set git credentials")
-					return errors.Wrap(err, "failed to set git credentials")
-				}
-
-				return nil
-			}, bo); err != nil {
-				log.Fatal().Err(err).Msg("failed to renew app token")
-			}
-		}
-	}
-}
-
-var ErrInvalidStatusCode = errors.New("invalid http status code")
-
-func getGithubAppToken(ctx context.Context, cfg config.ServerConfig) (accessTokenResponse, error) {
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	stringAppId := fmt.Sprintf("%d", cfg.GithubAppID)
-	jwt, err := pkg.CreateJWT(cfg.GithubPrivateKey, stringAppId)
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to create jwt")
-	}
-	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", cfg.GithubInstallationID)
-
-	req, err := http.NewRequest(http.MethodPost, url, nil)
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to create request")
-	}
-	req.Header.Add("Accept", "application/vnd.github+json")
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", jwt))
-	req.Header.Add("X-GitHub-Api-Version", "2022-11-28")
-	req = req.WithContext(ctx)
-
-	resp, err := httpClient.Do(req) // nolint:bodyclose // linter can't figure out that we are doing this
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to get response")
-	}
-	defer pkg.WithErrorLogging(resp.Body.Close, "failed to close response body")
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to read response")
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		return accessTokenResponse{}, errors.Wrapf(ErrInvalidStatusCode, "received a %d: %s", resp.StatusCode, string(body))
-	}
-
-	var result accessTokenResponse
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return accessTokenResponse{}, errors.Wrapf(err, "failed to unmarshal response")
-	}
-
-	return result, nil
-}
-
-type accessTokenResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, error) {
@@ -265,7 +123,7 @@ func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Clien
 	// Initialize the GitHub client with access token if app key is not provided
 	vcsToken := cfg.VcsToken
 	if vcsToken != "" {
-		log.Debug().Msgf("Token Length - %d", len(vcsToken))
+		log.Debug().Caller().Msgf("Token Length - %d", len(vcsToken))
 		ts := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: vcsToken},
 		)
@@ -286,6 +144,15 @@ func (c *Client) CloneUsername() string {
 		return "x-access-token"
 	} else {
 		return c.username
+	}
+}
+
+// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
+func (c *Client) GetAuthHeaders() map[string]string {
+	// GitHub accepts: Authorization: Bearer <token> or Authorization: token <token>
+	// Using Bearer format as it's the modern standard
+	return map[string]string{
+		"Authorization": fmt.Sprintf("Bearer %s", c.cfg.VcsToken),
 	}
 }
 
@@ -411,7 +278,7 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, status pk
 		log.Err(err).Msg("could not set Github commit status")
 		return err
 	}
-	log.Debug().Interface("status", repoStatus).Msg("Github commit status set")
+	log.Debug().Caller().Interface("status", repoStatus).Msg("Github commit status set")
 	return nil
 }
 
@@ -572,4 +439,167 @@ func unPtr[T interface{ string | int }](ps *T) T {
 		return t
 	}
 	return *ps
+}
+
+// GetPullRequestFiles returns the list of files changed in a pull request
+func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "GetPullRequestFiles")
+	defer span.End()
+
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("pr_number", pr.CheckID).
+		Msg("fetching PR files from GitHub API")
+
+	// List files changed in the PR
+	opts := &github.ListOptions{PerPage: 100}
+	var allFiles []string
+
+	for {
+		files, resp, err := c.googleClient.PullRequests.ListFiles(ctx, pr.Owner, pr.Name, pr.CheckID, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to list PR files")
+		}
+
+		for _, file := range files {
+			if file.Filename != nil {
+				allFiles = append(allFiles, *file.Filename)
+			}
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("pr_number", pr.CheckID).
+		Int("file_count", len(allFiles)).
+		Msg("fetched PR files from GitHub API")
+
+	return allFiles, nil
+}
+
+// DownloadArchive returns the archive URL for downloading a repository at a specific commit
+func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
+	ctx, span := tracer.Start(ctx, "DownloadArchive")
+	defer span.End()
+
+	// Retry configuration for waiting on GitHub to compute merge commit SHA
+	const (
+		maxRetries     = 5
+		initialBackoff = 500 * time.Millisecond
+		maxBackoff     = 8 * time.Second
+	)
+
+	var ghPR *github.PullRequest
+	var err error
+	backoff := initialBackoff
+
+	// Retry loop: GitHub needs time to compute merge_commit_sha after PR creation/update
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Get PR details to find merge_commit_sha
+		ghPR, _, err = c.googleClient.PullRequests.Get(ctx, pr.Owner, pr.Name, pr.CheckID)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to get PR details")
+		}
+
+		// CRITICAL: Validate that GitHub has processed the latest commit
+		// When a new commit is pushed, GitHub may return outdated merge_commit_sha from the previous commit
+		// We must verify that the HEAD SHA matches the expected SHA from the webhook
+		headSHAMatches := ghPR.Head != nil && ghPR.Head.SHA != nil && *ghPR.Head.SHA == pr.SHA
+		mergeCommitAvailable := ghPR.MergeCommitSHA != nil && *ghPR.MergeCommitSHA != ""
+
+		if headSHAMatches && mergeCommitAvailable {
+			// Success - merge commit SHA is ready AND corresponds to the current HEAD
+			log.Debug().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("pr_number", pr.CheckID).
+				Str("head_sha", pr.SHA).
+				Str("merge_commit_sha", *ghPR.MergeCommitSHA).
+				Msg("merge commit SHA is current and ready")
+			break
+		}
+
+		// If this is the last attempt, fail with detailed info
+		if attempt == maxRetries {
+			var reason string
+			if !headSHAMatches {
+				apiHeadSHA := "nil"
+				if ghPR.Head != nil && ghPR.Head.SHA != nil {
+					apiHeadSHA = *ghPR.Head.SHA
+				}
+				reason = fmt.Sprintf("HEAD SHA mismatch (expected: %s, got: %s)", pr.SHA, apiHeadSHA)
+			} else if !mergeCommitAvailable {
+				reason = "merge commit SHA not available"
+			}
+
+			log.Warn().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("pr_number", pr.CheckID).
+				Int("attempts", attempt+1).
+				Str("reason", reason).
+				Msg("failed to get current merge commit SHA after retries")
+			return "", fmt.Errorf("PR merge commit SHA not ready (may have conflicts or GitHub still processing): %s", reason)
+		}
+
+		// Wait before retrying (exponential backoff)
+		log.Debug().
+			Caller().
+			Str("repo", pr.FullName).
+			Int("pr_number", pr.CheckID).
+			Int("attempt", attempt+1).
+			Dur("backoff", backoff).
+			Bool("head_sha_matches", headSHAMatches).
+			Bool("merge_commit_available", mergeCommitAvailable).
+			Msg("merge commit SHA not yet current, retrying...")
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(backoff):
+			// Exponential backoff with cap
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+	}
+
+	// Check if PR is mergeable
+	if ghPR.Mergeable != nil && !*ghPR.Mergeable {
+		return "", errors.New("PR is not mergeable (has conflicts)")
+	}
+
+	mergeCommitSHA := *ghPR.MergeCommitSHA
+
+	// Construct archive URL
+	// Format: https://github.com/{owner}/{repo}/archive/{sha}.zip
+	// Or for enterprise: https://{base_url}/{owner}/{repo}/archive/{sha}.zip
+	var archiveURL string
+	if c.cfg.VcsBaseUrl != "" {
+		// GitHub Enterprise
+		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/api/v3")
+		baseURL = strings.TrimSuffix(baseURL, "/")
+		archiveURL = fmt.Sprintf("%s/%s/%s/archive/%s.zip", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
+	} else {
+		// GitHub.com
+		archiveURL = fmt.Sprintf("https://github.com/%s/%s/archive/%s.zip", pr.Owner, pr.Name, mergeCommitSHA)
+	}
+
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("pr_number", pr.CheckID).
+		Str("merge_commit_sha", mergeCommitSHA).
+		Str("archive_url", archiveURL).
+		Msg("generated archive URL")
+
+	return archiveURL, nil
 }

@@ -107,7 +107,7 @@ build: ## Build single-platform production image (local architecture)
 build-debug: ## Build debug image with delve for local development
 	@echo "==> Building debug image with delve..."
 	docker buildx build \
-		--target debug \
+		--target production \
 		--build-arg GOLANG_VERSION=$(GOLANG_VERSION) \
 		--build-arg ALPINE_VERSION=$(ALPINE_VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
