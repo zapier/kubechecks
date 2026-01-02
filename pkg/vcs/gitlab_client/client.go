@@ -401,7 +401,7 @@ retryLoop:
 					Str("detailed_status", readiness.DetailedStatus).
 					Str("reason", readiness.Reason).
 					Msg("MR status still transient after retries")
-				return "", fmt.Errorf("MR not ready after retries: %s (detailed_status: %s)", readiness.Reason, readiness.DetailedStatus)
+				return "", fmt.Errorf("MR merge status not ready after retries (status: %s, waited ~%v)", readiness.DetailedStatus, time.Duration(attempt+1)*initialBackoff)
 			}
 
 			// Wait before retrying (exponential backoff)

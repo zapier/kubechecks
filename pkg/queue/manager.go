@@ -262,7 +262,8 @@ func (rq *RepoQueue) processRequest(request *CheckRequest) {
 		log.Error().
 			Str("repo", request.PullRequest.CloneURL).
 			Int("check_id", request.PullRequest.CheckID).
-			Msg("worker recovered from panic, continuing to process next request")
+			Err(err).
+			Msg("worker failed to process request, continuing to next request")
 		return
 	}
 
