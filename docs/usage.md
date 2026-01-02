@@ -37,6 +37,8 @@ The full list of supported environment variables is described below:
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
 |`KUBECHECKS_ADDITIONAL_APPS_NAMESPACES`|Additional namespaces other than the ArgoCDNamespace to monitor for applications.|`[]`|
+|`KUBECHECKS_ARCHIVE_CACHE_DIR`|Directory for archive cache (when use-archive-mode is enabled).|`/tmp/kubechecks/archives`|
+|`KUBECHECKS_ARCHIVE_CACHE_TTL`|Time-to-live for cached archives.|`1h0m0s`|
 |`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections over TLS to the ArgoCD API server.|`false`|
 |`KUBECHECKS_ARGOCD_API_NAMESPACE`|ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.|`argocd`|
 |`KUBECHECKS_ARGOCD_API_PLAINTEXT`|Enable to use plaintext connections without TLS.|`false`|
@@ -63,6 +65,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of error, warn, info, debug, trace.|`info`|
 |`KUBECHECKS_MAX_CONCURRENT_CHECKS`|Number of concurrent checks to run.|`32`|
 |`KUBECHECKS_MAX_QUEUE_SIZE`|Size of app diff check queue.|`1024`|
+|`KUBECHECKS_MAX_REPO_WORKER_QUEUE_SIZE`|Maximum size of check request queue per repository worker.|`100`|
 |`KUBECHECKS_MONITOR_ALL_APPLICATIONS`|Monitor all applications in argocd automatically.|`true`|
 |`KUBECHECKS_OPENAI_API_TOKEN`|OpenAI API Token.||
 |`KUBECHECKS_OTEL_COLLECTOR_HOST`|The OpenTelemetry collector host.||
@@ -71,11 +74,14 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_PERSIST_LOG_LEVEL`|Persists the set log level down to other module loggers.|`false`|
 |`KUBECHECKS_POLICIES_LOCATION`|Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.|`[./policies]`|
 |`KUBECHECKS_REPLAN_COMMENT_MSG`|comment message which re-triggers kubechecks on PR.|`kubechecks again`|
+|`KUBECHECKS_REPO_CACHE_DIR`|Directory for persistent repository cache.|`/tmp/kubechecks/repos`|
+|`KUBECHECKS_REPO_CACHE_ENABLED`|Enable persistent repository caching.|`true`|
+|`KUBECHECKS_REPO_CACHE_TTL`|Time-to-live for cached repositories.|`24h0m0s`|
 |`KUBECHECKS_REPO_REFRESH_INTERVAL`|Interval between static repo refreshes (for schemas and policies).|`5m`|
-|`KUBECHECKS_REPO_SHALLOW_CLONE`|Enable shallow cloning for all git repos.|`false`|
 |`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.|`[]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
+|`KUBECHECKS_USE_ARCHIVE_MODE`|Use VCS archive downloads instead of git clone/merge operations.|`false`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||
 |`KUBECHECKS_VCS_EMAIL`|VCS Email.||
 |`KUBECHECKS_VCS_TOKEN`|VCS API token.||

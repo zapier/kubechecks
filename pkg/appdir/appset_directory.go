@@ -80,7 +80,9 @@ func (d *AppSetDirectory) ProcessAppSet(app v1alpha1.ApplicationSet) {
 //  if the changed file is application set file, return it.
 
 func (d *AppSetDirectory) FindAppSetsBasedOnChangeList(changeList []string, repo *git.Repo) []v1alpha1.ApplicationSet {
-	log.Debug().Str("type", "applicationsets").Msgf("checking %d changes", len(changeList))
+	log.Debug().Caller().
+		Str("type", "applicationsets").
+		Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})
 	var appSets []v1alpha1.ApplicationSet
@@ -115,7 +117,7 @@ func (d *AppSetDirectory) FindAppSetsBasedOnChangeList(changeList []string, repo
 		}
 	}
 
-	log.Debug().Str("source", "appset_directory").Msgf("matched %d files into %d appset", len(changeList), len(appSets))
+	log.Debug().Caller().Str("source", "appset_directory").Msgf("matched %d files into %d appset", len(changeList), len(appSets))
 	return appSets
 }
 
@@ -140,6 +142,7 @@ func (d *AppSetDirectory) AddAppSet(appSet *v1alpha1.ApplicationSet) {
 		return
 	}
 	log.Debug().
+		Caller().
 		Str("appName", appSet.GetName()).
 		Str("source", appSetGetSourcePath(appSet)).
 		Msg("add appset")
@@ -157,6 +160,7 @@ func (d *AppSetDirectory) AddFile(appName, path string) {
 
 func (d *AppSetDirectory) RemoveAppSet(app v1alpha1.ApplicationSet) {
 	log.Debug().
+		Caller().
 		Str("appName", app.Name).
 		Msg("delete app")
 
@@ -196,7 +200,7 @@ func containsKindApplicationSet(path string) bool {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.Contains(line, "kind: ApplicationSet") {
-			log.Debug().Msgf("found kind: ApplicationSet in %s", path)
+			log.Debug().Caller().Msgf("found kind: ApplicationSet in %s", path)
 			return true
 		}
 	}

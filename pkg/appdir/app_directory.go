@@ -60,14 +60,17 @@ func (d *AppDirectory) Union(other *AppDirectory) *AppDirectory {
 // targetBranch: the branch name to compare against the target revision of the applications.
 // e.g. changeList = ["path/to/file1", "path/to/file2"]
 func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBranch string) []v1alpha1.Application {
-	log.Debug().Msgf("checking %d changes", len(changeList))
+	log.Debug().Caller().Msgf("checking %d changes", len(changeList))
 
 	appsSet := make(map[string]struct{})
 	for _, changePath := range changeList {
-		log.Debug().Msgf("change: %s", changePath)
+		log.Debug().Caller().Msgf("change: %s", changePath)
 		for dir, appNames := range d.appDirs {
 			if strings.HasPrefix(changePath, dir) {
-				log.Debug().Msg("dir match!")
+				log.Debug().Caller().
+					Str("changePath", changePath).
+					Str("dir", dir).
+					Msg("dir match!")
 				for _, appName := range appNames {
 					appsSet[appName] = struct{}{}
 				}
@@ -76,7 +79,7 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 
 		appNames, ok := d.appFiles[changePath]
 		if ok {
-			log.Debug().Msg("file match!")
+			log.Debug().Caller().Str("changePath", changePath).Msg("file match!")
 			for _, appName := range appNames {
 				appsSet[appName] = struct{}{}
 			}
@@ -92,14 +95,15 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 		}
 
 		if !shouldInclude(app, targetBranch) {
-			log.Debug().Msgf("target revision of %s is %s and does not match '%s'", appName, getTargetRevision(app), targetBranch)
+			log.Debug().Caller().
+				Msgf("target revision of %s is %s and does not match '%s'", appName, getTargetRevision(app), targetBranch)
 			continue
 		}
 
 		appsSlice = append(appsSlice, app)
 	}
 
-	log.Debug().Msgf("matched %d files into %d apps", len(changeList), len(appsSet))
+	log.Debug().Caller().Msgf("matched %d files into %d apps", len(changeList), len(appsSet))
 	return appsSlice
 }
 
@@ -147,13 +151,14 @@ func (d *AppDirectory) GetApps(filter func(stub v1alpha1.Application) bool) []v1
 
 func (d *AppDirectory) AddApp(app v1alpha1.Application) {
 	if _, exists := d.appsMap[app.Name]; exists {
-		log.Debug().Msgf("app %s already exists", app.Name)
+		log.Debug().Caller().Msgf("app %s already exists", app.Name)
 		return
 	}
 
 	for _, src := range getSources(app) {
 		sourcePath := src.Path
 		log.Debug().
+			Caller().
 			Str("appName", app.Name).
 			Str("cluster-name", app.Spec.Destination.Name).
 			Str("cluster-server", app.Spec.Destination.Server).
@@ -196,6 +201,7 @@ func (d *AppDirectory) addFile(appName, path string) {
 
 func (d *AppDirectory) RemoveApp(app v1alpha1.Application) {
 	log.Debug().
+		Caller().
 		Str("appName", app.Name).
 		Str("cluster-name", app.Spec.Destination.Name).
 		Str("cluster-server", app.Spec.Destination.Server).

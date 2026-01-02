@@ -62,7 +62,6 @@ func NewArgoClient(
 }
 
 func (a *ArgoClient) createRepoServerClient() (repoapiclient.RepoServerServiceClient, *grpc.ClientConn, error) {
-	log.Info().Msg("creating client")
 	tlsConfig := tls.Config{InsecureSkipVerify: a.cfg.ArgoCDRepositoryInsecure}
 	conn, err := grpc.NewClient(a.cfg.ArgoCDRepositoryEndpoint,
 		grpc.WithTransportCredentials(
