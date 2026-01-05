@@ -76,11 +76,20 @@ func (m *Message) WorstState() pkg.CommitState {
 		for _, result := range r.results {
 			// Skip results with no changes detected, just like BuildComment does
 			if result.NoChangesDetected {
+				log.Debug().
+					Caller().
+					Str("app", app).
+					Str("state", result.State.BareString()).
+					Str("summary", result.Summary).
+					Msg("Skipping result with NoChangesDetected")
 				continue
 			}
 			log.Debug().
 				Caller().
-				Msgf("App %s has result state %s", app, result.State.BareString())
+				Str("app", app).
+				Str("state", result.State.BareString()).
+				Str("summary", result.Summary).
+				Msg("Including result in WorstState calculation")
 			state = pkg.WorstState(state, result.State)
 		}
 	}
