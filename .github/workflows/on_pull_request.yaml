@@ -140,3 +140,49 @@ jobs:
           message: |
             Temporary image available at:
             `ghcr.io/${{ github.repository_owner }}/kubechecks:${{ env.FS_TAG }}`
+
+  release-helm:
+    needs: build-image
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+
+    env:
+      CHART_VERSION: 0.0.0-pr${{ github.event.pull_request.number }}
+      APP_VERSION: 0.0.0-pr${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Update chart version and appVersion
+        run: |
+          # Update kubechecks chart
+          sed -i "s/^version:.*/version: ${{ env.CHART_VERSION }}/" charts/kubechecks/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ env.APP_VERSION }}\"/" charts/kubechecks/Chart.yaml
+
+      - name: Package and push kubechecks chart
+        run: |
+          helm package charts/kubechecks
+          helm push kubechecks-${{ env.CHART_VERSION }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+
+
+      - name: Update PR comment with chart info
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            Temporary Helm chart available:
+            ```bash
+            helm install kubechecks oci://ghcr.io/${{ github.repository_owner }}/charts/kubechecks --version ${{ env.CHART_VERSION }}
+            ```
