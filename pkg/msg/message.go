@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
@@ -77,6 +78,9 @@ func (m *Message) WorstState() pkg.CommitState {
 			if result.NoChangesDetected {
 				continue
 			}
+			log.Debug().
+				Caller().
+				Msgf("App %s has result state %s", app, result.State.BareString())
 			state = pkg.WorstState(state, result.State)
 		}
 	}
