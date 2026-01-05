@@ -487,13 +487,18 @@ func (c *Client) checkMRReadiness(ctx context.Context, projectID interface{}, mr
 	// GET /projects/:id/merge_requests/:merge_request_iid/merge_ref
 	// See: https://docs.gitlab.com/api/merge_requests.html#merge-to-default-merge-ref-path
 
+	// URL-encode the project path (replace / with %2F for GitLab API)
+	projectIDStr := fmt.Sprintf("%v", projectID)
+	projectPathEncoded := strings.ReplaceAll(projectIDStr, "/", "%2F")
+
 	log.Debug().
 		Caller().
-		Interface("project_id", projectID).
+		Str("project_path", projectIDStr).
+		Str("project_path_encoded", projectPathEncoded).
 		Int("mr_iid", mrIID).
 		Msg("checking MR readiness using merge_ref endpoint")
 
-	req, err := c.c.Client.NewRequest("GET", fmt.Sprintf("projects/%v/merge_requests/%d/merge_ref", projectID, mrIID), nil, []gitlab.RequestOptionFunc{gitlab.WithContext(ctx)})
+	req, err := c.c.Client.NewRequest("GET", fmt.Sprintf("projects/%s/merge_requests/%d/merge_ref", projectPathEncoded, mrIID), nil, []gitlab.RequestOptionFunc{gitlab.WithContext(ctx)})
 	if err != nil {
 		log.Error().
 			Caller().

@@ -88,7 +88,8 @@ func (d *AppSetDirectory) FindAppSetsBasedOnChangeList(changeList []string, repo
 	var appSets []v1alpha1.ApplicationSet
 
 	for _, changePath := range changeList {
-		log.Printf("change: %s", changePath)
+		log.Debug().Caller().
+			Msgf("changePath: %s", changePath)
 		absPath := filepath.Join(repo.Directory, changePath)
 
 		// Check if file contains `kind: ApplicationSet`

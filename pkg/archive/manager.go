@@ -62,6 +62,7 @@ func (m *Manager) Clone(ctx context.Context, cloneURL, branchName string, pr vcs
 	}
 
 	log.Debug().
+		Caller().
 		Str("archive_url", archiveURL).
 		Str("merge_commit_sha", mergeCommitSHA).
 		Str("head_sha", pr.SHA).
