@@ -182,7 +182,16 @@ jobs:
         uses: mshick/add-pr-comment@v2
         with:
           message: |
-            Temporary Helm chart available:
+            Temporary Helm chart (version `${{ env.CHART_VERSION }}`) available:
+
+            **Install directly:**
             ```bash
             helm install kubechecks oci://ghcr.io/${{ github.repository_owner }}/charts/kubechecks --version ${{ env.CHART_VERSION }}
             ```
+
+            **Pull to inspect:**
+            ```bash
+            helm pull oci://ghcr.io/${{ github.repository_owner }}/charts/kubechecks --version ${{ env.CHART_VERSION }}
+            ```
+
+            **Note:** OCI charts don't use `helm repo add` - use the chart URL directly.

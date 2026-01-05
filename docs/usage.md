@@ -37,7 +37,7 @@ The full list of supported environment variables is described below:
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
 |`KUBECHECKS_ADDITIONAL_APPS_NAMESPACES`|Additional namespaces other than the ArgoCDNamespace to monitor for applications.|`[]`|
-|`KUBECHECKS_ARCHIVE_CACHE_DIR`|Directory for archive cache (when use-archive-mode is enabled).|`/tmp/kubechecks/archives`|
+|`KUBECHECKS_ARCHIVE_CACHE_DIR`|Directory for archive cache.|`/tmp/kubechecks/archives`|
 |`KUBECHECKS_ARCHIVE_CACHE_TTL`|Time-to-live for cached archives.|`1h0m0s`|
 |`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections over TLS to the ArgoCD API server.|`false`|
 |`KUBECHECKS_ARGOCD_API_NAMESPACE`|ArgoCD namespace where the application watcher will read Custom Resource Definitions (CRD) for Application and ApplicationSet resources.|`argocd`|
@@ -81,7 +81,6 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.|`[]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
-|`KUBECHECKS_USE_ARCHIVE_MODE`|Use VCS archive downloads instead of git clone/merge operations.|`false`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||
 |`KUBECHECKS_VCS_EMAIL`|VCS Email.||
 |`KUBECHECKS_VCS_TOKEN`|VCS API token.||

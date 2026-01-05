@@ -27,7 +27,7 @@ type Container struct {
 	Config config.ServerConfig
 
 	RepoManager    git.RepoManager
-	ArchiveManager *archive.Manager // Optional: used when UseArchiveMode is enabled
+	ArchiveManager *archive.Manager // Handles VCS archive downloads for PR processing
 
 	VcsClient    vcs.Client
 	VcsToArgoMap appdir.VcsToArgoMap
@@ -64,11 +64,9 @@ func New(ctx context.Context, cfg config.ServerConfig) (Container, error) {
 		return ctr, errors.Wrap(err, "failed to create vcs client")
 	}
 
-	// Initialize archive manager if archive mode is enabled
-	if cfg.UseArchiveMode {
-		log.Info().Msg("archive mode enabled - using VCS archive downloads instead of git operations")
-		ctr.ArchiveManager = archive.NewManager(cfg, ctr.VcsClient)
-	}
+	// Initialize archive manager for VCS archive downloads
+	log.Info().Msg("initializing archive manager for VCS archive downloads")
+	ctr.ArchiveManager = archive.NewManager(cfg, ctr.VcsClient)
 
 	var kubeClient client.Interface
 
