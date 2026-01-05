@@ -30,6 +30,7 @@ type Client struct {
 }
 
 type GLClient struct {
+	Client          *gitlab.Client // Underlying GitLab client for direct API access
 	MergeRequests   MergeRequestsServices
 	RepositoryFiles RepositoryFilesServices
 	Notes           NotesServices
@@ -70,6 +71,7 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 
 	client := &Client{
 		c: &GLClient{
+			Client:          c,
 			MergeRequests:   &MergeRequestsService{c.MergeRequests},
 			RepositoryFiles: &RepositoryFilesService{c.RepositoryFiles},
 			Notes:           &NotesService{c.Notes},
@@ -362,21 +364,14 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 		maxBackoff     = 60 * time.Second
 	)
 
-	var mr *gitlab.MergeRequest
-	var err error
 	backoff := initialBackoff
 
 	// Retry loop: GitLab needs time to check merge status after MR creation/update
 retryLoop:
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		// Get merge request details
-		mr, _, err = c.c.MergeRequests.GetMergeRequest(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
-		if err != nil {
-			return "", errors.Wrap(err, "failed to get MR details from GitLab")
-		}
-
-		// Check MR readiness
-		readiness := checkMRReadiness(mr)
+		urlencoded := strings.ReplaceAll(pr.FullName, "/", "%2F")
+		// Check MR readiness using merge_ref endpoint
+		readiness := c.checkMRReadiness(ctx, urlencoded, pr.CheckID)
 
 		switch readiness.Status {
 		case mrReady:
@@ -464,16 +459,6 @@ retryLoop:
 	return archiveURL, nil
 }
 
-// containsStatus checks if a status string is in the list of statuses
-func containsStatus(statuses []string, status string) bool {
-	for _, s := range statuses {
-		if s == status {
-			return true
-		}
-	}
-	return false
-}
-
 // MRReadinessStatus represents the readiness state of a merge request
 type MRReadinessStatus int
 
@@ -490,66 +475,95 @@ type MRReadiness struct {
 	Reason         string
 }
 
-// checkMRReadiness determines if an MR is ready for archive download
-// Returns the readiness status with reason for better error messages and logging
-func checkMRReadiness(mr *gitlab.MergeRequest) MRReadiness {
-	// Check for conflicts first
-	if mr.HasConflicts {
+// checkMRReadiness determines if an MR is ready for archive download by querying the merge_ref endpoint
+// This is simpler and more reliable than checking various status fields
+// Returns the readiness status based on HTTP response codes:
+// - 200: merge_ref exists, MR is ready
+// - 400: conflicts or invalid state (permanent failure)
+// - 404: merge_ref not ready yet, GitLab still processing (retry)
+// - 429: rate limited (retry)
+func (c *Client) checkMRReadiness(ctx context.Context, projectID interface{}, mrIID int) MRReadiness {
+	// Query the merge_ref endpoint to check if merge is possible
+	// GET /projects/:id/merge_requests/:merge_request_iid/merge_ref
+	// See: https://docs.gitlab.com/api/merge_requests.html#merge-to-default-merge-ref-path
+
+	log.Debug().
+		Caller().
+		Interface("project_id", projectID).
+		Int("mr_iid", mrIID).
+		Msg("checking MR readiness using merge_ref endpoint")
+
+	req, err := c.c.Client.NewRequest("GET", fmt.Sprintf("projects/%v/merge_requests/%d/merge_ref", projectID, mrIID), nil, []gitlab.RequestOptionFunc{gitlab.WithContext(ctx)})
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Interface("project_id", projectID).
+			Int("mr_iid", mrIID).
+			Msg("failed to create merge_ref API request")
 		return MRReadiness{
 			Status:         mrFailed,
-			DetailedStatus: "conflict",
-			Reason:         "MR has conflicts",
+			DetailedStatus: "api_error",
+			Reason:         fmt.Sprintf("Failed to create merge_ref request: %v", err),
 		}
 	}
 
-	detailedStatus := mr.DetailedMergeStatus
-
-	// SUCCESS: MR is ready to proceed with checks
-	successStatuses := []string{
-		"",          // Empty means ready (legacy behavior)
-		"mergeable", // The branch can merge cleanly
+	resp, err := c.c.Client.Do(req, nil)
+	if err != nil {
+		// Check if it's an HTTP error
+		if resp != nil {
+			switch resp.StatusCode {
+			case http.StatusBadRequest:
+				// Bad request - MR has conflicts or is not mergeable
+				return MRReadiness{
+					Status:         mrFailed,
+					DetailedStatus: "not_mergeable",
+					Reason:         "MR has conflicts or cannot be merged (HTTP 400)",
+				}
+			case http.StatusNotFound:
+				// Not found - merge_ref not ready yet, GitLab still processing
+				return MRReadiness{
+					Status:         mrTransient,
+					DetailedStatus: "merge_ref_not_ready",
+					Reason:         "merge_ref not available yet, GitLab still processing (HTTP 404)",
+				}
+			case http.StatusTooManyRequests:
+				// Rate limited - should retry
+				return MRReadiness{
+					Status:         mrTransient,
+					DetailedStatus: "rate_limited",
+					Reason:         "GitLab API rate limit reached (HTTP 429)",
+				}
+			default:
+				// Other HTTP error
+				return MRReadiness{
+					Status:         mrFailed,
+					DetailedStatus: fmt.Sprintf("http_%d", resp.StatusCode),
+					Reason:         fmt.Sprintf("merge_ref endpoint returned HTTP %d: %v", resp.StatusCode, err),
+				}
+			}
+		}
+		// Non-HTTP error
+		return MRReadiness{
+			Status:         mrFailed,
+			DetailedStatus: "api_error",
+			Reason:         fmt.Sprintf("Failed to query merge_ref endpoint: %v", err),
+		}
 	}
-	if containsStatus(successStatuses, detailedStatus) {
+
+	// HTTP 200 - merge_ref exists, MR is ready
+	if resp.StatusCode == http.StatusOK {
 		return MRReadiness{
 			Status:         mrReady,
-			DetailedStatus: detailedStatus,
-			Reason:         "MR is mergeable",
+			DetailedStatus: "mergeable",
+			Reason:         "merge_ref endpoint returned success (HTTP 200)",
 		}
 	}
 
-	// CI STATES: Allow when kubechecks is part of the CI pipeline
-	// Kubechecks needs to run to make the CI pass
-	ciStatuses := []string{
-		"ci_must_pass",     // CI required - kubechecks might be the CI
-		"ci_still_running", // CI running - kubechecks might be waiting
-	}
-	if containsStatus(ciStatuses, detailedStatus) {
-		return MRReadiness{
-			Status:         mrReady,
-			DetailedStatus: detailedStatus,
-			Reason:         "CI state - kubechecks may be part of CI pipeline",
-		}
-	}
-
-	// TRANSIENT: GitLab is still processing
-	transientStatuses := []string{
-		"unchecked",         // Git has not yet tested if valid merge is possible
-		"checking",          // Git is testing if valid merge is possible
-		"approvals_syncing", // MR approvals are syncing
-		"preparing",         // MR diff is being created
-	}
-	if containsStatus(transientStatuses, detailedStatus) {
-		return MRReadiness{
-			Status:         mrTransient,
-			DetailedStatus: detailedStatus,
-			Reason:         "GitLab is still processing MR",
-		}
-	}
-
-	// PERMANENT FAILURE: All other statuses require user intervention
+	// Unexpected status code
 	return MRReadiness{
 		Status:         mrFailed,
-		DetailedStatus: detailedStatus,
-		Reason:         fmt.Sprintf("MR status requires user action: %s", detailedStatus),
+		DetailedStatus: fmt.Sprintf("http_%d", resp.StatusCode),
+		Reason:         fmt.Sprintf("Unexpected HTTP status %d from merge_ref endpoint", resp.StatusCode),
 	}
 }
