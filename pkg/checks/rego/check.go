@@ -126,6 +126,19 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	_, span := tracer.Start(ctx, "Conftest")
 	defer span.End()
 
+	// If there are no manifests, return early with no changes detected
+	if len(request.YamlManifests) == 0 {
+		log.Debug().
+			Caller().
+			Str("app", request.App.Name).
+			Msg("no manifests to validate, skipping conftest check")
+		return msg.Result{
+			State:             pkg.StateNone,
+			Summary:           "No manifests to validate",
+			NoChangesDetected: true,
+		}, nil
+	}
+
 	manifestsPath, err := dumpFiles(request.YamlManifests)
 	if manifestsPath != "" {
 		defer pkg.WipeDir(manifestsPath)
