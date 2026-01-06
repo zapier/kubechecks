@@ -431,21 +431,30 @@ retryLoop:
 	// Note: merge_commit_sha is null until MR is actually merged, so we can't use it
 	mergeRef := fmt.Sprintf("refs/merge-requests/%d/merge", pr.CheckID)
 
+	// CRITICAL: Resolve the merge ref to its actual commit SHA for proper cache invalidation
+	// The ref path stays the same but points to different commits as the MR is updated
+	// We must resolve it to the SHA to detect when new commits are pushed
+	mergeRefSHA, err := c.resolveMergeRefToSHA(ctx, pr.FullName, mergeRef)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to resolve merge ref to SHA")
+	}
+
 	// URL-encode the project path (replace / with %2F)
 	projectPathEncoded := strings.ReplaceAll(pr.FullName, "/", "%2F")
 
 	// Construct archive URL using GitLab API
-	// Format: https://gitlab.com/api/v4/projects/{project_path_encoded}/repository/archive.zip?sha={ref}
+	// IMPORTANT: Use the resolved SHA, not the ref path, for cache key extraction
+	// Format: https://gitlab.com/api/v4/projects/{project_path_encoded}/repository/archive.zip?sha={sha}
 	var archiveURL string
 	if c.cfg.VcsBaseUrl != "" {
 		// Self-hosted GitLab
 		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
 		archiveURL = fmt.Sprintf("%s/api/v4/projects/%s/repository/archive.zip?sha=%s",
-			baseURL, projectPathEncoded, mergeRef)
+			baseURL, projectPathEncoded, mergeRefSHA)
 	} else {
 		// GitLab.com
 		archiveURL = fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/archive.zip?sha=%s",
-			projectPathEncoded, mergeRef)
+			projectPathEncoded, mergeRefSHA)
 	}
 
 	log.Debug().
@@ -453,8 +462,10 @@ retryLoop:
 		Str("repo", pr.FullName).
 		Int("mr_number", pr.CheckID).
 		Str("merge_ref", mergeRef).
+		Str("merge_ref_sha", mergeRefSHA).
+		Str("head_sha", pr.SHA).
 		Str("archive_url", archiveURL).
-		Msg("generated archive URL using merge ref")
+		Msg("generated archive URL using resolved merge ref SHA")
 
 	return archiveURL, nil
 }
@@ -571,4 +582,36 @@ func (c *Client) checkMRReadiness(ctx context.Context, projectID interface{}, mr
 		DetailedStatus: fmt.Sprintf("http_%d", resp.StatusCode),
 		Reason:         fmt.Sprintf("Unexpected HTTP status %d from merge_ref endpoint", resp.StatusCode),
 	}
+}
+
+// resolveMergeRefToSHA resolves a GitLab merge ref to its current commit SHA
+// This is critical for cache invalidation - the ref path stays the same but points to different commits
+// Example: refs/merge-requests/123/merge -> abc123def456...
+func (c *Client) resolveMergeRefToSHA(ctx context.Context, projectPath, mergeRef string) (string, error) {
+	log.Debug().
+		Caller().
+		Str("project_path", projectPath).
+		Str("merge_ref", mergeRef).
+		Msg("resolving merge ref to commit SHA")
+
+	// Use GitLab Commits API to get the commit that the ref points to
+	// GET /projects/:id/repository/commits/:sha
+	// The :sha parameter accepts commit SHAs, branch names, or tag names (including refs)
+	commit, _, err := c.c.Client.Commits.GetCommit(projectPath, mergeRef, nil, gitlab.WithContext(ctx))
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to resolve merge ref %s to commit SHA", mergeRef)
+	}
+
+	if commit.ID == "" {
+		return "", fmt.Errorf("resolved commit has empty ID for merge ref %s", mergeRef)
+	}
+
+	log.Debug().
+		Caller().
+		Str("project_path", projectPath).
+		Str("merge_ref", mergeRef).
+		Str("resolved_sha", commit.ID).
+		Msg("successfully resolved merge ref to commit SHA")
+
+	return commit.ID, nil
 }
