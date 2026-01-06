@@ -14,7 +14,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/app_watcher"
 
 	"github.com/zapier/kubechecks/pkg"
-	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
@@ -84,14 +83,38 @@ var ControllerCmd = &cobra.Command{
 		}
 		defer t.Shutdown()
 
-		log.Info().Msgf("starting web server")
-		startWebserver(ctx, ctr, processors)
+		// Create server
+		srv := server.NewServer(ctr, processors)
 
-		log.Info().Msgf("listening for requests")
+		// Start HTTP server in background
+		log.Info().Msg("starting web server")
+		go func() {
+			if err := srv.Start(ctx); err != nil {
+				log.Fatal().Err(err).Msg("failed to start web server")
+			}
+		}()
+
+		// Wait for shutdown signal
+		log.Info().Msg("listening for requests")
 		waitForShutdown()
 
+		// Begin graceful shutdown with 30 second timeout
 		log.Info().Msg("shutting down gracefully")
-		waitForPendingRequest()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// Wait for in-flight requests to complete (with timeout)
+		waitForPendingRequest(shutdownCtx)
+
+		// Shutdown HTTP server and queue workers
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Error().Err(err).Msg("server shutdown failed")
+		}
+
+		// Shutdown kubechecks controller resources such as repo worker
+		ctr.Shutdown()
+
+		log.Info().Msg("shutdown complete")
 	},
 }
 
@@ -102,32 +125,46 @@ func initTelemetry(ctx context.Context, cfg config.ServerConfig) (*telemetry.Ope
 	)
 }
 
-func startWebserver(ctx context.Context, ctr container.Container, processors []checks.ProcessorEntry) {
-	srv := server.NewServer(ctr, processors)
-	go srv.Start(ctx)
-}
+// waitForPendingRequest waits for all in-flight requests to complete or until the context is done.
+func waitForPendingRequest(ctx context.Context) {
+	inFlight := events.GetInFlight()
+	if inFlight == 0 {
+		log.Info().Msg("no in-flight requests to wait for")
+		return
+	}
 
-func waitForPendingRequest() {
-	for events.GetInFlight() > 0 {
-		log.Info().Int("count", events.GetInFlight()).Msg("waiting for in-flight requests to complete")
-		time.Sleep(time.Second * 3)
+	log.Info().Int("count", inFlight).Msg("waiting for in-flight requests to complete")
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			remaining := events.GetInFlight()
+			if remaining > 0 {
+				log.Warn().Int("count", remaining).Msg("shutdown timeout reached with in-flight requests remaining")
+			}
+			return
+		case <-ticker.C:
+			inFlight := events.GetInFlight()
+			if inFlight == 0 {
+				log.Info().Msg("all in-flight requests completed")
+				return
+			}
+			log.Info().Int("count", inFlight).Msg("still waiting for in-flight requests")
+		}
 	}
 }
 
+// waitForShutdown blocks until a termination signal is received.
 func waitForShutdown() {
 	// graceful termination handler.
-	// when we receive a SIGTERM from kubernetes, check for in-flight requests before exiting.
+	// when we receive a SIGTERM/SIGINT, initiate graceful shutdown
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGTERM)
-	done := make(chan bool, 1)
+	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
 
-	go func() {
-		sig := <-sigs
-		log.Debug().Str("signal", sig.String()).Msg("received signal")
-		done <- true
-	}()
-
-	<-done
+	sig := <-sigs
+	log.Info().Str("signal", sig.String()).Msg("received shutdown signal")
 }
 
 func panicIfError(err error) {

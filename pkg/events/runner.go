@@ -65,7 +65,7 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstSt
 			r.wg.Done()
 
 			if err := recover(); err != nil {
-				logger.Error().Str("check", desc).Msgf("panic while running check")
+				logger.Error().Caller().Str("check", desc).Msgf("panic while running check")
 
 				telemetry.SetError(span, fmt.Errorf("%v", err), desc)
 				result := msg.Result{

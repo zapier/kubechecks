@@ -73,6 +73,10 @@ func (m *Message) WorstState() pkg.CommitState {
 		}
 
 		for _, result := range r.results {
+			// Skip results with no changes detected, just like BuildComment does
+			if result.NoChangesDetected {
+				continue
+			}
 			state = pkg.WorstState(state, result.State)
 		}
 	}

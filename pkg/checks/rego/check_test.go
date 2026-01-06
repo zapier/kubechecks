@@ -190,3 +190,43 @@ warn contains msg if {
 		})
 	}
 }
+
+func TestEmptyManifests(t *testing.T) {
+	t.Parallel()
+
+	policiesPath, err := os.MkdirTemp("", "kubechecks-test-policies-")
+	require.NoError(t, err)
+
+	// Write a basic policy
+	policy := `package tests
+import rego.v1
+deny contains msg if {
+  input.kind == "Deployment"
+  msg := "test policy"
+}
+`
+	mustWrite(t, filepath.Join(policiesPath, "policy.rego"), policy)
+
+	cfg := config.ServerConfig{
+		ShowDebugInfo:    true,
+		PoliciesLocation: []string{policiesPath},
+	}
+	c, err := NewChecker(cfg)
+	require.NoError(t, err)
+
+	ctx := context.TODO()
+	request := checks.Request{
+		Container: container.Container{
+			Config:    cfg,
+			VcsClient: new(gitlab_client.Client),
+		},
+		YamlManifests: []string{}, // Empty manifests
+	}
+	cr, err := c.Check(ctx, request)
+	require.NoError(t, err)
+
+	// Should return StateNone with NoChangesDetected = true
+	assert.Equal(t, pkg.StateNone, cr.State)
+	assert.True(t, cr.NoChangesDetected)
+	assert.Equal(t, "No manifests to validate", cr.Summary)
+}

@@ -32,33 +32,59 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 	// retry a few times to avoid creating a duplicate external pipeline status if
 	// another service is also setting it.
 	var pipelineStatus *gitlab.PipelineInfo
-	getStatusFn := func() error {
-		log.Debug().Msg("getting pipeline status")
-		pipelineStatus = c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
-		if pipelineStatus == nil {
-			return errNoPipelineStatus
+
+	// Quick check: try to find pipeline once without retries
+	log.Debug().Caller().Msg("checking for existing pipeline")
+	pipelineStatus = c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
+
+	// Only retry if we found pipelines but couldn't match one
+	// This avoids wasteful retries for projects without CI/CD
+	if pipelineStatus == nil {
+		log.Debug().Caller().Msg("no pipeline found on first attempt, checking if retries are needed")
+
+		// Do a quick check for ANY pipelines on this commit (not just matching sources)
+		// If there are pipelines but we didn't match them, retry to see if the right one appears
+		pipelines, _, err := c.c.Pipelines.ListProjectPipelines(pr.FullName, &gitlab.ListProjectPipelinesOptions{
+			SHA: pkg.Pointer(pr.SHA),
+		}, gitlab.WithContext(ctx))
+
+		if err == nil && len(pipelines) > 0 {
+			// There are pipelines but we didn't match any - retry with backoff
+			log.Debug().Caller().Int("pipeline_count", len(pipelines)).Msg("pipelines exist but none matched, retrying...")
+
+			getStatusFn := func() error {
+				pipelineStatus = c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
+				if pipelineStatus == nil {
+					return errNoPipelineStatus
+				}
+				return nil
+			}
+			retryErr := backoff.Retry(getStatusFn, configureBackOff())
+			if retryErr != nil {
+				log.Debug().Msg("could not find matching pipeline after retries")
+			}
+		} else {
+			// No pipelines at all - likely no CI/CD configured, skip retries
+			log.Debug().Caller().Msg("no pipelines found for commit, skipping retries (likely no CI/CD)")
 		}
-		return nil
 	}
-	err := backoff.Retry(getStatusFn, configureBackOff())
-	if err != nil {
-		log.Warn().Msg("could not retrieve pipeline status after multiple attempts")
-	}
+
 	if pipelineStatus != nil {
 		log.Trace().Int("pipeline_id", pipelineStatus.ID).Msg("pipeline status")
 		status.PipelineID = &pipelineStatus.ID
 	}
 
 	log.Debug().
+		Caller().
 		Str("project", pr.FullName).
 		Str("commit_sha", pr.SHA).
 		Str("kubechecks_status", description).
 		Str("gitlab_status", string(status.State)).
 		Msg("gitlab client: updating commit status")
-	_, err = c.setCommitStatus(pr.FullName, pr.SHA, status)
-	if err != nil {
-		log.Error().Err(err).Str("project", pr.FullName).Msg("gitlab client: could not set commit status")
-		return err
+	_, setErr := c.setCommitStatus(pr.FullName, pr.SHA, status)
+	if setErr != nil {
+		log.Error().Err(setErr).Str("project", pr.FullName).Msg("gitlab client: could not set commit status")
+		return setErr
 	}
 	return nil
 }

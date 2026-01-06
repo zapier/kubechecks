@@ -183,7 +183,7 @@ func dirMatchForAppSet(changeDir, appSetDir string) bool {
 	appSetDir = path.Clean(appSetDir)
 	changeDir = path.Clean(changeDir)
 
-	log.Debug().Msgf("appSetDir: %s; changeDir: %s", appSetDir, changeDir)
+	log.Debug().Caller().Msgf("appSetDir: %s; changeDir: %s", appSetDir, changeDir)
 
 	if strings.HasSuffix(changeDir, appSetDir) {
 		return true

@@ -27,7 +27,7 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 		message = message[:MaxCommentLength]
 	}
 
-	log.Debug().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
+	log.Debug().Caller().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
 	comment, _, err := c.googleClient.Issues.CreateComment(
 		ctx,
 		pr.Owner,
@@ -83,7 +83,7 @@ func (c *Client) pruneOldComments(ctx context.Context, pr vcs.PullRequest, comme
 	_, span := tracer.Start(ctx, "pruneOldComments")
 	defer span.End()
 
-	log.Debug().Msgf("Pruning messages from PR %d in repo %s", pr.CheckID, pr.FullName)
+	log.Debug().Caller().Msgf("Pruning messages from PR %d in repo %s", pr.CheckID, pr.FullName)
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) || strings.Contains(*comment.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
@@ -101,7 +101,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, pr vcs.PullRequest, c
 	_, span := tracer.Start(ctx, "hideOutdatedComments")
 	defer span.End()
 
-	log.Debug().Msgf("Hiding kubecheck messages in PR %d in repo %s", pr.CheckID, pr.FullName)
+	log.Debug().Caller().Msgf("Hiding kubecheck messages in PR %d in repo %s", pr.CheckID, pr.FullName)
 
 	for _, comment := range comments {
 		if strings.EqualFold(comment.GetUser().GetLogin(), c.username) || strings.Contains(*comment.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {

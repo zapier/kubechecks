@@ -80,12 +80,17 @@ type ServerConfig struct {
 	MonitorAllApplications   bool          `mapstructure:"monitor-all-applications"`
 	OpenAIAPIToken           string        `mapstructure:"openai-api-token"`
 	RepoRefreshInterval      time.Duration `mapstructure:"repo-refresh-interval"`
-	RepoShallowClone         bool          `mapstructure:"repo-shallow-clone"`
+	RepoCacheEnabled         bool          `mapstructure:"repo-cache-enabled"`
+	RepoCacheDir             string        `mapstructure:"repo-cache-dir"`
+	RepoCacheTTL             time.Duration `mapstructure:"repo-cache-ttl"`
+	ArchiveCacheDir          string        `mapstructure:"archive-cache-dir"`
+	ArchiveCacheTTL          time.Duration `mapstructure:"archive-cache-ttl"`
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
 	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
 	MaxConcurrentChecks      int           `mapstructure:"max-concurrent-checks"`
+	MaxRepoWorkerQueueSize   int           `mapstructure:"max-repo-worker-queue-size"`
 	ReplanCommentMessage     string        `mapstructure:"replan-comment-msg"`
 	Identifier               string        `mapstructure:"identifier"`
 }

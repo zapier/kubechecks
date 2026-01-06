@@ -57,7 +57,7 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 
 	app := request.App
 
-	log.Debug().Str("name", app.Name).Msg("generating diff for application...")
+	log.Debug().Caller().Str("name", app.Name).Msg("generating diff for application...")
 
 	items := make([]objKeyLiveTarget, 0)
 	var unstructureds []*unstructured.Unstructured
@@ -260,7 +260,7 @@ func getArgoSettings(ctx context.Context, request checks.Request) (*settings.Set
 var nilApp = argoappv1.Application{}
 
 func isApp(item objKeyLiveTarget, manifests []byte) (argoappv1.Application, bool) {
-	logger := log.With().
+	logger := log.With().Caller().
 		Str("kind", item.key.Kind).
 		Str("name", item.key.Name).
 		Str("namespace", item.key.Namespace).
@@ -381,7 +381,7 @@ func PrintDiff(w io.Writer, live *unstructured.Unstructured, target *unstructure
 		}
 	}
 
-	diff := difflib.UnifiedDiff{
+	diffData := difflib.UnifiedDiff{
 		A: difflib.SplitLines(string(liveData)),
 		B: difflib.SplitLines(string(targetData)),
 		// FromFile: "Original",
@@ -389,7 +389,7 @@ func PrintDiff(w io.Writer, live *unstructured.Unstructured, target *unstructure
 		Context: 2,
 	}
 
-	return difflib.WriteUnifiedDiff(w, diff)
+	return difflib.WriteUnifiedDiff(w, diffData)
 	//return difflib.GetUnifiedDiffString(diff)
 	// return dmp.DiffPrettyText(diff), nil
 }

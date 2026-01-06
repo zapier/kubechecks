@@ -90,6 +90,7 @@ func dumpFiles(manifests []string) (string, error) {
 	}
 
 	log.Debug().
+		Caller().
 		Int("manifest_count", len(manifests)).
 		Msg("dumping manifests")
 
@@ -102,6 +103,7 @@ func dumpFiles(manifests []string) (string, error) {
 		fullPath := filepath.Join(result, filename)
 		manifestBytes := []byte(manifest)
 		log.Debug().
+			Caller().
 			Str("path", fullPath).
 			Int("index", index).
 			Int("size", len(manifestBytes)).
@@ -124,6 +126,19 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	_, span := tracer.Start(ctx, "Conftest")
 	defer span.End()
 
+	// If there are no manifests, return early with no changes detected
+	if len(request.YamlManifests) == 0 {
+		log.Debug().
+			Caller().
+			Str("app", request.App.Name).
+			Msg("no manifests to validate, skipping conftest check")
+		return msg.Result{
+			State:             pkg.StateNone,
+			Summary:           "No manifests to validate",
+			NoChangesDetected: true,
+		}, nil
+	}
+
 	manifestsPath, err := dumpFiles(request.YamlManifests)
 	if manifestsPath != "" {
 		defer pkg.WipeDir(manifestsPath)
@@ -133,6 +148,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	}
 
 	log.Debug().
+		Caller().
 		Strs("policiesPaths", c.locations).
 		Str("manifestsPath", manifestsPath).
 		Str("app", request.App.Name).
