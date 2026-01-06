@@ -10,6 +10,12 @@ import (
 )
 
 func (c *Client) GetLastPipelinesForCommit(ctx context.Context, projectName string, commitSHA string) *gitlab.PipelineInfo {
+	log.Debug().
+		Caller().
+		Str("project", projectName).
+		Str("commit_sha", commitSHA).
+		Msg("querying pipelines for commit")
+
 	pipelines, _, err := c.c.Pipelines.ListProjectPipelines(projectName, &gitlab.ListProjectPipelinesOptions{
 		SHA: pkg.Pointer(commitSHA),
 	},
@@ -20,7 +26,11 @@ func (c *Client) GetLastPipelinesForCommit(ctx context.Context, projectName stri
 		return nil
 	}
 
-	log.Debug().Caller().Int("pipline_count", len(pipelines)).Msg("gitlab client: retrieve pipelines for commit")
+	log.Debug().
+		Caller().
+		Str("commit_sha", commitSHA).
+		Int("pipline_count", len(pipelines)).
+		Msg("gitlab client: retrieve pipelines for commit")
 
 	for _, p := range pipelines {
 		log.Debug().

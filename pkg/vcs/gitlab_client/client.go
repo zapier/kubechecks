@@ -588,30 +588,69 @@ func (c *Client) checkMRReadiness(ctx context.Context, projectID interface{}, mr
 // This is critical for cache invalidation - the ref path stays the same but points to different commits
 // Example: refs/merge-requests/123/merge -> abc123def456...
 func (c *Client) resolveMergeRefToSHA(ctx context.Context, projectPath, mergeRef string) (string, error) {
+	const (
+		maxRetries     = 3
+		initialBackoff = 2 * time.Second
+	)
+
 	log.Debug().
 		Caller().
 		Str("project_path", projectPath).
 		Str("merge_ref", mergeRef).
 		Msg("resolving merge ref to commit SHA")
 
-	// Use GitLab Commits API to get the commit that the ref points to
-	// GET /projects/:id/repository/commits/:sha
-	// The :sha parameter accepts commit SHAs, branch names, or tag names (including refs)
-	commit, _, err := c.c.Client.Commits.GetCommit(projectPath, mergeRef, nil, gitlab.WithContext(ctx))
+	var commit *gitlab.Commit
+	var err error
+	backoff := initialBackoff
+
+	// Retry with backoff in case GitLab hasn't fully processed the merge ref yet
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Use GitLab Commits API to get the commit that the ref points to
+		// GET /projects/:id/repository/commits/:sha
+		// The :sha parameter accepts commit SHAs, branch names, or tag names (including refs)
+		commit, _, err = c.c.Client.Commits.GetCommit(projectPath, mergeRef, nil, gitlab.WithContext(ctx))
+		if err == nil && commit != nil && commit.ID != "" {
+			// Success
+			log.Debug().
+				Caller().
+				Str("project_path", projectPath).
+				Str("merge_ref", mergeRef).
+				Str("resolved_sha", commit.ID).
+				Int("attempts", attempt+1).
+				Msg("successfully resolved merge ref to commit SHA")
+			return commit.ID, nil
+		}
+
+		// If this is the last attempt, give up
+		if attempt == maxRetries {
+			break
+		}
+
+		// Wait before retrying
+		log.Debug().
+			Caller().
+			Str("project_path", projectPath).
+			Str("merge_ref", mergeRef).
+			Int("attempt", attempt+1).
+			Dur("backoff", backoff).
+			Err(err).
+			Msg("failed to resolve merge ref, retrying...")
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2
+		}
+	}
+
+	// All retries exhausted
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to resolve merge ref %s to commit SHA", mergeRef)
+		return "", errors.Wrapf(err, "failed to resolve merge ref %s to commit SHA after %d attempts", mergeRef, maxRetries+1)
 	}
-
-	if commit.ID == "" {
-		return "", fmt.Errorf("resolved commit has empty ID for merge ref %s", mergeRef)
+	if commit == nil || commit.ID == "" {
+		return "", fmt.Errorf("resolved commit has empty ID for merge ref %s after %d attempts", mergeRef, maxRetries+1)
 	}
-
-	log.Debug().
-		Caller().
-		Str("project_path", projectPath).
-		Str("merge_ref", mergeRef).
-		Str("resolved_sha", commit.ID).
-		Msg("successfully resolved merge ref to commit SHA")
 
 	return commit.ID, nil
 }
