@@ -442,14 +442,6 @@ func (m *MockMergeRequestsService) GetMergeRequestDiffVersions(pid interface{}, 
 	return args.Get(0).([]*gitlab.MergeRequestDiffVersion), args.Get(1).(*gitlab.Response), args.Error(2)
 }
 
-func (m *MockMergeRequestsService) GetMergeRequestChanges(pid interface{}, mergeRequest int, opt *gitlab.GetMergeRequestChangesOptions, options ...gitlab.RequestOptionFunc) (*gitlab.MergeRequest, *gitlab.Response, error) {
-	args := m.Called(pid, mergeRequest, opt, options)
-	if args.Get(0) == nil {
-		return nil, args.Get(1).(*gitlab.Response), args.Error(2)
-	}
-	return args.Get(0).(*gitlab.MergeRequest), args.Get(1).(*gitlab.Response), args.Error(2)
-}
-
 func (m *MockMergeRequestsService) ListMergeRequestDiffs(pid interface{}, mergeRequest int, opt *gitlab.ListMergeRequestDiffsOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.MergeRequestDiff, *gitlab.Response, error) {
 	args := m.Called(pid, mergeRequest, opt, options)
 	if args.Get(0) == nil {
