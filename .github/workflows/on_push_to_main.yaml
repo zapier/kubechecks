@@ -3,30 +3,7 @@ on:
     branches:
       - main
 
-env:
-  FS_IMAGE: ghcr.io/${{ github.repository }}
-
 jobs:
-  release-docker:
-    runs-on: ubuntu-24.04
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0  # necessary for 'git describe' to work
-
-      - run: echo "GIT_TAG=$(git describe --tags)" >> $GITHUB_ENV
-
-      - uses: ./.github/actions/build-image
-        with:
-          push: 'true'
-          image_tag: ${{ env.GIT_TAG }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   release-helm:
     runs-on: ubuntu-24.04
 
@@ -50,4 +27,3 @@ jobs:
           config: .github/cr.yaml
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-
