@@ -1,7 +1,7 @@
 apiVersion: v2
 name: kubechecks
 description: A Helm chart for kubechecks
-version: 0.5.6
+version: 3.0.0
 type: application
 maintainers:
   - name: zapier

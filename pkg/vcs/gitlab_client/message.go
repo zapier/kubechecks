@@ -43,7 +43,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 	_, span := tracer.Start(ctx, "HideOutdatedMessages")
 	defer span.End()
 
-	log.Debug().Msg("hiding outdated comments")
+	log.Debug().Caller().Str("projectName", projectName).Int("mr", mergeRequestID).Msg("hiding outdated comments")
 
 	// loop through notes and collapse any that are from the current user and current identifier
 	for _, note := range notes {
@@ -71,7 +71,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 			newBody = newBody[:MaxCommentLength]
 		}
 
-		log.Debug().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
+		log.Debug().Caller().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
 
 		_, _, err := c.c.Notes.UpdateMergeRequestNote(projectName, mergeRequestID, note.ID, &gitlab.UpdateMergeRequestNoteOptions{
 			Body: &newBody,
@@ -87,7 +87,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 }
 
 func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message string) error {
-	log.Debug().Msgf("Updating message %d for %s", m.NoteID, m.Name)
+	log.Debug().Caller().Msgf("Updating message %d for %s", m.NoteID, m.Name)
 
 	if len(message) > MaxCommentLength {
 		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
@@ -115,11 +115,11 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 	_, span := tracer.Start(ctx, "pruneOldComments")
 	defer span.End()
 
-	log.Debug().Msg("deleting outdated comments")
+	log.Debug().Caller().Str("projectName", projectName).Int("mr", mrID).Msg("deleting outdated comments")
 
 	for _, note := range notes {
 		if note.Author.Username == c.username && strings.Contains(note.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
-			log.Debug().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
+			log.Debug().Caller().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
 			_, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
 			if err != nil {
 				telemetry.SetError(span, err, "Prune Old Comments")
@@ -134,7 +134,7 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 	_, span := tracer.Start(ctx, "TidyOutdatedMessages")
 	defer span.End()
 
-	log.Debug().Msg("Tidying outdated comments")
+	log.Debug().Caller().Msg("Tidying outdated comments")
 
 	var allNotes []*gitlab.Note
 	nextPage := 0

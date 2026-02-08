@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/pflag"
 )
@@ -42,6 +43,8 @@ func newBoolOpts() DocOpt[bool] {
 
 func newInt64Opts() DocOpt[int64] { return DocOpt[int64]{} }
 
+func newDurationOpts() DocOpt[time.Duration] { return DocOpt[time.Duration]{} }
+
 func newStringOpts() DocOpt[string] {
 	return DocOpt[string]{}
 }
@@ -52,6 +55,10 @@ func newStringSliceOpts() DocOpt[[]string] {
 
 func int64Flag(flags *pflag.FlagSet, name, usage string, opts ...DocOpt[int64]) {
 	addFlag(name, usage, opts, flags.Int64, flags.Int64P)
+}
+
+func durationFlag(flags *pflag.FlagSet, name, usage string, opts ...DocOpt[time.Duration]) {
+	addFlag(name, usage, opts, flags.Duration, flags.DurationP)
 }
 
 func stringFlag(flags *pflag.FlagSet, name, usage string, opts ...DocOpt[string]) {

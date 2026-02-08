@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -111,6 +114,9 @@ func init() {
 	int64Flag(flags, "max-concurrent-checks", "Number of concurrent checks to run.",
 		newInt64Opts().
 			withDefault(32))
+	int64Flag(flags, "max-repo-worker-queue-size", "Maximum size of check request queue per repository worker.",
+		newInt64Opts().
+			withDefault(100))
 	boolFlag(flags, "enable-hooks-renderer", "Render hooks.", newBoolOpts().withDefault(true))
 	stringFlag(flags, "worst-hooks-state", "The worst state that can be returned from the hooks renderer.",
 		newStringOpts().
@@ -119,9 +125,21 @@ func init() {
 		newStringOpts().
 			withDefault("kubechecks again"))
 	stringSliceFlag(flags, "additional-apps-namespaces", "Additional namespaces other than the ArgoCDNamespace to monitor for applications.")
-	boolFlag(flags, "repo-shallow-clone", "Enable shallow cloning for all git repos.",
+	boolFlag(flags, "repo-cache-enabled", "Enable persistent repository caching.",
 		newBoolOpts().
-			withDefault(false))
+			withDefault(true))
+	stringFlag(flags, "repo-cache-dir", "Directory for persistent repository cache.",
+		newStringOpts().
+			withDefault("/tmp/kubechecks/repos"))
+	durationFlag(flags, "repo-cache-ttl", "Time-to-live for cached repositories.",
+		newDurationOpts().
+			withDefault(24*time.Hour))
+	stringFlag(flags, "archive-cache-dir", "Directory for archive cache.",
+		newStringOpts().
+			withDefault("/tmp/kubechecks/archives"))
+	durationFlag(flags, "archive-cache-ttl", "Time-to-live for cached archives.",
+		newDurationOpts().
+			withDefault(1*time.Hour))
 	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
 		newStringOpts().
 			withDefault(""))
@@ -143,10 +161,14 @@ func setupLogOutput() {
 
 	zerolog.SetGlobalLevel(level)
 
+	// short the caller output to file:line only
+	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
+		return filepath.Base(file) + ":" + strconv.Itoa(line)
+	}
 	output := zerolog.ConsoleWriter{Out: os.Stdout}
 	log.Logger = log.Output(output)
 
-	log.Debug().Msg("Debug level logging enabled.")
+	log.Debug().Caller().Msg("Debug level logging enabled.")
 	log.Trace().Msg("Trace level logging enabled.")
 	log.Info().Msg("Initialized logger.")
 

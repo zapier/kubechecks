@@ -47,7 +47,7 @@ func (p processor) processDir(sourceFS fs.FS, relBase string) (files, dirs []str
 		return nil, nil, nil
 	}
 
-	log.Debug().Msgf("processing directory %q", relBase)
+	log.Debug().Caller().Msgf("processing directory %q", relBase)
 	p.visitedDirs[relBase] = struct{}{}
 
 	absKustPath := filepath.Join(relBase, "kustomization.yaml")

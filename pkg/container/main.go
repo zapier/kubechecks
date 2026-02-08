@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg/appdir"
+	"github.com/zapier/kubechecks/pkg/archive"
 	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/git"
@@ -25,7 +26,8 @@ type Container struct {
 
 	Config config.ServerConfig
 
-	RepoManager *git.RepoManager
+	RepoManager    git.RepoManager
+	ArchiveManager *archive.Manager // Handles VCS archive downloads for PR processing
 
 	VcsClient    vcs.Client
 	VcsToArgoMap appdir.VcsToArgoMap
@@ -61,6 +63,11 @@ func New(ctx context.Context, cfg config.ServerConfig) (Container, error) {
 	if err != nil {
 		return ctr, errors.Wrap(err, "failed to create vcs client")
 	}
+
+	// Initialize archive manager for VCS archive downloads
+	log.Info().Msg("initializing archive manager for VCS archive downloads")
+	ctr.ArchiveManager = archive.NewManager(cfg, ctr.VcsClient)
+
 	var kubeClient client.Interface
 
 	switch cfg.KubernetesType {
@@ -127,4 +134,14 @@ func buildAppSetsMap(ctx context.Context, argoClient *argo_client.ArgoClient, re
 		result.AddAppSet(&appSet)
 	}
 	return nil
+}
+
+// Shutdown gracefully shuts down the container and its components
+func (c *Container) Shutdown() {
+	if c.RepoManager != nil {
+		c.RepoManager.Shutdown()
+	}
+	if c.ArchiveManager != nil {
+		c.ArchiveManager.Shutdown()
+	}
 }

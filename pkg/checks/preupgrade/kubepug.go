@@ -36,7 +36,7 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 
 	var outputString []string
 
-	logger.Debug().Msg("KubePug CheckApp")
+	logger.Debug().Caller().Str("app_name", appName).Msg("KubePug CheckApp")
 
 	// write manifests to temp file because kubepug can only read from file or STDIN
 	// Create a temporary directory
@@ -50,7 +50,7 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 	for i, manifest := range manifests {
 		tmpFile := fmt.Sprintf("%s/%b.yaml", tempDir, i)
 		if err = os.WriteFile(tmpFile, []byte(manifest), 0666); err != nil {
-			logger.Error().Err(err).Str("path", tmpFile).Msg("failed to write file")
+			logger.Error().Caller().Err(err).Str("path", tmpFile).Msg("failed to write file")
 		}
 	}
 
@@ -67,11 +67,13 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 
 	kubepug, err := lib.NewKubepug(&config)
 	if err != nil {
+		logger.Error().Caller().Err(err).Str("app_name", appName).Msg("failed to setup kubepug")
 		return msg.Result{}, err
 	}
 
 	result, err := kubepug.GetDeprecated()
 	if err != nil {
+		logger.Error().Caller().Err(err).Str("app_name", appName).Msg("failed to perform kubepug deprecated check")
 		return msg.Result{}, err
 	}
 
@@ -112,10 +114,10 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 				rows = append(rows, row)
 			}
 			if err := table.Bulk(rows); err != nil {
-				logger.Error().Err(err).Str("check", "kubepug").Msg("failed to save rows to table")
+				logger.Error().Caller().Err(err).Str("check", "kubepug").Msg("failed to save rows to table")
 			}
 			if err := table.Render(); err != nil {
-				logger.Error().Err(err).Str("check", "kubepug").Msg("failed to render table")
+				logger.Error().Caller().Err(err).Str("check", "kubepug").Msg("failed to render table")
 			}
 			outputString = append(outputString, buff.String())
 		}
@@ -156,10 +158,10 @@ func checkApp(ctx context.Context, ctr container.Container, appName, targetKuber
 				rows = append(rows, row)
 			}
 			if err := table.Bulk(rows); err != nil {
-				logger.Error().Err(err).Msg("failed to save rows to table")
+				logger.Error().Caller().Err(err).Msg("failed to save rows to table")
 			}
 			if err := table.Render(); err != nil {
-				logger.Error().Err(err).Msg("failed to render table")
+				logger.Error().Caller().Err(err).Msg("failed to render table")
 			}
 			outputString = append(outputString, buff.String())
 		}
@@ -199,7 +201,7 @@ func nextKubernetesVersion(current string) (*semver.Version, error) {
 	}
 
 	next := sv.IncMinor()
-	log.Debug().Str("current", current).Str("next", next.String()).Msg("calculated next Kubernetes version")
+	log.Debug().Caller().Str("current", current).Str("next", next.String()).Msg("calculated next Kubernetes version")
 	return &next, nil
 }
 

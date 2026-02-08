@@ -27,7 +27,7 @@ func GetOpenAiClient(apiToken string) *OpenAiClient {
 			client := openai.NewClient(apiToken)
 			openAiClient = &OpenAiClient{client: client, enabled: true}
 		} else {
-			log.Debug().Msg("OpenAI client not enabled")
+			log.Debug().Caller().Msg("OpenAI client not enabled")
 			openAiClient = &OpenAiClient{enabled: false}
 		}
 	})
@@ -75,7 +75,7 @@ func (c *OpenAiClient) makeCompletionRequestWithBackoff(ctx context.Context, req
 			if !strings.Contains(err.Error(), "status code: 429") && !strings.Contains(err.Error(), "status code: 5") {
 				return backoff.Permanent(err)
 			}
-			log.Debug().Msgf("%v - %s", resp, err)
+			log.Debug().Caller().Msgf("%v - %s", resp, err)
 		}
 
 		return err

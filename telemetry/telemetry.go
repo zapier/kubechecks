@@ -42,7 +42,7 @@ type OperatorTelemetry struct {
 }
 
 func (ot *OperatorTelemetry) StartMetricCollectors() error {
-	log.Debug().Msg("Starting runtime instrumentation")
+	log.Debug().Caller().Msg("Starting runtime instrumentation")
 	err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(time.Second * DefaultMetricInterval))
 	if err != nil {
 		log.Error().Err(err).Msg("runtime instrumentation failure")
@@ -97,7 +97,11 @@ func createGRPCConn(enabled bool, otelHost string, otelPort string) (*grpc.Clien
 		return conn, err
 	}
 
-	log.Debug().Str("host", otelHost).Str("port", otelPort).Msg("grpc conn created")
+	log.Debug().
+		Caller().
+		Str("host", otelHost).
+		Str("port", otelPort).
+		Msg("grpc conn created")
 
 	return conn, err
 }
@@ -130,7 +134,9 @@ func (bt *BaseTelemetry) initTrace(conn *grpc.ClientConn, res *resource.Resource
 	if err != nil {
 		log.Error().Err(err).Msg("unable to init tracer")
 	}
-	log.Debug().Msg("tracer initialized")
+	log.Debug().
+		Caller().
+		Msg("tracer initialized")
 	return nil
 }
 
@@ -144,7 +150,7 @@ func (bt *BaseTelemetry) initMetric(conn *grpc.ClientConn, res *resource.Resourc
 		log.Error().Err(err).Msg("unable to init metrics")
 		return err
 	}
-	log.Debug().Msg("metric provider initialized")
+	log.Debug().Caller().Msg("metric provider initialized")
 	return nil
 }
 

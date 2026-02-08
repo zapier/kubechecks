@@ -8,11 +8,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/git"
 	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/zapier/kubechecks/pkg"
@@ -30,6 +30,7 @@ type Client struct {
 }
 
 type GLClient struct {
+	Client          *gitlab.Client // Underlying GitLab client for direct API access
 	MergeRequests   MergeRequestsServices
 	RepositoryFiles RepositoryFilesServices
 	Notes           NotesServices
@@ -49,7 +50,7 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 	if gitlabToken == "" {
 		return nil, ErrNoToken
 	}
-	log.Debug().Msgf("Token Length - %d", len(gitlabToken))
+	log.Debug().Caller().Msgf("Token Length - %d", len(gitlabToken))
 
 	var gitlabOptions []gitlab.ClientOptionFunc
 
@@ -70,6 +71,7 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 
 	client := &Client{
 		c: &GLClient{
+			Client:          c,
 			MergeRequests:   &MergeRequestsService{c.MergeRequests},
 			RepositoryFiles: &RepositoryFilesService{c.RepositoryFiles},
 			Notes:           &NotesService{c.Notes},
@@ -88,15 +90,6 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		client.email = vcs.DefaultVcsEmail
 	}
 
-	cloneURL, err := git.BuildCloneURL(cfg.VcsBaseUrl, client.username, gitlabToken)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to build clone url")
-	}
-
-	if err = git.SetCredentials(ctx, cfg, client.email, client.username, cloneURL); err != nil {
-		return nil, errors.Wrap(err, "failed to set git credentials")
-	}
-
 	return client, nil
 }
 
@@ -104,6 +97,14 @@ func (c *Client) Email() string         { return c.email }
 func (c *Client) Username() string      { return c.username }
 func (c *Client) CloneUsername() string { return c.username }
 func (c *Client) GetName() string       { return "gitlab" }
+
+// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
+func (c *Client) GetAuthHeaders() map[string]string {
+	// GitLab uses PRIVATE-TOKEN header for authentication
+	return map[string]string{
+		"PRIVATE-TOKEN": c.cfg.VcsToken,
+	}
+}
 
 // VerifyHook returns an err if the webhook isn't valid
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
@@ -185,7 +186,7 @@ func (c *Client) GetHookByUrl(ctx context.Context, repoName, webhookUrl string) 
 
 	for _, hook := range webhooks {
 		if hook.URL == webhookUrl {
-			events := []string{}
+			var events []string
 			// TODO: translate GL specific event names to VCS agnostic
 			if hook.MergeRequestsEvents {
 				events = append(events, string(gitlab.MergeRequestEventTargetType))
@@ -312,4 +313,344 @@ func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullR
 
 		Config: c.cfg,
 	}
+}
+
+// GetPullRequestFiles returns the list of files changed in a merge request
+func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([]string, error) {
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Msg("fetching MR files from GitLab API")
+
+	// List all diffs for the merge request
+	diffs, _, err := c.c.MergeRequests.ListMergeRequestDiffs(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list MR diffs from GitLab")
+	}
+
+	// Extract file paths from diffs
+	var allFiles []string
+	filesSeen := make(map[string]bool) // Deduplicate files
+
+	for _, diff := range diffs {
+		// Use NewPath for added/modified files, OldPath for deleted files
+		filePath := diff.NewPath
+		if filePath == "" || filePath == "/dev/null" {
+			filePath = diff.OldPath
+		}
+		if filePath != "" && filePath != "/dev/null" && !filesSeen[filePath] {
+			allFiles = append(allFiles, filePath)
+			filesSeen[filePath] = true
+		}
+	}
+
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Int("file_count", len(allFiles)).
+		Msg("fetched MR files from GitLab API")
+
+	return allFiles, nil
+}
+
+// DownloadArchive returns the archive URL for downloading a repository at a specific commit
+func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
+	// Retry configuration for waiting on GitLab to check merge status
+	const (
+		maxRetries     = 5
+		initialBackoff = 5 * time.Second
+		maxBackoff     = 60 * time.Second
+	)
+
+	backoff := initialBackoff
+
+	// Retry loop: GitLab needs time to check merge status after MR creation/update
+retryLoop:
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		urlencoded := strings.ReplaceAll(pr.FullName, "/", "%2F")
+		// Check MR readiness using merge_ref endpoint
+		readiness := c.checkMRReadiness(ctx, urlencoded, pr.CheckID)
+
+		switch readiness.Status {
+		case mrReady:
+			// MR is ready - proceed with download
+			log.Debug().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("mr_number", pr.CheckID).
+				Str("detailed_status", readiness.DetailedStatus).
+				Str("reason", readiness.Reason).
+				Msg("MR is ready")
+			break retryLoop
+
+		case mrTransient:
+			// MR is still being processed - retry if attempts remain
+			if attempt == maxRetries {
+				log.Warn().
+					Caller().
+					Str("repo", pr.FullName).
+					Int("mr_number", pr.CheckID).
+					Int("attempts", attempt+1).
+					Str("detailed_status", readiness.DetailedStatus).
+					Str("reason", readiness.Reason).
+					Msg("MR status still transient after retries")
+				return "", fmt.Errorf("MR merge status not ready after retries (status: %s, waited ~%v)", readiness.DetailedStatus, time.Duration(attempt+1)*initialBackoff)
+			}
+
+			// Wait before retrying (exponential backoff)
+			log.Debug().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("mr_number", pr.CheckID).
+				Int("attempt", attempt+1).
+				Dur("backoff", backoff).
+				Str("detailed_status", readiness.DetailedStatus).
+				Msg("MR status transient, retrying...")
+
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(backoff):
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			continue
+
+		case mrFailed:
+			// MR cannot be merged - permanent failure
+			return "", fmt.Errorf("MR cannot be merged: %s (detailed_status: %s)", readiness.Reason, readiness.DetailedStatus)
+		}
+	}
+
+	// Use GitLab's special ref for preview merges: refs/merge-requests/<iid>/merge
+	// This gives us the merged state without actually merging the MR
+	// Note: merge_commit_sha is null until MR is actually merged, so we can't use it
+	mergeRef := fmt.Sprintf("refs/merge-requests/%d/merge", pr.CheckID)
+
+	// CRITICAL: Resolve the merge ref to its actual commit SHA for proper cache invalidation
+	// The ref path stays the same but points to different commits as the MR is updated
+	// We must resolve it to the SHA to detect when new commits are pushed
+	mergeRefSHA, err := c.resolveMergeRefToSHA(ctx, pr.FullName, mergeRef)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to resolve merge ref to SHA")
+	}
+
+	// URL-encode the project path (replace / with %2F)
+	projectPathEncoded := strings.ReplaceAll(pr.FullName, "/", "%2F")
+
+	// Construct archive URL using GitLab API
+	// IMPORTANT: Use the resolved SHA, not the ref path, for cache key extraction
+	// Format: https://gitlab.com/api/v4/projects/{project_path_encoded}/repository/archive.zip?sha={sha}
+	var archiveURL string
+	if c.cfg.VcsBaseUrl != "" {
+		// Self-hosted GitLab
+		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
+		archiveURL = fmt.Sprintf("%s/api/v4/projects/%s/repository/archive.zip?sha=%s",
+			baseURL, projectPathEncoded, mergeRefSHA)
+	} else {
+		// GitLab.com
+		archiveURL = fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/archive.zip?sha=%s",
+			projectPathEncoded, mergeRefSHA)
+	}
+
+	log.Debug().
+		Caller().
+		Str("repo", pr.FullName).
+		Int("mr_number", pr.CheckID).
+		Str("merge_ref", mergeRef).
+		Str("merge_ref_sha", mergeRefSHA).
+		Str("head_sha", pr.SHA).
+		Str("archive_url", archiveURL).
+		Msg("generated archive URL using resolved merge ref SHA")
+
+	return archiveURL, nil
+}
+
+// MRReadinessStatus represents the readiness state of a merge request
+type MRReadinessStatus int
+
+const (
+	mrReady     MRReadinessStatus = iota // MR is ready to proceed
+	mrTransient                          // MR is being processed, retry needed
+	mrFailed                             // MR cannot be merged, permanent failure
+)
+
+// MRReadiness contains the readiness status and details
+type MRReadiness struct {
+	Status         MRReadinessStatus
+	DetailedStatus string
+	Reason         string
+}
+
+// checkMRReadiness determines if an MR is ready for archive download by querying the merge_ref endpoint
+// This is simpler and more reliable than checking various status fields
+// Returns the readiness status based on HTTP response codes:
+// - 200: merge_ref exists, MR is ready
+// - 400: conflicts or invalid state (permanent failure)
+// - 404: merge_ref not ready yet, GitLab still processing (retry)
+// - 429: rate limited (retry)
+func (c *Client) checkMRReadiness(ctx context.Context, projectID interface{}, mrIID int) MRReadiness {
+	// Query the merge_ref endpoint to check if merge is possible
+	// GET /projects/:id/merge_requests/:merge_request_iid/merge_ref
+	// See: https://docs.gitlab.com/api/merge_requests.html#merge-to-default-merge-ref-path
+
+	// URL-encode the project path (replace / with %2F for GitLab API)
+	projectIDStr := fmt.Sprintf("%v", projectID)
+	projectPathEncoded := strings.ReplaceAll(projectIDStr, "/", "%2F")
+
+	log.Debug().
+		Caller().
+		Str("project_path", projectIDStr).
+		Str("project_path_encoded", projectPathEncoded).
+		Int("mr_iid", mrIID).
+		Msg("checking MR readiness using merge_ref endpoint")
+
+	req, err := c.c.Client.NewRequest("GET", fmt.Sprintf("projects/%s/merge_requests/%d/merge_ref", projectPathEncoded, mrIID), nil, []gitlab.RequestOptionFunc{gitlab.WithContext(ctx)})
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Interface("project_id", projectID).
+			Int("mr_iid", mrIID).
+			Msg("failed to create merge_ref API request")
+		return MRReadiness{
+			Status:         mrFailed,
+			DetailedStatus: "api_error",
+			Reason:         fmt.Sprintf("Failed to create merge_ref request: %v", err),
+		}
+	}
+
+	resp, err := c.c.Client.Do(req, nil)
+	if err != nil {
+		// Check if it's an HTTP error
+		if resp != nil {
+			switch resp.StatusCode {
+			case http.StatusBadRequest:
+				// Bad request - MR has conflicts or is not mergeable
+				return MRReadiness{
+					Status:         mrFailed,
+					DetailedStatus: "not_mergeable",
+					Reason:         "MR has conflicts or cannot be merged (HTTP 400)",
+				}
+			case http.StatusNotFound:
+				// Not found - merge_ref not ready yet, GitLab still processing
+				return MRReadiness{
+					Status:         mrTransient,
+					DetailedStatus: "merge_ref_not_ready",
+					Reason:         "merge_ref not available yet, GitLab still processing (HTTP 404)",
+				}
+			case http.StatusTooManyRequests:
+				// Rate limited - should retry
+				return MRReadiness{
+					Status:         mrTransient,
+					DetailedStatus: "rate_limited",
+					Reason:         "GitLab API rate limit reached (HTTP 429)",
+				}
+			default:
+				// Other HTTP error
+				return MRReadiness{
+					Status:         mrFailed,
+					DetailedStatus: fmt.Sprintf("http_%d", resp.StatusCode),
+					Reason:         fmt.Sprintf("merge_ref endpoint returned HTTP %d: %v", resp.StatusCode, err),
+				}
+			}
+		}
+		// Non-HTTP error
+		return MRReadiness{
+			Status:         mrFailed,
+			DetailedStatus: "api_error",
+			Reason:         fmt.Sprintf("Failed to query merge_ref endpoint: %v", err),
+		}
+	}
+
+	// HTTP 200 - merge_ref exists, MR is ready
+	if resp.StatusCode == http.StatusOK {
+		return MRReadiness{
+			Status:         mrReady,
+			DetailedStatus: "mergeable",
+			Reason:         "merge_ref endpoint returned success (HTTP 200)",
+		}
+	}
+
+	// Unexpected status code
+	return MRReadiness{
+		Status:         mrFailed,
+		DetailedStatus: fmt.Sprintf("http_%d", resp.StatusCode),
+		Reason:         fmt.Sprintf("Unexpected HTTP status %d from merge_ref endpoint", resp.StatusCode),
+	}
+}
+
+// resolveMergeRefToSHA resolves a GitLab merge ref to its current commit SHA
+// This is critical for cache invalidation - the ref path stays the same but points to different commits
+// Example: refs/merge-requests/123/merge -> abc123def456...
+func (c *Client) resolveMergeRefToSHA(ctx context.Context, projectPath, mergeRef string) (string, error) {
+	const (
+		maxRetries     = 3
+		initialBackoff = 2 * time.Second
+	)
+
+	log.Debug().
+		Caller().
+		Str("project_path", projectPath).
+		Str("merge_ref", mergeRef).
+		Msg("resolving merge ref to commit SHA")
+
+	var commit *gitlab.Commit
+	var err error
+	backoff := initialBackoff
+
+	// Retry with backoff in case GitLab hasn't fully processed the merge ref yet
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Use GitLab Commits API to get the commit that the ref points to
+		// GET /projects/:id/repository/commits/:sha
+		// The :sha parameter accepts commit SHAs, branch names, or tag names (including refs)
+		commit, _, err = c.c.Client.Commits.GetCommit(projectPath, mergeRef, nil, gitlab.WithContext(ctx))
+		if err == nil && commit != nil && commit.ID != "" {
+			// Success
+			log.Debug().
+				Caller().
+				Str("project_path", projectPath).
+				Str("merge_ref", mergeRef).
+				Str("resolved_sha", commit.ID).
+				Int("attempts", attempt+1).
+				Msg("successfully resolved merge ref to commit SHA")
+			return commit.ID, nil
+		}
+
+		// If this is the last attempt, give up
+		if attempt == maxRetries {
+			break
+		}
+
+		// Wait before retrying
+		log.Debug().
+			Caller().
+			Str("project_path", projectPath).
+			Str("merge_ref", mergeRef).
+			Int("attempt", attempt+1).
+			Dur("backoff", backoff).
+			Err(err).
+			Msg("failed to resolve merge ref, retrying...")
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2
+		}
+	}
+
+	// All retries exhausted
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to resolve merge ref %s to commit SHA after %d attempts", mergeRef, maxRetries+1)
+	}
+	if commit == nil || commit.ID == "" {
+		return "", fmt.Errorf("resolved commit has empty ID for merge ref %s after %d attempts", mergeRef, maxRetries+1)
+	}
+
+	return commit.ID, nil
 }

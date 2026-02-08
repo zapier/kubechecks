@@ -156,6 +156,49 @@ func TestMessageIsSuccess(t *testing.T) {
 	}
 }
 
+func TestWorstStateSkipsNoChangesDetected(t *testing.T) {
+	t.Run("error with NoChangesDetected should not affect WorstState", func(t *testing.T) {
+		var (
+			message = NewMessage("name", 1, 2, fakeEmojiable{":test:"})
+			ctx     = context.TODO()
+		)
+
+		message.AddNewApp(ctx, "some-app")
+		// Add a success result
+		message.AddToAppMessage(ctx, "some-app", Result{State: pkg.StateSuccess})
+		assert.Equal(t, pkg.StateSuccess, message.WorstState())
+
+		// Add an error with NoChangesDetected - should be ignored by WorstState
+		message.AddToAppMessage(ctx, "some-app", Result{
+			State:             pkg.StateError,
+			Summary:           "error but no changes",
+			NoChangesDetected: true,
+		})
+		// WorstState should still be Success since the error has NoChangesDetected
+		assert.Equal(t, pkg.StateSuccess, message.WorstState())
+	})
+
+	t.Run("only NoChangesDetected results should return StateNone", func(t *testing.T) {
+		var (
+			message = NewMessage("name", 1, 2, fakeEmojiable{":test:"})
+			ctx     = context.TODO()
+		)
+
+		message.AddNewApp(ctx, "some-app")
+		// Add only results with NoChangesDetected
+		message.AddToAppMessage(ctx, "some-app", Result{
+			State:             pkg.StateSuccess,
+			NoChangesDetected: true,
+		})
+		message.AddToAppMessage(ctx, "some-app", Result{
+			State:             pkg.StateError,
+			NoChangesDetected: true,
+		})
+		// All results have NoChangesDetected, so WorstState should be StateNone
+		assert.Equal(t, pkg.StateNone, message.WorstState())
+	})
+}
+
 func TestMultipleItemsWithNewlines(t *testing.T) {
 	var (
 		message = NewMessage("name", 1, 2, fakeEmojiable{":test:"})

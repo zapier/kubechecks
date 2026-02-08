@@ -19,7 +19,7 @@ type fakeCloner struct {
 	err                  error
 }
 
-func (f *fakeCloner) Clone(_ context.Context, cloneUrl, branchName string, shallow bool) (*git.Repo, error) {
+func (f *fakeCloner) Clone(_ context.Context, cloneUrl, branchName string) (*git.Repo, error) {
 	f.cloneUrl = cloneUrl
 	f.branchName = branchName
 	return f.result, f.err
@@ -43,7 +43,7 @@ func TestMaybeCloneGitUrl_NonGitUrl(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeCloner{result: nil, err: nil}
-			actual, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername, false)
+			actual, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername)
 			require.NoError(t, err)
 			assert.Equal(t, "", fc.branchName)
 			assert.Equal(t, "", fc.cloneUrl)
@@ -137,7 +137,7 @@ func TestMaybeCloneGitUrl_HappyPath(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: nil}
-			actual, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername, false)
+			actual, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected.branch, fc.branchName)
 			assert.Equal(t, tc.expected.cloneUrl, fc.cloneUrl)
@@ -165,7 +165,7 @@ func TestMaybeCloneGitUrl_URLError(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: nil}
-			result, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername, false)
+			result, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername)
 			require.ErrorContains(t, err, tc.expected)
 			require.Equal(t, "", result)
 		})
@@ -193,7 +193,7 @@ func TestMaybeCloneGitUrl_CloneError(t *testing.T) {
 			defer cancel()
 
 			fc := &fakeCloner{result: &git.Repo{Directory: testRoot}, err: tc.cloneError}
-			result, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername, false)
+			result, err := maybeCloneGitUrl(ctx, fc, time.Duration(0), tc.input, testUsername)
 			require.ErrorContains(t, err, tc.expected)
 			require.Equal(t, "", result)
 		})

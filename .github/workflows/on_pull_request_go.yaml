@@ -13,23 +13,22 @@ jobs:
   ci-golang:
     runs-on: ubuntu-24.04
     steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-
       - name: Checkout code
         uses: actions/checkout@v5
 
       - name: Parse tool versions
         uses: wistia/parse-tool-versions@v1.0
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - name: Cache Go modules + build cache
+        uses: actions/cache@v4
         with:
-          go-version: ${{ env.GOLANG_TOOL_VERSION }}
-          cache: true
-
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-linux-${{ matrix.arch }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:

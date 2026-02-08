@@ -3,7 +3,14 @@ package events
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+
+	gogit "github.com/go-git/go-git/v5"
+	gogitconfig "github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog"
@@ -24,6 +31,97 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// mockRepoManager is a mock implementation of repoManager interface for testing
+type mockRepoManager struct {
+	mock.Mock
+}
+
+func (m *mockRepoManager) Clone(ctx context.Context, cloneURL, branchName string) (*git.Repo, error) {
+	args := m.Called(ctx, cloneURL, branchName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*git.Repo), args.Error(1)
+}
+
+// createTestGitRepo creates a minimal git repository for testing using go-git (no git binary)
+func createTestGitRepo(t *testing.T, branchName string) string {
+	tempDir, err := os.MkdirTemp("", "kubechecks-test-")
+	require.NoError(t, err)
+
+	// Initialize git repo using go-git
+	repo, err := gogit.PlainInit(tempDir, false)
+	require.NoError(t, err)
+
+	// Create initial commit
+	worktree, err := repo.Worktree()
+	require.NoError(t, err)
+
+	testFile := filepath.Join(tempDir, "test.txt")
+	require.NoError(t, os.WriteFile(testFile, []byte("test"), 0644))
+
+	_, err = worktree.Add("test.txt")
+	require.NoError(t, err)
+
+	commitHash, err := worktree.Commit("initial commit", &gogit.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Test User",
+			Email: "test@test.com",
+		},
+	})
+	require.NoError(t, err)
+
+	// Rename branch to match requested branch
+	if branchName == "" {
+		branchName = "main"
+	}
+	if branchName != "master" {
+		// Create the new branch
+		headRef, err := repo.Head()
+		require.NoError(t, err)
+
+		branchRef := plumbing.NewBranchReferenceName(branchName)
+		ref := plumbing.NewHashReference(branchRef, headRef.Hash())
+		err = repo.Storer.SetReference(ref)
+		require.NoError(t, err)
+
+		// Checkout the new branch
+		err = worktree.Checkout(&gogit.CheckoutOptions{
+			Branch: branchRef,
+		})
+		require.NoError(t, err)
+	}
+
+	// Set up origin remote (fake)
+	_, err = repo.CreateRemote(&gogitconfig.RemoteConfig{
+		Name: "origin",
+		URLs: []string{"https://github.com/test/test.git"},
+	})
+	require.NoError(t, err)
+
+	// Create remote tracking branch for the requested branch
+	originBranchRef := plumbing.NewRemoteReferenceName("origin", branchName)
+	ref := plumbing.NewHashReference(originBranchRef, commitHash)
+	err = repo.Storer.SetReference(ref)
+	require.NoError(t, err)
+
+	// Always set up refs/remotes/origin/main pointing to the same commit
+	originMainRef := plumbing.NewRemoteReferenceName("origin", "main")
+	ref = plumbing.NewHashReference(originMainRef, commitHash)
+	err = repo.Storer.SetReference(ref)
+	require.NoError(t, err)
+
+	// Set up refs/remotes/origin/HEAD to point to "main" (default branch)
+	originHeadRef := plumbing.NewSymbolicReference(
+		plumbing.NewRemoteReferenceName("origin", "HEAD"),
+		originMainRef,
+	)
+	err = repo.Storer.SetReference(originHeadRef)
+	require.NoError(t, err)
+
+	return tempDir
+}
+
 func TestCheckEventGetRepo(t *testing.T) {
 	cloneURL := "https://github.com/zapier/kubechecks.git"
 	canonical, err := canonicalize(cloneURL)
@@ -37,9 +135,24 @@ func TestCheckEventGetRepo(t *testing.T) {
 		vcsClient.EXPECT().Username().Return("username")
 		vcsClient.EXPECT().CloneUsername().Return("clone-username")
 
+		// Create mock repo manager
+		mockRM := new(mockRepoManager)
+
+		// Create a real git repo for testing
+		tempDir := createTestGitRepo(t, "main")
+		defer os.RemoveAll(tempDir)
+
+		// Mock expects Clone to be called with HEAD, returns a repo with BranchName="main"
+		mockRM.On("Clone", ctx, mock.Anything, "HEAD").Return(&git.Repo{
+			Directory:  tempDir,
+			BranchName: "main",
+			CloneURL:   cloneURL,
+			Config:     cfg,
+		}, nil)
+
 		ce := CheckEvent{
 			clonedRepos: make(map[repoKey]*git.Repo),
-			repoManager: git.NewRepoManager(cfg),
+			repoManager: mockRM,
 			ctr:         container.Container{VcsClient: vcsClient},
 		}
 
@@ -49,6 +162,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 		assert.Len(t, ce.clonedRepos, 2)
 		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "HEAD"))
 		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "main"))
+		mockRM.AssertExpectations(t)
 	})
 
 	t.Run("branch is HEAD", func(t *testing.T) {
@@ -56,9 +170,24 @@ func TestCheckEventGetRepo(t *testing.T) {
 		vcsClient.EXPECT().Username().Return("username")
 		vcsClient.EXPECT().CloneUsername().Return("clone-username")
 
+		// Create mock repo manager
+		mockRM := new(mockRepoManager)
+
+		// Create a real git repo for testing
+		tempDir := createTestGitRepo(t, "main")
+		defer os.RemoveAll(tempDir)
+
+		// Mock expects Clone to be called with HEAD
+		mockRM.On("Clone", ctx, mock.Anything, "HEAD").Return(&git.Repo{
+			Directory:  tempDir,
+			BranchName: "main",
+			CloneURL:   cloneURL,
+			Config:     cfg,
+		}, nil)
+
 		ce := CheckEvent{
 			clonedRepos: make(map[repoKey]*git.Repo),
-			repoManager: git.NewRepoManager(cfg),
+			repoManager: mockRM,
 			ctr:         container.Container{VcsClient: vcsClient},
 		}
 
@@ -68,6 +197,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 		assert.Len(t, ce.clonedRepos, 2)
 		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "HEAD"))
 		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "main"))
+		mockRM.AssertExpectations(t)
 	})
 
 	t.Run("branch is the same as HEAD", func(t *testing.T) {
@@ -75,9 +205,24 @@ func TestCheckEventGetRepo(t *testing.T) {
 		vcsClient.EXPECT().Username().Return("username")
 		vcsClient.EXPECT().CloneUsername().Return("clone-username")
 
+		// Create mock repo manager
+		mockRM := new(mockRepoManager)
+
+		// Create a real git repo for testing
+		tempDir := createTestGitRepo(t, "main")
+		defer os.RemoveAll(tempDir)
+
+		// Mock expects Clone to be called with "main"
+		mockRM.On("Clone", ctx, mock.Anything, "main").Return(&git.Repo{
+			Directory:  tempDir,
+			BranchName: "main",
+			CloneURL:   cloneURL,
+			Config:     cfg,
+		}, nil)
+
 		ce := CheckEvent{
 			clonedRepos: make(map[repoKey]*git.Repo),
-			repoManager: git.NewRepoManager(cfg),
+			repoManager: mockRM,
 			ctr:         container.Container{VcsClient: vcsClient},
 		}
 
@@ -87,6 +232,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 		assert.Len(t, ce.clonedRepos, 2)
 		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "HEAD"))
 		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "main"))
+		mockRM.AssertExpectations(t)
 	})
 
 	t.Run("branch is not the same as HEAD", func(t *testing.T) {
@@ -94,9 +240,24 @@ func TestCheckEventGetRepo(t *testing.T) {
 		vcsClient.EXPECT().Username().Return("username")
 		vcsClient.EXPECT().CloneUsername().Return("clone-username")
 
+		// Create mock repo manager
+		mockRM := new(mockRepoManager)
+
+		// Create a real git repo for testing
+		tempDir := createTestGitRepo(t, "gh-pages")
+		defer os.RemoveAll(tempDir)
+
+		// Mock expects Clone to be called with "gh-pages"
+		mockRM.On("Clone", ctx, mock.Anything, "gh-pages").Return(&git.Repo{
+			Directory:  tempDir,
+			BranchName: "gh-pages",
+			CloneURL:   cloneURL,
+			Config:     cfg,
+		}, nil)
+
 		ce := CheckEvent{
 			clonedRepos: make(map[repoKey]*git.Repo),
-			repoManager: git.NewRepoManager(cfg),
+			repoManager: mockRM,
 			ctr:         container.Container{VcsClient: vcsClient},
 		}
 
@@ -105,6 +266,7 @@ func TestCheckEventGetRepo(t *testing.T) {
 		assert.Equal(t, "gh-pages", repo.BranchName)
 		assert.Len(t, ce.clonedRepos, 1)
 		assert.Contains(t, ce.clonedRepos, generateRepoKey(canonical, "gh-pages"))
+		mockRM.AssertExpectations(t)
 	})
 }
 
