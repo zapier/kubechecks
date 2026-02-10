@@ -22,8 +22,8 @@ cloud.google.com/go/storage v1.49.0 h1:zenOPBOWHCnojRd9aJZAyQXBYqkJkdQS42dxL55CI
 cloud.google.com/go/storage v1.49.0/go.mod h1:k1eHhhpLvrPjVGfo0mOUPEJ4Y2+a/Hv5PiwehZI9qGU=
 cloud.google.com/go/trace v1.11.2 h1:4ZmaBdL8Ng/ajrgKqY5jfvzqMXbrDcBsUGXOT9aqTtI=
 cloud.google.com/go/trace v1.11.2/go.mod h1:bn7OwXd4pd5rFuAnTrzBuoZ4ax2XQeG3qNgYmfCy0Io=
-code.gitea.io/sdk/gitea v0.22.0 h1:HCKq7bX/HQ85Nw7c/HAhWgRye+vBp5nQOE8Md1+9Ef0=
-code.gitea.io/sdk/gitea v0.22.0/go.mod h1:yyF5+GhljqvA30sRDreoyHILruNiy4ASufugzYg0VHM=
+code.gitea.io/sdk/gitea v0.23.2 h1:iJB1FDmLegwfwjX8gotBDHdPSbk/ZR8V9VmEJaVsJYg=
+code.gitea.io/sdk/gitea v0.23.2/go.mod h1:yyF5+GhljqvA30sRDreoyHILruNiy4ASufugzYg0VHM=
 cuelabs.dev/go/oci/ociregistry v0.0.0-20250722084951-074d06050084 h1:4k1yAtPvZJZQTu8DRY8muBo0LHv6TqtrE0AO5n6IPYs=
 cuelabs.dev/go/oci/ociregistry v0.0.0-20250722084951-074d06050084/go.mod h1:4WWeZNxUO1vRoZWAHIG0KZOd6dA25ypyWuwD3ti0Tdc=
 cuelang.org/go v0.15.1 h1:MRnjc/KJE+K42rnJ3a+425f1jqXeOOgq9SK4tYRTtWw=
@@ -313,8 +313,6 @@ github.com/go-git/go-billy/v5 v5.6.2 h1:6Q86EsPXMa7c3YZ3aLAQsMA0VlWmy43r6FHqa/UN
 github.com/go-git/go-billy/v5 v5.6.2/go.mod h1:rcFC2rAsp/erv7CMz9GczHcuD0D32fWzH+MJAU+jaUU=
 github.com/go-git/go-git-fixtures/v4 v4.3.2-0.20231010084843-55a94097c399 h1:eMje31YglSBqCdIqdhKBW8lokaMrL3uTkpGYlE2OOT4=
 github.com/go-git/go-git-fixtures/v4 v4.3.2-0.20231010084843-55a94097c399/go.mod h1:1OCfN199q1Jm3HZlxleg+Dw/mwps2Wbk9frAWm+4FII=
-github.com/go-git/go-git/v5 v5.14.0 h1:/MD3lCrGjCen5WfEAzKg00MJJffKhC8gzS80ycmCi60=
-github.com/go-git/go-git/v5 v5.14.0/go.mod h1:Z5Xhoia5PcWA3NF8vRLURn9E5FRhSl7dGj9ItW3Wk5k=
 github.com/go-git/go-git/v5 v5.16.4 h1:7ajIEZHZJULcyJebDLo99bGgS0jRrOxzZG4uCk2Yb2Y=
 github.com/go-git/go-git/v5 v5.16.4/go.mod h1:4Ge4alE/5gPs30F2H1esi2gPd69R0C39lolkucHBOp8=
 github.com/go-ini/ini v1.67.0 h1:z6ZrTEZqSWOTyH2FlglNbNgARyHG8oLW9gMELqKr06A=

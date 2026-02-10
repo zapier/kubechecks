@@ -3,6 +3,7 @@ module github.com/zapier/kubechecks
 go 1.25.3
 
 require (
+	code.gitea.io/sdk/gitea v0.23.2
 	github.com/argoproj/argo-cd/v3 v3.2.1
 	github.com/argoproj/gitops-engine v0.7.1-0.20251108235403-13d5172d3ee2
 	github.com/aws/aws-sdk-go-v2 v1.38.1
@@ -15,6 +16,7 @@ require (
 	github.com/chainguard-dev/git-urls v1.0.2
 	github.com/creasty/defaults v1.8.0
 	github.com/ghodss/yaml v1.0.0
+	github.com/go-git/go-git/v5 v5.16.4
 	github.com/go-logr/zerologr v1.2.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/go-github/v74 v74.0.0
@@ -49,6 +51,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.38.0
 	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
 	golang.org/x/oauth2 v0.33.0
+	golang.org/x/sync v0.18.0
 	google.golang.org/grpc v1.76.0
 	gopkg.in/dealancer/validate.v2 v2.1.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -70,7 +73,6 @@ require (
 	cloud.google.com/go/iam v1.2.2 // indirect
 	cloud.google.com/go/monitoring v1.21.2 // indirect
 	cloud.google.com/go/storage v1.49.0 // indirect
-	code.gitea.io/sdk/gitea v0.22.0 // indirect
 	cuelang.org/go v0.15.1 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/42wim/httpsig v1.2.3 // indirect
@@ -160,7 +162,6 @@ require (
 	github.com/go-fed/httpsig v1.1.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.2 // indirect
-	github.com/go-git/go-git/v5 v5.16.4 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -321,7 +322,6 @@ require (
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect

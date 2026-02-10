@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	client "github.com/zapier/kubechecks/pkg/kubernetes"
+	"github.com/zapier/kubechecks/pkg/vcs/gitea_client"
 	"github.com/zapier/kubechecks/pkg/vcs/github_client"
 	"github.com/zapier/kubechecks/pkg/vcs/gitlab_client"
 	"go.opentelemetry.io/otel"
@@ -57,6 +58,8 @@ func New(ctx context.Context, cfg config.ServerConfig) (Container, error) {
 		ctr.VcsClient, err = gitlab_client.CreateGitlabClient(ctx, cfg)
 	case "github":
 		ctr.VcsClient, err = github_client.CreateGithubClient(ctx, cfg)
+	case "gitea":
+		ctr.VcsClient, err = gitea_client.CreateGiteaClient(ctx, cfg)
 	default:
 		err = fmt.Errorf("unknown vcs-type: %q", cfg.VcsType)
 	}
