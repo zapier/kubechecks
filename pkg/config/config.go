@@ -87,6 +87,7 @@ type ServerConfig struct {
 	ArchiveCacheTTL          time.Duration `mapstructure:"archive-cache-ttl"`
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
+	ShowNoChangesComment     bool          `mapstructure:"show-no-changes-comment"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
 	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
 	MaxConcurrentChecks      int           `mapstructure:"max-concurrent-checks"`
