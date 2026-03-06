@@ -88,6 +88,10 @@ func init() {
 		newStringOpts().
 			withChoices("hide", "delete").
 			withDefault("hide"))
+	stringFlag(flags, "show-no-changes-comment", "Controls whether to post a comment when no changes are detected.",
+		newStringOpts().
+			withChoices("true", "false").
+			withDefault("true"))
 	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.")
 	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests.")
 	stringSliceFlag(flags, "policies-location", "Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.",

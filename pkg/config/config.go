@@ -87,6 +87,7 @@ type ServerConfig struct {
 	ArchiveCacheTTL          time.Duration `mapstructure:"archive-cache-ttl"`
 	SchemasLocations         []string      `mapstructure:"schemas-location"`
 	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
+	ShowNoChangesComment     bool          `mapstructure:"show-no-changes-comment"`
 	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
 	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
 	MaxConcurrentChecks      int           `mapstructure:"max-concurrent-checks"`
@@ -125,6 +126,11 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 			input := value.(string)
 			ns := strings.Split(input, ",")
 			return ns, nil
+		}
+
+		if in.String() == "string" && out.String() == "bool" {
+			input := value.(string)
+			return strings.ToLower(input) == "true", nil
 		}
 
 		return value, nil
