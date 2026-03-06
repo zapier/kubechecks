@@ -303,7 +303,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
 		if ce.ctr.Config.ShowNoChangesComment {
 			if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
-				return errors.Wrap(err, "failed to post changes")
+				return errors.Wrap(err, "failed to post no-changes report")
 			}
 		}
 		return nil
