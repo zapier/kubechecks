@@ -305,6 +305,8 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 			if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
 				return errors.Wrap(err, "failed to post no-changes report")
 			}
+		} else {
+			ce.logger.Debug().Msg("Skipping no-changes comment (show-no-changes-comment=false)")
 		}
 		return nil
 	}
