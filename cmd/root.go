@@ -147,6 +147,27 @@ func init() {
 		newStringOpts().
 			withDefault("https://kubepug.xyz/data/data.json"))
 
+	// ai review
+	boolFlag(flags, "enable-ai-review", "Enable AI-powered impact review of manifest changes.")
+	stringFlag(flags, "ai-review-provider", "AI review provider.",
+		newStringOpts().
+			withChoices("anthropic", "openai").
+			withDefault("anthropic"))
+	stringFlag(flags, "ai-review-model", "AI review model ID.",
+		newStringOpts().
+			withDefault("claude-sonnet-4-6"))
+	int64Flag(flags, "ai-review-max-turns", "Maximum tool use iterations for AI review.",
+		newInt64Opts().
+			withDefault(20))
+	durationFlag(flags, "ai-review-timeout", "Timeout per AI review.",
+		newDurationOpts().
+			withDefault(5*time.Minute))
+	stringFlag(flags, "anthropic-api-key", "Anthropic API key for AI review.")
+	stringFlag(flags, "prometheus-url", "Prometheus/Thanos endpoint URL for AI review metrics queries.")
+	stringFlag(flags, "worst-ai-review-state", "The worst state that can be returned from AI review.",
+		newStringOpts().
+			withDefault("warning"))
+
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()
 }
