@@ -3,6 +3,7 @@ module github.com/zapier/kubechecks
 go 1.25.3
 
 require (
+	github.com/anthropics/anthropic-sdk-go v1.26.0
 	github.com/argoproj/argo-cd/v3 v3.2.1
 	github.com/argoproj/gitops-engine v0.7.1-0.20251108235403-13d5172d3ee2
 	github.com/aws/aws-sdk-go-v2 v1.38.1
@@ -15,7 +16,7 @@ require (
 	github.com/chainguard-dev/git-urls v1.0.2
 	github.com/creasty/defaults v1.8.0
 	github.com/ghodss/yaml v1.0.0
-	github.com/go-git/go-git/v5 v5.16.4
+	github.com/go-git/go-git/v5 v5.16.5
 	github.com/go-logr/zerologr v1.2.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/go-github/v74 v74.0.0
@@ -290,6 +291,10 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tchap/go-patricia/v2 v2.3.3 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tmccombs/hcl2json v0.6.7 // indirect
 	github.com/tonistiigi/go-csvvalue v0.0.0-20240814133006-030d3b2625d0 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
