@@ -26,10 +26,34 @@ import (
 
 var tracer = otel.Tracer("pkg/vcs/github_client")
 
+// retryConfig holds retry/backoff parameters for polling loops.
+// Zero values mean "use defaults".
+type retryConfig struct {
+	maxRetries     int
+	initialBackoff time.Duration
+	maxBackoff     time.Duration
+}
+
+func (r retryConfig) withDefaults(maxRetries int, initialBackoff, maxBackoff time.Duration) retryConfig {
+	if r.maxRetries == 0 {
+		r.maxRetries = maxRetries
+	}
+	if r.initialBackoff == 0 {
+		r.initialBackoff = initialBackoff
+	}
+	if r.maxBackoff == 0 {
+		r.maxBackoff = maxBackoff
+	}
+	return r
+}
+
 type Client struct {
 	shurcoolClient *githubv4.Client
 	googleClient   *GClient
 	cfg            config.ServerConfig
+
+	// archiveRetry overrides retry parameters for DownloadArchive. Zero value uses defaults.
+	archiveRetry retryConfig
 
 	username, email string
 }
@@ -490,18 +514,14 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	defer span.End()
 
 	// Retry configuration for waiting on GitHub to compute merge commit SHA
-	const (
-		maxRetries     = 10
-		initialBackoff = 1 * time.Second
-		maxBackoff     = 16 * time.Second
-	)
+	rc := c.archiveRetry.withDefaults(10, 1*time.Second, 16*time.Second)
 
 	var ghPR *github.PullRequest
 	var err error
-	backoff := initialBackoff
+	backoff := rc.initialBackoff
 
 	// Retry loop: GitHub needs time to compute merge_commit_sha after PR creation/update
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+	for attempt := 0; attempt <= rc.maxRetries; attempt++ {
 		// Get PR details to find merge_commit_sha
 		ghPR, _, err = c.googleClient.PullRequests.Get(ctx, pr.Owner, pr.Name, pr.CheckID)
 		if err != nil {
@@ -546,7 +566,7 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 		}
 
 		// If this is the last attempt, fail with detailed info
-		if attempt == maxRetries {
+		if attempt == rc.maxRetries {
 			var reason string
 			if !headSHAMatches {
 				apiHeadSHA := "nil"
@@ -588,8 +608,8 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 		case <-time.After(backoff):
 			// Exponential backoff with cap
 			backoff *= 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
+			if backoff > rc.maxBackoff {
+				backoff = rc.maxBackoff
 			}
 		}
 	}

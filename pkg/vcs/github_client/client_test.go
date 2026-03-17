@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v74/github"
 	"github.com/shurcooL/githubv4"
@@ -899,6 +900,7 @@ func TestClient_DownloadArchive_HappyPath(t *testing.T) {
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
+		archiveRetry: fastRetry,
 	}
 
 	pr := vcs.PullRequest{
@@ -936,6 +938,7 @@ func TestClient_DownloadArchive_StaleMergeCommitThenReady(t *testing.T) {
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
+		archiveRetry: fastRetry,
 	}
 
 	pr := vcs.PullRequest{
@@ -967,6 +970,7 @@ func TestClient_DownloadArchive_NotMergeable(t *testing.T) {
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
+		archiveRetry: fastRetry,
 	}
 
 	pr := vcs.PullRequest{
@@ -995,10 +999,11 @@ func TestClient_DownloadArchive_ContextCancelled(t *testing.T) {
 		},
 		&github.Response{Response: &http.Response{StatusCode: 200}},
 		nil,
-	)
+	).Once()
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
+		archiveRetry: fastRetry,
 	}
 
 	pr := vcs.PullRequest{
@@ -1016,6 +1021,7 @@ func TestClient_DownloadArchive_ContextCancelled(t *testing.T) {
 	_, err := c.DownloadArchive(ctx, pr)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
+	mockPR.AssertExpectations(t)
 }
 
 func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
@@ -1031,6 +1037,7 @@ func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
 		cfg:          config.ServerConfig{VcsBaseUrl: "https://github.example.com/api/v3"},
+		archiveRetry: fastRetry,
 	}
 
 	pr := vcs.PullRequest{
@@ -1047,6 +1054,13 @@ func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
 }
 
 // --- test helpers ---
+
+// fastRetry returns a retryConfig with near-zero delays for tests.
+var fastRetry = retryConfig{
+	maxRetries:     10,
+	initialBackoff: 1 * time.Millisecond,
+	maxBackoff:     1 * time.Millisecond,
+}
 
 type prResponse struct {
 	headSHA        string
