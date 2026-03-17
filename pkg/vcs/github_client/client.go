@@ -491,9 +491,9 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 
 	// Retry configuration for waiting on GitHub to compute merge commit SHA
 	const (
-		maxRetries     = 5
-		initialBackoff = 500 * time.Millisecond
-		maxBackoff     = 8 * time.Second
+		maxRetries     = 10
+		initialBackoff = 1 * time.Second
+		maxBackoff     = 16 * time.Second
 	)
 
 	var ghPR *github.PullRequest
@@ -509,12 +509,18 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 		}
 
 		// CRITICAL: Validate that GitHub has processed the latest commit
-		// When a new commit is pushed, GitHub may return outdated merge_commit_sha from the previous commit
-		// We must verify that the HEAD SHA matches the expected SHA from the webhook
+		// When a new commit is pushed, GitHub may return outdated merge_commit_sha from the previous commit.
+		// We must verify:
+		// 1. HEAD SHA matches the expected SHA from the webhook
+		// 2. Merge commit SHA is available (non-empty)
+		// 3. Mergeable is non-nil (GitHub has finished recomputing the merge)
+		//    When Mergeable is nil, GitHub is still processing - merge_commit_sha may be STALE
+		//    from the previous HEAD, even though head.sha already reflects the new commit.
 		headSHAMatches := ghPR.Head != nil && ghPR.Head.SHA != nil && *ghPR.Head.SHA == pr.SHA
 		mergeCommitAvailable := ghPR.MergeCommitSHA != nil && *ghPR.MergeCommitSHA != ""
+		mergeComputed := ghPR.Mergeable != nil // nil means GitHub is still computing
 
-		if headSHAMatches && mergeCommitAvailable {
+		if headSHAMatches && mergeCommitAvailable && mergeComputed {
 			// Success - merge commit SHA is ready AND corresponds to the current HEAD
 			log.Debug().
 				Caller().
@@ -522,6 +528,7 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 				Int("pr_number", pr.CheckID).
 				Str("head_sha", pr.SHA).
 				Str("merge_commit_sha", *ghPR.MergeCommitSHA).
+				Bool("mergeable", *ghPR.Mergeable).
 				Msg("merge commit SHA is current and ready")
 			break
 		}
@@ -535,6 +542,8 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 					apiHeadSHA = *ghPR.Head.SHA
 				}
 				reason = fmt.Sprintf("HEAD SHA mismatch (expected: %s, got: %s)", pr.SHA, apiHeadSHA)
+			} else if !mergeComputed {
+				reason = "GitHub still computing merge status (mergeable is nil)"
 			} else if !mergeCommitAvailable {
 				reason = "merge commit SHA not available"
 			}
@@ -558,6 +567,7 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 			Dur("backoff", backoff).
 			Bool("head_sha_matches", headSHAMatches).
 			Bool("merge_commit_available", mergeCommitAvailable).
+			Bool("merge_computed", mergeComputed).
 			Msg("merge commit SHA not yet current, retrying...")
 
 		select {
