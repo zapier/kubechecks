@@ -31,6 +31,16 @@ configMap:
     KUBECHECKS_USE_ARCHIVE_MODE: "true"
     KUBECHECKS_ARCHIVE_CACHE_DIR: "/tmp/kubechecks/archives"
     KUBECHECKS_ARCHIVE_CACHE_TTL: "1h"
+    # AI Diff Summary (OpenAI)
+    KUBECHECKS_ENABLE_AI_DIFF_SUMMARY: "false"
+    # AI Review
+    KUBECHECKS_ENABLE_AI_REVIEW: "true"
+    KUBECHECKS_AI_REVIEW_PROVIDER: "anthropic"
+    KUBECHECKS_AI_REVIEW_MODEL: "claude-sonnet-4-6"
+    KUBECHECKS_AI_REVIEW_MAX_TURNS: "20"
+    KUBECHECKS_AI_REVIEW_TIMEOUT: "5m"
+    # KUBECHECKS_AI_REVIEW_SYSTEM_PROMPT: ""
+    # KUBECHECKS_PROMETHEUS_URL: ""
 
 deployment:
   annotations:

@@ -38,7 +38,7 @@ func TestAgent_Run_NoTools(t *testing.T) {
 	}
 
 	agent := NewAgent(provider, WithTimeout(10*time.Second))
-	result, err := agent.Run(context.Background(), "You are a reviewer.", "Review this diff.", nil)
+	result, err := agent.Run(context.Background(), "test-1", "You are a reviewer.", "Review this diff.", nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, "The diff looks good.", result)
@@ -73,7 +73,7 @@ func TestAgent_Run_WithToolCall(t *testing.T) {
 	)
 
 	agent := NewAgent(provider, WithTimeout(10*time.Second))
-	result, err := agent.Run(context.Background(), "Review.", "Check this.", []Tool{getDiff})
+	result, err := agent.Run(context.Background(), "test-1", "Review.", "Check this.", []Tool{getDiff})
 
 	require.NoError(t, err)
 	assert.Equal(t, "Based on the diff, LGTM.", result)
@@ -115,7 +115,7 @@ func TestAgent_Run_ToolError(t *testing.T) {
 	)
 
 	agent := NewAgent(provider, WithTimeout(10*time.Second))
-	result, err := agent.Run(context.Background(), "Review.", "Check this.", []Tool{promTool})
+	result, err := agent.Run(context.Background(), "test-1", "Review.", "Check this.", []Tool{promTool})
 
 	require.NoError(t, err)
 	assert.Contains(t, result, "Prometheus query failed")
@@ -148,7 +148,7 @@ func TestAgent_Run_UnknownTool(t *testing.T) {
 	}
 
 	agent := NewAgent(provider, WithTimeout(10*time.Second))
-	result, err := agent.Run(context.Background(), "Review.", "Check.", nil)
+	result, err := agent.Run(context.Background(), "test-1", "Review.", "Check.", nil)
 
 	require.NoError(t, err)
 	assert.Contains(t, result, "proceed without")
@@ -180,7 +180,7 @@ func TestAgent_Run_MaxTurnsExceeded(t *testing.T) {
 	)
 
 	agent := NewAgent(provider, WithMaxTurns(3), WithTimeout(10*time.Second))
-	_, err := agent.Run(context.Background(), "Review.", "Check.", []Tool{getDiff})
+	_, err := agent.Run(context.Background(), "test-1", "Review.", "Check.", []Tool{getDiff})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "max turns (3)")
@@ -215,7 +215,7 @@ func TestAgent_Run_MultipleToolCalls(t *testing.T) {
 	)
 
 	agent := NewAgent(provider, WithTimeout(10*time.Second))
-	result, err := agent.Run(context.Background(), "Review.", "Check.", []Tool{getDiff, getLive})
+	result, err := agent.Run(context.Background(), "test-1", "Review.", "Check.", []Tool{getDiff, getLive})
 
 	require.NoError(t, err)
 	assert.Contains(t, result, "Analysis complete")
