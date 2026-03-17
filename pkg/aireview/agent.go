@@ -63,7 +63,8 @@ func NewAgent(provider aiproviders.Provider, opts ...AgentOption) *Agent {
 }
 
 // Run executes the agentic loop: sends messages, executes tool calls, repeats until done.
-func (a *Agent) Run(ctx context.Context, systemPrompt string, userPrompt string, tools []Tool) (string, error) {
+// eventID is used for log correlation (e.g., MR/PR ID + app name).
+func (a *Agent) Run(ctx context.Context, eventID string, systemPrompt string, userPrompt string, tools []Tool) (string, error) {
 	ctx, span := tracer.Start(ctx, "Agent.Run")
 	defer span.End()
 
@@ -78,12 +79,14 @@ func (a *Agent) Run(ctx context.Context, systemPrompt string, userPrompt string,
 		toolMap[t.Def.Name] = t.Execute
 	}
 
+	toolCallCount := 0
+
 	messages := []aiproviders.Message{
 		{Role: aiproviders.RoleUser, Text: userPrompt},
 	}
 
 	for turn := 0; turn < a.maxTurns; turn++ {
-		log.Debug().Caller().Int("turn", turn).Msg("aireview agent turn")
+		log.Debug().Caller().Str("event_id", eventID).Int("turn", turn).Int("total_tool_calls", toolCallCount).Msg("aireview agent turn")
 
 		resp, err := a.provider.Chat(ctx, aiproviders.ChatRequest{
 			Model:        a.model,
@@ -111,10 +114,11 @@ func (a *Agent) Run(ctx context.Context, systemPrompt string, userPrompt string,
 
 		// Execute each tool call
 		var results []aiproviders.ToolResult
-		for _, tc := range resp.ToolCalls {
+		for i, tc := range resp.ToolCalls {
+			toolCallCount++
 			executor, ok := toolMap[tc.Name]
 			if !ok {
-				log.Warn().Caller().Str("tool", tc.Name).Msg("unknown tool called")
+				log.Warn().Caller().Str("event_id", eventID).Int("tool_call", toolCallCount).Str("tool", tc.Name).Msg("unknown tool called")
 				results = append(results, aiproviders.ToolResult{
 					ToolCallID: tc.ID,
 					Content:    fmt.Sprintf("error: unknown tool %q", tc.Name),
@@ -123,10 +127,10 @@ func (a *Agent) Run(ctx context.Context, systemPrompt string, userPrompt string,
 				continue
 			}
 
-			log.Debug().Caller().Str("tool", tc.Name).Msg("executing tool")
+			log.Debug().Caller().Str("event_id", eventID).Int("turn", turn).Int("tool_call", toolCallCount).Int("batch_index", i).Str("tool", tc.Name).Msg("executing tool")
 			output, execErr := executor(ctx, tc.Arguments)
 			if execErr != nil {
-				log.Warn().Caller().Err(execErr).Str("tool", tc.Name).Msg("tool execution failed")
+				log.Warn().Caller().Str("event_id", eventID).Int("tool_call", toolCallCount).Err(execErr).Str("tool", tc.Name).Msg("tool execution failed")
 				results = append(results, aiproviders.ToolResult{
 					ToolCallID: tc.ID,
 					Content:    fmt.Sprintf("error: %s", execErr.Error()),

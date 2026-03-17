@@ -152,8 +152,9 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	userPrompt := aireview.BuildUserPrompt(request.AppName, toolNames)
 
 	// Run the agentic loop — blocking call
+	eventID := fmt.Sprintf("mr-%d/%s", request.Note.CheckID, request.AppName)
 	agent := c.buildAgent()
-	result, err := agent.Run(ctx, systemPrompt, userPrompt, reviewTools)
+	result, err := agent.Run(ctx, eventID, systemPrompt, userPrompt, reviewTools)
 	if err != nil {
 		telemetry.SetError(span, err, "AI Review")
 		return msg.Result{

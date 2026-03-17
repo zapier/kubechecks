@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -64,12 +65,18 @@ func KubernetesQueryTool(dynamicClient dynamic.Interface, discoveryClient discov
 
 			gvr, err := resolveGVR(discoveryClient, params.Resource)
 			if err != nil {
-				return "", fmt.Errorf("failed to resolve resource %q: %w", params.Resource, err)
+				return fmt.Sprintf("Resource type %q is not available in this cluster.", params.Resource), nil
 			}
 
 			if params.Name != "" {
 				obj, err := dynamicClient.Resource(gvr).Namespace(params.Namespace).Get(ctx, params.Name, metav1.GetOptions{})
 				if err != nil {
+					if apierrors.IsNotFound(err) {
+						return fmt.Sprintf("Resource %s/%s not found in namespace %q.", params.Resource, params.Name, params.Namespace), nil
+					}
+					if apierrors.IsForbidden(err) {
+						return fmt.Sprintf("Access denied for %s/%s in namespace %q. The service account lacks RBAC permissions.", params.Resource, params.Name, params.Namespace), nil
+					}
 					return "", fmt.Errorf("failed to get %s/%s: %w", params.Resource, params.Name, err)
 				}
 				return marshalClean(obj.Object)
@@ -81,6 +88,12 @@ func KubernetesQueryTool(dynamicClient dynamic.Interface, discoveryClient discov
 			}
 			list, err := dynamicClient.Resource(gvr).Namespace(params.Namespace).List(ctx, listOpts)
 			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return fmt.Sprintf("Resource type %q is not available in this cluster.", params.Resource), nil
+				}
+				if apierrors.IsForbidden(err) {
+					return fmt.Sprintf("Access denied for listing %s in namespace %q. The service account lacks RBAC permissions.", params.Resource, params.Namespace), nil
+				}
 				return "", fmt.Errorf("failed to list %s: %w", params.Resource, err)
 			}
 
