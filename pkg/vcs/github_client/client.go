@@ -519,6 +519,9 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	var ghPR *github.PullRequest
 	var err error
 	backoff := rc.initialBackoff
+	if backoff > rc.maxBackoff {
+		backoff = rc.maxBackoff
+	}
 
 	// Retry loop: GitHub needs time to compute merge_commit_sha after PR creation/update
 	for attempt := 0; attempt <= rc.maxRetries; attempt++ {

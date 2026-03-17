@@ -1051,6 +1051,7 @@ func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
 	url, err := c.DownloadArchive(context.Background(), pr)
 	require.NoError(t, err)
 	assert.Equal(t, "https://github.example.com/myorg/myrepo/archive/merge-sha.zip", url)
+	mockPR.AssertExpectations(t)
 }
 
 // --- test helpers ---
