@@ -72,7 +72,8 @@ type ServerConfig struct {
 	WorstPreupgradeState  pkg.CommitState `mapstructure:"worst-preupgrade-state"`
 	KubepugGeneratedStore string          `mapstructure:"kubepug-generated-store"`
 
-	// ai review
+	// ai
+	EnableAIDiffSummary  bool            `mapstructure:"enable-ai-diff-summary"`
 	EnableAIReview       bool            `mapstructure:"enable-ai-review"`
 	AIReviewProvider     string          `mapstructure:"ai-review-provider"`
 	AIReviewModel        string          `mapstructure:"ai-review-model"`
