@@ -134,7 +134,9 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 
 	cr.Details = fmt.Sprintf("```diff\n%s\n```", renderedDiff)
 
-	aiDiffSummary(ctx, request.Note, request.Container.Config, request.AppName, renderedDiff)
+	if request.Container.Config.EnableAIDiffSummary {
+		aiDiffSummary(ctx, request.Note, request.Container.Config, request.AppName, renderedDiff)
+	}
 
 	return cr, nil
 }
