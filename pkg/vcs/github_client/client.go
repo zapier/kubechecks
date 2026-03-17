@@ -3,12 +3,8 @@ package github_client
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	giturls "github.com/chainguard-dev/git-urls"
@@ -19,33 +15,11 @@ import (
 	"go.opentelemetry.io/otel"
 	"golang.org/x/oauth2"
 
-	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 var tracer = otel.Tracer("pkg/vcs/github_client")
-
-// retryConfig holds retry/backoff parameters for polling loops.
-// Zero values mean "use defaults".
-type retryConfig struct {
-	maxRetries     int
-	initialBackoff time.Duration
-	maxBackoff     time.Duration
-}
-
-func (r retryConfig) withDefaults(maxRetries int, initialBackoff, maxBackoff time.Duration) retryConfig {
-	if r.maxRetries == 0 {
-		r.maxRetries = maxRetries
-	}
-	if r.initialBackoff == 0 {
-		r.initialBackoff = initialBackoff
-	}
-	if r.maxBackoff == 0 {
-		r.maxBackoff = maxBackoff
-	}
-	return r
-}
 
 type Client struct {
 	shurcoolClient *githubv4.Client
@@ -180,54 +154,7 @@ func (c *Client) GetAuthHeaders() map[string]string {
 	}
 }
 
-func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
-	// GitHub provides the SHA256 of the secret + payload body, so we extract the body and compare
-	// We have to split it like this as the ValidatePayload method consumes the request
-	if secret != "" {
-		return github.ValidatePayload(r, []byte(secret))
-	} else {
-		// No secret provided, so we just grab the body
-		return io.ReadAll(r.Body)
-	}
-}
-
 var nilPr vcs.PullRequest
-
-func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte) (vcs.PullRequest, error) {
-	payload, err := github.ParseWebHook(github.WebHookType(r), request)
-	if err != nil {
-		return nilPr, err
-	}
-
-	switch p := payload.(type) {
-	case *github.PullRequestEvent:
-		switch p.GetAction() {
-		case "opened", "synchronize", "reopened", "edited":
-			log.Info().Str("action", p.GetAction()).Msg("handling Github event from PR")
-			return c.buildRepoFromEvent(p), nil
-		default:
-			log.Info().Str("action", p.GetAction()).Msg("ignoring Github pull request event due to non commit based action")
-			return nilPr, vcs.ErrInvalidType
-		}
-	case *github.IssueCommentEvent:
-		switch p.GetAction() {
-		case "created":
-			if strings.ToLower(p.Comment.GetBody()) == c.cfg.ReplanCommentMessage {
-				log.Info().Msgf("Got %s comment, Running again", c.cfg.ReplanCommentMessage)
-				return c.buildRepoFromComment(ctx, p)
-			} else {
-				log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment event due to non matching string")
-				return nilPr, vcs.ErrInvalidType
-			}
-		default:
-			log.Info().Str("action", p.GetAction()).Msg("ignoring Github issue comment due to invalid action")
-			return nilPr, vcs.ErrInvalidType
-		}
-	default:
-		log.Error().Msg("invalid event provided to Github client")
-		return nilPr, vcs.ErrInvalidType
-	}
-}
 
 func (c *Client) buildRepo(pullRequest *github.PullRequest) vcs.PullRequest {
 	repo := pullRequest.Head.Repo
@@ -274,38 +201,6 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.I
 	return c.buildRepo(pr), nil
 }
 
-func toGithubCommitStatus(state pkg.CommitState) *string {
-	switch state {
-	case pkg.StateError, pkg.StatePanic:
-		return pkg.Pointer("error")
-	case pkg.StateFailure:
-		return pkg.Pointer("failure")
-	case pkg.StateRunning:
-		return pkg.Pointer("pending")
-	case pkg.StateSuccess, pkg.StateWarning, pkg.StateNone, pkg.StateSkip:
-		return pkg.Pointer("success")
-	}
-
-	log.Warn().Str("state", state.BareString()).Msg("failed to convert to a github commit status")
-	return pkg.Pointer("failure")
-}
-
-func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, status pkg.CommitState) error {
-	log.Info().Str("repo", pr.Name).Str("sha", pr.SHA).Str("status", status.BareString()).Msg("setting Github commit status")
-	repoStatus, _, err := c.googleClient.Repositories.CreateStatus(ctx, pr.Owner, pr.Name, pr.SHA, &github.RepoStatus{
-		State:       toGithubCommitStatus(status),
-		Description: pkg.Pointer(status.BareString()),
-		ID:          pkg.Pointer(int64(pr.CheckID)),
-		Context:     pkg.Pointer("kubechecks"),
-	})
-	if err != nil {
-		log.Err(err).Msg("could not set Github commit status")
-		return err
-	}
-	log.Debug().Caller().Interface("status", repoStatus).Msg("Github commit status set")
-	return nil
-}
-
 func parseRepo(cloneUrl string) (string, string) {
 	result, err := giturls.Parse(cloneUrl)
 	if err != nil {
@@ -323,138 +218,6 @@ func parseRepo(cloneUrl string) (string, string) {
 	owner := parts[0]
 	repoName := strings.TrimSuffix(parts[1], ".git")
 	return owner, repoName
-}
-
-func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*vcs.WebHookConfig, error) {
-	owner, repoName := parseRepo(ownerAndRepoName)
-	items, _, err := c.googleClient.Repositories.ListHooks(ctx, owner, repoName, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list hooks")
-	}
-
-	for _, item := range items {
-		itemConfig := item.GetConfig()
-		// check if the hook's config has a URL
-		hookPayloadURL := ""
-		if itemConfig != nil {
-			hookPayloadURL = itemConfig.GetURL()
-		}
-		if hookPayloadURL == webhookUrl {
-			return &vcs.WebHookConfig{
-				Url:    hookPayloadURL,
-				Events: item.Events, // TODO: translate GH specific event names to VCS agnostic
-			}, nil
-		}
-	}
-
-	return nil, vcs.ErrHookNotFound
-}
-
-func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, webhookSecret string) error {
-	owner, repoName := parseRepo(ownerAndRepoName)
-	_, resp, err := c.googleClient.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
-		Active: pkg.Pointer(true),
-		Config: &github.HookConfig{
-			ContentType: pkg.Pointer("json"),
-			InsecureSSL: pkg.Pointer("0"),
-			URL:         pkg.Pointer(webhookUrl),
-			Secret:      pkg.Pointer(webhookSecret),
-		},
-		Events: []string{
-			"pull_request", "issue_comment",
-		},
-		Name: pkg.Pointer("web"),
-	})
-	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		statusCode := 0
-		if resp != nil {
-			statusCode = resp.StatusCode
-		}
-		return errors.Wrap(err, fmt.Sprintf("failed to create hook, statuscode: %d", statusCode))
-	}
-	return nil
-}
-
-var rePullRequest = regexp.MustCompile(`(.*)/(.*)#(\d+)`)
-
-func (c *Client) LoadHook(ctx context.Context, id string) (vcs.PullRequest, error) {
-	m := rePullRequest.FindStringSubmatch(id)
-	if len(m) != 4 {
-		return nilPr, errors.New("must be in format OWNER/REPO#PR")
-	}
-
-	ownerName := m[1]
-	repoName := m[2]
-	prNumber, err := strconv.ParseInt(m[3], 10, 32)
-	if err != nil {
-		return nilPr, errors.Wrap(err, "failed to parse int")
-	}
-
-	repoInfo, _, err := c.googleClient.Repositories.Get(ctx, ownerName, repoName)
-	if err != nil {
-		return nilPr, errors.Wrap(err, "failed to get repo")
-	}
-
-	pullRequest, _, err := c.googleClient.PullRequests.Get(ctx, ownerName, repoName, int(prNumber))
-	if err != nil {
-		return nilPr, errors.Wrap(err, "failed to get pull request")
-	}
-
-	var labels []string
-	for _, label := range pullRequest.Labels {
-		labels = append(labels, label.GetName())
-	}
-
-	var (
-		baseRef                    string
-		headRef, headSha           string
-		login, userName, userEmail string
-	)
-
-	if pullRequest.Base != nil {
-		baseRef = unPtr(pullRequest.Base.Ref)
-		headRef = unPtr(pullRequest.Head.Ref)
-	}
-
-	if repoInfo.Owner != nil {
-		login = unPtr(repoInfo.Owner.Login)
-	} else {
-		login = "kubechecks"
-	}
-
-	if pullRequest.Head != nil {
-		headSha = unPtr(pullRequest.Head.SHA)
-	}
-
-	if pullRequest.User != nil {
-		userName = unPtr(pullRequest.User.Name)
-		userEmail = unPtr(pullRequest.User.Email)
-	}
-
-	// these are required for `git merge` later on
-	if userName == "" {
-		userName = "kubechecks"
-	}
-	if userEmail == "" {
-		userEmail = "kubechecks@github.com"
-	}
-
-	return vcs.PullRequest{
-		BaseRef:       baseRef,
-		HeadRef:       headRef,
-		DefaultBranch: unPtr(repoInfo.DefaultBranch),
-		CloneURL:      unPtr(repoInfo.CloneURL),
-		FullName:      repoInfo.GetFullName(),
-		Owner:         login,
-		Name:          repoInfo.GetName(),
-		CheckID:       int(prNumber),
-		SHA:           headSha,
-		Username:      userName,
-		Email:         userEmail,
-		Labels:        labels,
-
-		Config: c.cfg,
-	}, nil
 }
 
 func unPtr[T interface{ string | int }](ps *T) T {
@@ -506,156 +269,4 @@ func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([
 		Msg("fetched PR files from GitHub API")
 
 	return allFiles, nil
-}
-
-// DownloadArchive returns the archive URL for downloading a repository at a specific commit
-func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
-	ctx, span := tracer.Start(ctx, "DownloadArchive")
-	defer span.End()
-
-	// Retry configuration for waiting on GitHub to compute merge commit SHA
-	rc := c.archiveRetry.withDefaults(10, 1*time.Second, 16*time.Second)
-
-	// Validate and normalize retry configuration to avoid unexpected loop behavior or panics.
-	if rc.maxRetries < 0 {
-		rc.maxRetries = 0
-	}
-	if rc.initialBackoff <= 0 {
-		rc.initialBackoff = 1 * time.Second
-	}
-	if rc.maxBackoff <= 0 {
-		rc.maxBackoff = 16 * time.Second
-	}
-	if rc.maxBackoff < rc.initialBackoff {
-		rc.maxBackoff = rc.initialBackoff
-	}
-
-	var ghPR *github.PullRequest
-	var err error
-	backoff := rc.initialBackoff
-	if backoff > rc.maxBackoff {
-		backoff = rc.maxBackoff
-	}
-
-	// Retry loop: GitHub needs time to compute merge_commit_sha after PR creation/update
-	for attempt := 0; attempt <= rc.maxRetries; attempt++ {
-		// Get PR details to find merge_commit_sha
-		ghPR, _, err = c.googleClient.PullRequests.Get(ctx, pr.Owner, pr.Name, pr.CheckID)
-		if err != nil {
-			return "", errors.Wrap(err, "failed to get PR details")
-		}
-
-		// CRITICAL: Validate that GitHub has processed the latest commit
-		// When a new commit is pushed, GitHub may return outdated merge_commit_sha from the previous commit.
-		// We must verify:
-		// 1. HEAD SHA matches the expected SHA from the webhook
-		// 2. Merge commit SHA is available (non-empty)
-		// 3. Mergeable is non-nil (GitHub has finished recomputing the merge)
-		//    When Mergeable is nil, GitHub is still processing - merge_commit_sha may be STALE
-		//    from the previous HEAD, even though head.sha already reflects the new commit.
-		headSHAMatches := ghPR.Head != nil && ghPR.Head.SHA != nil && *ghPR.Head.SHA == pr.SHA
-		mergeCommitAvailable := ghPR.MergeCommitSHA != nil && *ghPR.MergeCommitSHA != ""
-		mergeComputed := ghPR.Mergeable != nil // nil means GitHub is still computing
-
-		if headSHAMatches && mergeCommitAvailable && mergeComputed {
-			// Success - merge commit SHA is ready AND corresponds to the current HEAD
-			log.Debug().
-				Caller().
-				Str("repo", pr.FullName).
-				Int("pr_number", pr.CheckID).
-				Str("head_sha", pr.SHA).
-				Str("merge_commit_sha", *ghPR.MergeCommitSHA).
-				Bool("mergeable", *ghPR.Mergeable).
-				Msg("merge commit SHA is current and ready")
-			break
-		}
-
-		// If GitHub has finished computing and determined the PR is not mergeable
-		// for the current HEAD, short-circuit instead of waiting through all backoff intervals.
-		// We require headSHAMatches because if the API is still serving stale PR data,
-		// Mergeable reflects the previous commit and may flip once the API catches up.
-		if headSHAMatches && mergeComputed && !*ghPR.Mergeable {
-			log.Warn().
-				Caller().
-				Str("repo", pr.FullName).
-				Int("pr_number", pr.CheckID).
-				Str("head_sha", pr.SHA).
-				Msg("PR is not mergeable (has conflicts); stopping retries")
-			return "", errors.New("PR is not mergeable (has conflicts)")
-		}
-
-		// If this is the last attempt, fail with detailed info
-		if attempt == rc.maxRetries {
-			var reason string
-			if !headSHAMatches {
-				apiHeadSHA := "nil"
-				if ghPR.Head != nil && ghPR.Head.SHA != nil {
-					apiHeadSHA = *ghPR.Head.SHA
-				}
-				reason = fmt.Sprintf("HEAD SHA mismatch (expected: %s, got: %s)", pr.SHA, apiHeadSHA)
-			} else if !mergeComputed {
-				reason = "GitHub still computing merge status (mergeable is nil)"
-			} else if !mergeCommitAvailable {
-				reason = "merge commit SHA not available"
-			}
-
-			log.Warn().
-				Caller().
-				Str("repo", pr.FullName).
-				Int("pr_number", pr.CheckID).
-				Int("attempts", attempt+1).
-				Str("reason", reason).
-				Msg("failed to get current merge commit SHA after retries")
-			return "", fmt.Errorf("PR merge commit SHA not ready (may have conflicts or GitHub still processing): %s", reason)
-		}
-
-		// Wait before retrying (exponential backoff)
-		log.Debug().
-			Caller().
-			Str("repo", pr.FullName).
-			Int("pr_number", pr.CheckID).
-			Int("attempt", attempt+1).
-			Dur("backoff", backoff).
-			Bool("head_sha_matches", headSHAMatches).
-			Bool("merge_commit_available", mergeCommitAvailable).
-			Bool("merge_computed", mergeComputed).
-			Msg("merge commit SHA not yet current, retrying...")
-
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(backoff):
-			// Exponential backoff with cap
-			backoff *= 2
-			if backoff > rc.maxBackoff {
-				backoff = rc.maxBackoff
-			}
-		}
-	}
-
-	mergeCommitSHA := *ghPR.MergeCommitSHA
-
-	// Construct archive URL
-	// Format: https://github.com/{owner}/{repo}/archive/{sha}.zip
-	// Or for enterprise: https://{base_url}/{owner}/{repo}/archive/{sha}.zip
-	var archiveURL string
-	if c.cfg.VcsBaseUrl != "" {
-		// GitHub Enterprise
-		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/api/v3")
-		baseURL = strings.TrimSuffix(baseURL, "/")
-		archiveURL = fmt.Sprintf("%s/%s/%s/archive/%s.zip", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
-	} else {
-		// GitHub.com
-		archiveURL = fmt.Sprintf("https://github.com/%s/%s/archive/%s.zip", pr.Owner, pr.Name, mergeCommitSHA)
-	}
-
-	log.Debug().
-		Caller().
-		Str("repo", pr.FullName).
-		Int("pr_number", pr.CheckID).
-		Str("merge_commit_sha", mergeCommitSHA).
-		Str("archive_url", archiveURL).
-		Msg("generated archive URL")
-
-	return archiveURL, nil
 }
