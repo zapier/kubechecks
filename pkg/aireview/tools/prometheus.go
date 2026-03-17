@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/aireview"
 )
 
@@ -124,7 +125,11 @@ func fetchPrometheus(ctx context.Context, url string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("prometheus query failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.Debug().Caller().Msg("failed to close response body")
+		}
+	}()
 
 	// Limit response size to avoid excessive token usage
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 100_000))

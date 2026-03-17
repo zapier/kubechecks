@@ -28,11 +28,11 @@ require (
 	github.com/masterminds/semver v1.5.0
 	github.com/olekukonko/tablewriter v1.1.2
 	github.com/open-policy-agent/conftest v0.65.0
+	github.com/openai/openai-go/v3 v3.28.0
 	github.com/pkg/errors v0.9.1
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0
-	github.com/sashabaranov/go-openai v1.40.5
 	github.com/shurcooL/githubv4 v0.0.0-20231126234147-1cffa1f02456
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	github.com/spf13/cobra v1.10.1
