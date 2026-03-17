@@ -516,6 +516,20 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	// Retry configuration for waiting on GitHub to compute merge commit SHA
 	rc := c.archiveRetry.withDefaults(10, 1*time.Second, 16*time.Second)
 
+	// Validate and normalize retry configuration to avoid unexpected loop behavior or panics.
+	if rc.maxRetries < 0 {
+		rc.maxRetries = 0
+	}
+	if rc.initialBackoff <= 0 {
+		rc.initialBackoff = 1 * time.Second
+	}
+	if rc.maxBackoff <= 0 {
+		rc.maxBackoff = 16 * time.Second
+	}
+	if rc.maxBackoff < rc.initialBackoff {
+		rc.maxBackoff = rc.initialBackoff
+	}
+
 	var ghPR *github.PullRequest
 	var err error
 	backoff := rc.initialBackoff
