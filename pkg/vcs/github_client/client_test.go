@@ -885,3 +885,195 @@ func TestParseRepo_InvalidPath(t *testing.T) {
 		parseRepo("https://github.com/invalid")
 	})
 }
+
+func TestClient_DownloadArchive_HappyPath(t *testing.T) {
+	// GitHub returns a fully ready PR on the first call:
+	// head SHA matches, merge_commit_sha present, mergeable is non-nil.
+	mockPR := NewMockPullRequestsServicesWithGet(t,
+		prResponse{
+			headSHA:        "new-sha",
+			mergeCommitSHA: "merge-abc123",
+			mergeable:      github.Ptr(true),
+		},
+	)
+
+	c := &Client{
+		googleClient: &GClient{PullRequests: mockPR},
+	}
+
+	pr := vcs.PullRequest{
+		Owner:    "owner",
+		Name:     "repo",
+		FullName: "owner/repo",
+		CheckID:  42,
+		SHA:      "new-sha",
+	}
+
+	url, err := c.DownloadArchive(context.Background(), pr)
+	require.NoError(t, err)
+	assert.Equal(t, "https://github.com/owner/repo/archive/merge-abc123.zip", url)
+	mockPR.AssertExpectations(t)
+}
+
+func TestClient_DownloadArchive_StaleMergeCommitThenReady(t *testing.T) {
+	// Simulates the race condition: a new commit is pushed, GitHub updates
+	// head.sha immediately but merge_commit_sha is stale (from old merge)
+	// and Mergeable is nil while GitHub recomputes.
+	// First call: head SHA matches, stale merge_commit_sha present, Mergeable nil.
+	// Second call: head SHA matches, new merge_commit_sha, Mergeable non-nil.
+	mockPR := NewMockPullRequestsServicesWithGet(t,
+		prResponse{
+			headSHA:        "new-sha",
+			mergeCommitSHA: "stale-old-merge",
+			mergeable:      nil, // still computing
+		},
+		prResponse{
+			headSHA:        "new-sha",
+			mergeCommitSHA: "fresh-new-merge",
+			mergeable:      github.Ptr(true),
+		},
+	)
+
+	c := &Client{
+		googleClient: &GClient{PullRequests: mockPR},
+	}
+
+	pr := vcs.PullRequest{
+		Owner:    "owner",
+		Name:     "repo",
+		FullName: "owner/repo",
+		CheckID:  42,
+		SHA:      "new-sha",
+	}
+
+	url, err := c.DownloadArchive(context.Background(), pr)
+	require.NoError(t, err)
+	// Must use the fresh merge SHA, not the stale one
+	assert.Equal(t, "https://github.com/owner/repo/archive/fresh-new-merge.zip", url)
+	assert.NotContains(t, url, "stale-old-merge")
+	mockPR.AssertExpectations(t)
+}
+
+func TestClient_DownloadArchive_NotMergeable(t *testing.T) {
+	// GitHub has finished computing and the PR has conflicts.
+	// Should short-circuit immediately without retrying.
+	mockPR := NewMockPullRequestsServicesWithGet(t,
+		prResponse{
+			headSHA:        "new-sha",
+			mergeCommitSHA: "", // no merge commit when conflicts exist
+			mergeable:      github.Ptr(false),
+		},
+	)
+
+	c := &Client{
+		googleClient: &GClient{PullRequests: mockPR},
+	}
+
+	pr := vcs.PullRequest{
+		Owner:    "owner",
+		Name:     "repo",
+		FullName: "owner/repo",
+		CheckID:  42,
+		SHA:      "new-sha",
+	}
+
+	_, err := c.DownloadArchive(context.Background(), pr)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not mergeable")
+	// Only 1 call - no retries after seeing Mergeable=false
+	mockPR.AssertNumberOfCalls(t, "Get", 1)
+}
+
+func TestClient_DownloadArchive_ContextCancelled(t *testing.T) {
+	// If merge stays not-ready and context is cancelled, should return context error.
+	mockPR := new(githubMocks.MockPullRequestsServices)
+	mockPR.On("Get", mock.Anything, "owner", "repo", 42).Return(
+		&github.PullRequest{
+			Head:           &github.PullRequestBranch{SHA: github.Ptr("new-sha")},
+			MergeCommitSHA: github.Ptr("stale"),
+			Mergeable:      nil,
+		},
+		&github.Response{Response: &http.Response{StatusCode: 200}},
+		nil,
+	)
+
+	c := &Client{
+		googleClient: &GClient{PullRequests: mockPR},
+	}
+
+	pr := vcs.PullRequest{
+		Owner:    "owner",
+		Name:     "repo",
+		FullName: "owner/repo",
+		CheckID:  42,
+		SHA:      "new-sha",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel immediately so the backoff select picks it up
+	cancel()
+
+	_, err := c.DownloadArchive(ctx, pr)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
+	// Verify enterprise URL format.
+	mockPR := NewMockPullRequestsServicesWithGet(t,
+		prResponse{
+			headSHA:        "sha1",
+			mergeCommitSHA: "merge-sha",
+			mergeable:      github.Ptr(true),
+		},
+	)
+
+	c := &Client{
+		googleClient: &GClient{PullRequests: mockPR},
+		cfg:          config.ServerConfig{VcsBaseUrl: "https://github.example.com/api/v3"},
+	}
+
+	pr := vcs.PullRequest{
+		Owner:    "myorg",
+		Name:     "myrepo",
+		FullName: "myorg/myrepo",
+		CheckID:  1,
+		SHA:      "sha1",
+	}
+
+	url, err := c.DownloadArchive(context.Background(), pr)
+	require.NoError(t, err)
+	assert.Equal(t, "https://github.example.com/myorg/myrepo/archive/merge-sha.zip", url)
+}
+
+// --- test helpers ---
+
+type prResponse struct {
+	headSHA        string
+	mergeCommitSHA string
+	mergeable      *bool
+}
+
+// NewMockPullRequestsServicesWithGet creates a mock that returns the given
+// PR responses in order, one per call to Get.
+func NewMockPullRequestsServicesWithGet(t *testing.T, responses ...prResponse) *githubMocks.MockPullRequestsServices {
+	t.Helper()
+	mockPR := new(githubMocks.MockPullRequestsServices)
+
+	for _, resp := range responses {
+		pr := &github.PullRequest{
+			Head:      &github.PullRequestBranch{SHA: github.Ptr(resp.headSHA)},
+			Mergeable: resp.mergeable,
+		}
+		if resp.mergeCommitSHA != "" {
+			pr.MergeCommitSHA = github.Ptr(resp.mergeCommitSHA)
+		}
+		mockPR.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+			pr,
+			&github.Response{Response: &http.Response{StatusCode: 200}},
+			nil,
+		).Once()
+	}
+
+	return mockPR
+}

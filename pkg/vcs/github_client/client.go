@@ -533,6 +533,18 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 			break
 		}
 
+		// If GitHub has finished computing and determined the PR is not mergeable,
+		// short-circuit instead of waiting through all backoff intervals.
+		if mergeComputed && !*ghPR.Mergeable {
+			log.Warn().
+				Caller().
+				Str("repo", pr.FullName).
+				Int("pr_number", pr.CheckID).
+				Str("head_sha", pr.SHA).
+				Msg("PR is not mergeable (has conflicts); stopping retries")
+			return "", errors.New("PR is not mergeable (has conflicts)")
+		}
+
 		// If this is the last attempt, fail with detailed info
 		if attempt == maxRetries {
 			var reason string
@@ -580,11 +592,6 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 				backoff = maxBackoff
 			}
 		}
-	}
-
-	// Check if PR is mergeable
-	if ghPR.Mergeable != nil && !*ghPR.Mergeable {
-		return "", errors.New("PR is not mergeable (has conflicts)")
 	}
 
 	mergeCommitSHA := *ghPR.MergeCommitSHA
