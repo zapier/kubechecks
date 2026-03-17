@@ -556,9 +556,11 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 			break
 		}
 
-		// If GitHub has finished computing and determined the PR is not mergeable,
-		// short-circuit instead of waiting through all backoff intervals.
-		if mergeComputed && !*ghPR.Mergeable {
+		// If GitHub has finished computing and determined the PR is not mergeable
+		// for the current HEAD, short-circuit instead of waiting through all backoff intervals.
+		// We require headSHAMatches because if the API is still serving stale PR data,
+		// Mergeable reflects the previous commit and may flip once the API catches up.
+		if headSHAMatches && mergeComputed && !*ghPR.Mergeable {
 			log.Warn().
 				Caller().
 				Str("repo", pr.FullName).
