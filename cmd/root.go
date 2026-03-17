@@ -162,6 +162,7 @@ func init() {
 	durationFlag(flags, "ai-review-timeout", "Timeout per AI review.",
 		newDurationOpts().
 			withDefault(5*time.Minute))
+	stringFlag(flags, "ai-review-system-prompt", "Custom system prompt for AI review. Overrides the default review instructions.")
 	stringFlag(flags, "anthropic-api-key", "Anthropic API key for AI review.")
 	stringFlag(flags, "prometheus-url", "Prometheus/Thanos endpoint URL for AI review metrics queries.")
 	stringFlag(flags, "worst-ai-review-state", "The worst state that can be returned from AI review.",
