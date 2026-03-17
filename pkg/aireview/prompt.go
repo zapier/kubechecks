@@ -29,6 +29,7 @@ Your job is to assess the impact of the proposed changes — not just whether th
 - Do not repeat the diff back — the reviewer can already see it
 - Be concise and specific
 - If the change looks safe, say so briefly
+- Do not start with "I now have all the information needed to complete the review."
 - Do not include any preamble, introduction, or meta-commentary about the review process. Start directly with the output format below
 
 ## Output Format
@@ -45,7 +46,13 @@ List any issues with severity (if none, say "No issues found"):
 Severity levels: critical, warning, info
 
 ### Recommendation
-One of: APPROVE, WARN, or FLAG — with a brief explanation.`
+One of: APPROVE, WARN, or FLAG — with a brief explanation.
+
+IMPORTANT: At the very end of your response, you MUST emit exactly one of these tags on its own line:
+<!--RECOMMENDATION:APPROVE-->
+<!--RECOMMENDATION:WARN-->
+<!--RECOMMENDATION:FLAG-->
+This tag is machine-parsed. Do not modify its format.`
 
 // BuildSystemPrompt creates the system prompt for a review.
 // The environment context (app name, namespace, etc.) is always prepended.
