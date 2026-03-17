@@ -3,6 +3,7 @@ package aireview
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -165,10 +166,32 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	}
 
 	return msg.Result{
-		State:   pkg.StateNone,
+		State:   parseRecommendationState(result),
 		Summary: "<b>AI Impact Review</b>",
 		Details: result,
 	}, nil
+}
+
+// recommendationTagRe matches the machine-readable recommendation tag emitted by the LLM.
+// Example: <!--RECOMMENDATION:FLAG-->
+var recommendationTagRe = regexp.MustCompile(`<!--RECOMMENDATION:(APPROVE|WARN|FLAG)-->`)
+
+// parseRecommendationState extracts the commit state from the machine-readable tag in the AI review output.
+func parseRecommendationState(review string) pkg.CommitState {
+	match := recommendationTagRe.FindStringSubmatch(review)
+	if len(match) < 2 {
+		return pkg.StateNone
+	}
+	switch match[1] {
+	case "FLAG":
+		return pkg.StateError
+	case "WARN":
+		return pkg.StateWarning
+	case "APPROVE":
+		return pkg.StateSuccess
+	default:
+		return pkg.StateNone
+	}
 }
 
 // formatSourceInfo extracts source information from the ArgoCD Application.
