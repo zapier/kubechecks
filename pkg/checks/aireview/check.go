@@ -21,6 +21,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/checks/diff"
 	"github.com/zapier/kubechecks/pkg/helmchart"
+	client "github.com/zapier/kubechecks/pkg/kubernetes"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -61,6 +62,11 @@ func WithChartCache(cache *helmchart.Cache) NewCheckerOption {
 	return func(c *Checker) { c.chartCache = cache }
 }
 
+// WithMultiCluster enables multi-cluster Kubernetes tools.
+func WithMultiCluster(mcm *client.MultiClusterManager) NewCheckerOption {
+	return func(c *Checker) { c.multiCluster = mcm }
+}
+
 // Checker holds the AI review agent and its configuration.
 type Checker struct {
 	provider      aiproviders.Provider
@@ -69,6 +75,7 @@ type Checker struct {
 	systemPrompt  string
 	prometheusURL string
 	chartCache    *helmchart.Cache
+	multiCluster  *client.MultiClusterManager
 }
 
 // New creates a Checker with the given config and options.
@@ -124,7 +131,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 		tools.AppInfoTool(request.AppName, namespace, cluster, project, sourceInfo),
 	}
 
-	// Add Kubernetes tools if client is available
+	// Add local Kubernetes tools if client is available
 	if request.Container.KubeClientSet != nil {
 		clientset := request.Container.KubeClientSet.ClientSet()
 		dynamicClient, err := dynamic.NewForConfig(request.Container.KubeClientSet.Config())
@@ -136,6 +143,15 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 				tools.ListNamespacesTool(clientset),
 			)
 		}
+	}
+
+	// Add remote cluster tools if multi-cluster is configured
+	if c.multiCluster != nil {
+		reviewTools = append(reviewTools,
+			tools.ListClustersTool(c.multiCluster),
+			tools.RemoteKubernetesQueryTool(c.multiCluster),
+			tools.RemoteListNamespacesTool(c.multiCluster),
+		)
 	}
 
 	// Add Prometheus tools if URL is configured
