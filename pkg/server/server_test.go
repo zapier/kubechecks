@@ -52,7 +52,7 @@ func TestHooksPrefix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewServer(container.Container{Config: tt.cfg}, []checks.ProcessorEntry{})
+			s := NewServer(container.Container{Config: tt.cfg}, []checks.ProcessorEntry{}, nil)
 			if got := s.hooksPrefix(); got != tt.want {
 				t.Errorf("hooksPrefix() = %v, want %v", got, tt.want)
 			}

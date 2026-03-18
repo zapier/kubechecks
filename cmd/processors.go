@@ -65,40 +65,42 @@ func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
 		})
 	}
 
-	if ctr.Config.EnableAIReview {
-		provider, err := newAIProvider(ctr.Config)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create AI review provider")
-		}
+	return procs, nil
+}
 
-		checkerOpts := []aireviewcheck.NewCheckerOption{
-			aireviewcheck.WithMaxTurns(ctr.Config.AIReviewMaxTurns),
-			aireviewcheck.WithTimeout(ctr.Config.AIReviewTimeout),
-		}
-		if ctr.Config.AIReviewSystemPrompt != "" {
-			checkerOpts = append(checkerOpts, aireviewcheck.WithSystemPrompt(ctr.Config.AIReviewSystemPrompt))
-		}
-		if ctr.Config.PrometheusURL != "" {
-			checkerOpts = append(checkerOpts, aireviewcheck.WithPrometheusURL(ctr.Config.PrometheusURL))
-		}
-
-		checker := aireviewcheck.New(
-			&aireviewcheck.NewCheckerConfig{Provider: provider},
-			checkerOpts...,
-		)
-		log.Info().
-			Str("provider", ctr.Config.AIReviewProvider).
-			Str("model", ctr.Config.AIReviewModel).
-			Msg("AI review enabled")
-
-		procs = append(procs, checks.ProcessorEntry{
-			Name:       "AI impact review",
-			Processor:  checker.Check,
-			WorstState: ctr.Config.WorstAIReviewState,
-		})
+// getAIReviewChecker creates the AI review checker if enabled, or returns nil.
+// The AI review runs separately from the processor pipeline and posts its own comment.
+func getAIReviewChecker(ctr container.Container) *aireviewcheck.Checker {
+	if !ctr.Config.EnableAIReview {
+		return nil
 	}
 
-	return procs, nil
+	provider, err := newAIProvider(ctr.Config)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create AI review provider, AI review disabled")
+		return nil
+	}
+
+	checkerOpts := []aireviewcheck.NewCheckerOption{
+		aireviewcheck.WithMaxTurns(ctr.Config.AIReviewMaxTurns),
+		aireviewcheck.WithTimeout(ctr.Config.AIReviewTimeout),
+	}
+	if ctr.Config.AIReviewSystemPrompt != "" {
+		checkerOpts = append(checkerOpts, aireviewcheck.WithSystemPrompt(ctr.Config.AIReviewSystemPrompt))
+	}
+	if ctr.Config.PrometheusURL != "" {
+		checkerOpts = append(checkerOpts, aireviewcheck.WithPrometheusURL(ctr.Config.PrometheusURL))
+	}
+
+	log.Info().
+		Str("provider", ctr.Config.AIReviewProvider).
+		Str("model", ctr.Config.AIReviewModel).
+		Msg("AI review enabled")
+
+	return aireviewcheck.New(
+		&aireviewcheck.NewCheckerConfig{Provider: provider},
+		checkerOpts...,
+	)
 }
 
 func newAIProvider(cfg config.ServerConfig) (aiproviders.Provider, error) {

@@ -83,8 +83,11 @@ var ControllerCmd = &cobra.Command{
 		}
 		defer t.Shutdown()
 
+		// Create AI review checker (nil if disabled)
+		aiReviewChecker := getAIReviewChecker(ctr)
+
 		// Create server
-		srv := server.NewServer(ctr, processors)
+		srv := server.NewServer(ctr, processors, aiReviewChecker)
 
 		// Start HTTP server in background
 		log.Info().Msg("starting web server")

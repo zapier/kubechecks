@@ -12,18 +12,25 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
+// AIReviewChecker is the interface for the AI review checker (mirrors events.AIReviewChecker).
+type AIReviewChecker interface {
+	Check(ctx context.Context, request checks.Request) (msg.Result, error)
+}
+
 // ProcessFunc is the function signature for processing a check request
-type ProcessFunc func(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry) error
+type ProcessFunc func(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry, aiReviewChecker AIReviewChecker) error
 
 // CheckRequest represents a PR check request to be queued
 type CheckRequest struct {
-	PullRequest vcs.PullRequest
-	Container   container.Container
-	Processors  []checks.ProcessorEntry
-	Timestamp   time.Time
+	PullRequest     vcs.PullRequest
+	Container       container.Container
+	Processors      []checks.ProcessorEntry
+	AIReviewChecker AIReviewChecker
+	Timestamp       time.Time
 }
 
 // RepoQueue manages a queue of check requests for a single repository
@@ -66,9 +73,10 @@ func NewQueueManager(cfg Config, processFunc ProcessFunc) *QueueManager {
 
 // EnqueueParams contains the parameters for enqueueing a check request
 type EnqueueParams struct {
-	PullRequest vcs.PullRequest
-	Container   container.Container
-	Processors  []checks.ProcessorEntry
+	PullRequest     vcs.PullRequest
+	Container       container.Container
+	Processors      []checks.ProcessorEntry
+	AIReviewChecker AIReviewChecker
 }
 
 // Enqueue adds a check request to the appropriate repository queue
@@ -116,10 +124,11 @@ func (qm *QueueManager) Enqueue(ctx context.Context, params EnqueueParams) error
 
 	// Create check request
 	request := &CheckRequest{
-		PullRequest: params.PullRequest,
-		Container:   params.Container,
-		Processors:  params.Processors,
-		Timestamp:   time.Now(),
+		PullRequest:     params.PullRequest,
+		Container:       params.Container,
+		Processors:      params.Processors,
+		AIReviewChecker: params.AIReviewChecker,
+		Timestamp:       time.Now(),
 	}
 
 	// Try to enqueue (non-blocking)
@@ -256,6 +265,7 @@ func (rq *RepoQueue) processRequest(request *CheckRequest) {
 		request.PullRequest,
 		request.Container,
 		request.Processors,
+		request.AIReviewChecker,
 	)
 	if err != nil {
 		repoWorkerRequestsFailed.Inc()
