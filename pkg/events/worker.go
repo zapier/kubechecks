@@ -4,35 +4,38 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"sync"
 	"sync/atomic"
 
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/ghodss/yaml"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/zapier/kubechecks/pkg/vcs"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
-	"github.com/rs/zerolog"
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
+	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
 type worker struct {
-	appChannel  chan *v1alpha1.Application
-	ctr         container.Container
-	logger      zerolog.Logger
-	processors  []checks.ProcessorEntry
-	pullRequest vcs.PullRequest
-	vcsNote     *msg.Message
+	appChannel      chan *v1alpha1.Application
+	ctr             container.Container
+	logger          zerolog.Logger
+	processors      []checks.ProcessorEntry
+	aiReviewChecker AIReviewChecker
+	pullRequest     vcs.PullRequest
+	vcsNote         *msg.Message
 
 	done                func()
 	getRepo             func(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 	queueApp, removeApp func(application v1alpha1.Application)
+	addAIReviewResult   func(appName string, result msg.Result)
 }
 
 // process apps
@@ -122,11 +125,58 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 
 	runner := newRunner(w.ctr, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger, w.vcsNote, w.queueApp, w.removeApp)
 
+	// Launch AI review in parallel — posts its own separate comment
+	var aiReviewWg sync.WaitGroup
+	if w.aiReviewChecker != nil {
+		aiReviewWg.Add(1)
+		go func() {
+			defer aiReviewWg.Done()
+			w.runAIReview(ctx, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger)
+		}()
+	}
+
 	for _, processor := range w.processors {
 		runner.Run(ctx, processor.Name, processor.Processor, processor.WorstState)
 	}
 
 	runner.Wait()
+	aiReviewWg.Wait()
+}
+
+// runAIReview runs the AI review for a single app and collects the result for aggregation.
+func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appName, k8sVersion string, jsonManifests, yamlManifests []string, logger zerolog.Logger) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error().Caller().Any("error", r).Str("app", appName).Msg("panic in AI review")
+		}
+	}()
+
+	logger.Info().Str("app", appName).Msg("starting AI review")
+
+	request := checks.Request{
+		App:               app,
+		AppName:           appName,
+		Container:         w.ctr,
+		JsonManifests:     jsonManifests,
+		KubernetesVersion: k8sVersion,
+		Log:               logger,
+		Note:              w.vcsNote,
+		YamlManifests:     yamlManifests,
+	}
+
+	result, err := w.aiReviewChecker.Check(ctx, request)
+	if err != nil {
+		logger.Error().Caller().Err(err).Str("app", appName).Msg("AI review failed")
+		return
+	}
+
+	if result.Details == "" {
+		logger.Debug().Caller().Str("app", appName).Msg("AI review returned empty result, skipping")
+		return
+	}
+
+	w.addAIReviewResult(appName, result)
+	logger.Info().Str("app", appName).Str("state", result.State.BareString()).Msg("AI review completed")
 }
 
 func convertJsonToYamlManifests(jsonManifests []string) []string {

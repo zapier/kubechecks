@@ -23,16 +23,18 @@ import (
 var tracer = otel.Tracer("pkg/server")
 
 type VCSHookHandler struct {
-	ctr          container.Container
-	processors   []checks.ProcessorEntry
-	queueManager *queue.QueueManager
+	ctr             container.Container
+	processors      []checks.ProcessorEntry
+	aiReviewChecker queue.AIReviewChecker
+	queueManager    *queue.QueueManager
 }
 
-func NewVCSHookHandler(ctr container.Container, processors []checks.ProcessorEntry, queueManager *queue.QueueManager) *VCSHookHandler {
+func NewVCSHookHandler(ctr container.Container, processors []checks.ProcessorEntry, aiReviewChecker queue.AIReviewChecker, queueManager *queue.QueueManager) *VCSHookHandler {
 	return &VCSHookHandler{
-		ctr:          ctr,
-		processors:   processors,
-		queueManager: queueManager,
+		ctr:             ctr,
+		processors:      processors,
+		aiReviewChecker: aiReviewChecker,
+		queueManager:    queueManager,
 	}
 }
 func (h *VCSHookHandler) AttachHandlers(grp *echo.Group) {
@@ -75,9 +77,10 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 
 	// Enqueue the check request (will be processed by worker)
 	if err := h.queueManager.Enqueue(ctx, queue.EnqueueParams{
-		PullRequest: pr,
-		Container:   h.ctr,
-		Processors:  h.processors,
+		PullRequest:     pr,
+		Container:       h.ctr,
+		Processors:      h.processors,
+		AIReviewChecker: h.aiReviewChecker,
 	}); err != nil {
 		// Queue is full - notify user via VCS comment
 		log.Warn().
@@ -109,7 +112,7 @@ func (h *VCSHookHandler) groupHandler(c echo.Context) error {
 type RepoDirectory struct {
 }
 
-func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry) error {
+func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Container, processors []checks.ProcessorEntry, aiReviewChecker queue.AIReviewChecker) error {
 	ctx, span := tracer.Start(ctx, "processCheckEvent",
 		trace.WithAttributes(
 			attribute.Int("mr_id", pr.CheckID),
@@ -127,7 +130,7 @@ func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Co
 	defer repoMgr.Cleanup()
 
 	// If we've gotten here, we can now begin running checks (or trying to)
-	cEvent := events.NewCheckEvent(pr, ctr, repoMgr, processors)
+	cEvent := events.NewCheckEvent(pr, ctr, repoMgr, processors, aiReviewChecker)
 	if err := cEvent.Process(ctx); err != nil {
 		span.RecordError(err)
 		log.Error().Caller().Err(err).Msg("failed to process the request")

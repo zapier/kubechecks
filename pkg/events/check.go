@@ -30,22 +30,39 @@ import (
 
 var tracer = otel.Tracer("pkg/events")
 
+// AIReviewChecker is the interface for the AI review checker.
+// Defined here to avoid import cycles with pkg/checks/aireview.
+type AIReviewChecker interface {
+	Check(ctx context.Context, request checks.Request) (msg.Result, error)
+}
+
+// aiReviewResult holds the result of an AI review for a single app.
+type aiReviewResult struct {
+	AppName string
+	Result  msg.Result
+}
+
 type CheckEvent struct {
 	fileList    []string // What files have changed in this PR/MR
 	pullRequest vcs.PullRequest
 	logger      zerolog.Logger
 	vcsNote     *msg.Message
+	aiNote      *msg.Message // separate comment for AI review
 
 	affectedItems affected_apps.AffectedItems
 
-	ctr         container.Container
-	repoManager repoManager
-	processors  []checks.ProcessorEntry
-	repoLock    sync.Mutex
-	clonedRepos map[repoKey]*git.Repo
+	ctr             container.Container
+	repoManager     repoManager
+	processors      []checks.ProcessorEntry
+	aiReviewChecker AIReviewChecker // runs separately, posts its own comment
+	repoLock        sync.Mutex
+	clonedRepos     map[repoKey]*git.Repo
 
 	addedAppsSet     map[string]v1alpha1.Application
 	addedAppsSetLock sync.Mutex
+
+	aiReviewResults     []aiReviewResult
+	aiReviewResultsLock sync.Mutex
 
 	appsSent   int32
 	appChannel chan *v1alpha1.Application
@@ -76,17 +93,18 @@ func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
 	return nil
 }
 
-func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry) *CheckEvent {
+func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry, aiReviewChecker AIReviewChecker) *CheckEvent {
 
 	ce := &CheckEvent{
-		addedAppsSet: make(map[string]v1alpha1.Application),
-		appChannel:   make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
-		ctr:          ctr,
-		clonedRepos:  make(map[repoKey]*git.Repo),
-		processors:   processors,
-		pullRequest:  pullRequest,
-		repoManager:  repoManager,
-		generator:    generator.New(),
+		addedAppsSet:    make(map[string]v1alpha1.Application),
+		appChannel:      make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
+		ctr:             ctr,
+		clonedRepos:     make(map[repoKey]*git.Repo),
+		processors:      processors,
+		aiReviewChecker: aiReviewChecker,
+		pullRequest:     pullRequest,
+		repoManager:     repoManager,
+		generator:       generator.New(),
 		logger: log.Logger.With().
 			Str("repo", pullRequest.Name).
 			Int("event_id", pullRequest.CheckID).
@@ -313,20 +331,31 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create note")
 	}
 
+	// Create a separate placeholder comment for AI review
+	if ce.aiReviewChecker != nil {
+		ce.aiNote, err = ce.createAIReviewNote(ctx)
+		if err != nil {
+			ce.logger.Warn().Caller().Err(err).Msg("failed to create AI review note, AI review will be skipped")
+			ce.aiReviewChecker = nil // disable AI review for this run
+		}
+	}
+
 	for num := 0; num <= ce.ctr.Config.MaxConcurrentChecks; num++ {
 
 		w := worker{
-			appChannel:  ce.appChannel,
-			ctr:         ce.ctr,
-			logger:      ce.logger.With().Int("workerID", num).Logger(),
-			pullRequest: ce.pullRequest,
-			processors:  ce.processors,
-			vcsNote:     ce.vcsNote,
+			appChannel:      ce.appChannel,
+			ctr:             ce.ctr,
+			logger:          ce.logger.With().Int("workerID", num).Logger(),
+			pullRequest:     ce.pullRequest,
+			processors:      ce.processors,
+			aiReviewChecker: ce.aiReviewChecker,
+			vcsNote:         ce.vcsNote,
 
-			done:      ce.wg.Done,
-			getRepo:   ce.getRepo,
-			queueApp:  ce.queueApp,
-			removeApp: ce.removeApp,
+			done:              ce.wg.Done,
+			getRepo:           ce.getRepo,
+			queueApp:          ce.queueApp,
+			removeApp:         ce.removeApp,
+			addAIReviewResult: ce.addAIReviewResult,
 		}
 		go w.run(ctx)
 	}
@@ -359,6 +388,18 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	worstStatus := ce.vcsNote.WorstState()
+
+	// Update the AI review comment with aggregated results
+	if ce.aiNote != nil {
+		aiComment, aiWorstState := ce.buildAIReviewComment()
+		if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.aiNote, aiComment); err != nil {
+			ce.logger.Error().Caller().Err(err).Msg("failed to update AI review comment")
+		}
+		// Factor AI review state into overall commit status
+		cappedAIState := pkg.BestState(aiWorstState, ce.ctr.Config.WorstAIReviewState)
+		worstStatus = pkg.WorstState(worstStatus, cappedAIState)
+	}
+
 	ce.CommitStatus(ctx, worstStatus)
 
 	return nil
@@ -431,4 +472,45 @@ func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 	ce.logger.Info().Msgf("Creating note")
 
 	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\n:hourglass: kubechecks running...", ce.ctr.Config.Identifier))
+}
+
+// createAIReviewNote creates the initial placeholder comment for the AI review.
+func (ce *CheckEvent) createAIReviewNote(ctx context.Context) (*msg.Message, error) {
+	ctx, span := otel.Tracer("check").Start(ctx, "createAIReviewNote")
+	defer span.End()
+
+	ce.logger.Info().Msg("Creating AI review note")
+
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "## AI Impact Review\n:hourglass: AI review running...")
+}
+
+// addAIReviewResult collects an AI review result (thread-safe).
+func (ce *CheckEvent) addAIReviewResult(appName string, result msg.Result) {
+	ce.aiReviewResultsLock.Lock()
+	defer ce.aiReviewResultsLock.Unlock()
+	ce.aiReviewResults = append(ce.aiReviewResults, aiReviewResult{AppName: appName, Result: result})
+}
+
+// buildAIReviewComment aggregates all AI review results into a single comment.
+func (ce *CheckEvent) buildAIReviewComment() (string, pkg.CommitState) {
+	ce.aiReviewResultsLock.Lock()
+	defer ce.aiReviewResultsLock.Unlock()
+
+	if len(ce.aiReviewResults) == 0 {
+		return "## AI Impact Review\nNo review results.", pkg.StateNone
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## AI Impact Review\n\n")
+
+	worstState := pkg.StateNone
+	for _, r := range ce.aiReviewResults {
+		fmt.Fprintf(&sb, "### `%s`\n\n", r.AppName)
+		sb.WriteString(r.Result.Details)
+		sb.WriteString("\n\n---\n\n")
+
+		worstState = pkg.WorstState(worstState, r.Result.State)
+	}
+
+	return sb.String(), worstState
 }
