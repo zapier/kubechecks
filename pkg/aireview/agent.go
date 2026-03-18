@@ -105,6 +105,11 @@ func (a *Agent) Run(ctx context.Context, eventID string, systemPrompt string, us
 			return resp.Text, nil
 		}
 
+		// Log the LLM's reasoning for calling tools
+		if resp.Text != "" {
+			log.Debug().Caller().Str("event_id", eventID).Int("turn", turn).Str("reasoning", resp.Text).Msg("LLM reasoning before tool calls")
+		}
+
 		// Append assistant message with tool calls
 		messages = append(messages, aiproviders.Message{
 			Role:      aiproviders.RoleAssistant,
