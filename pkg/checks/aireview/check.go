@@ -150,7 +150,10 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	for i, t := range reviewTools {
 		toolNames[i] = t.Def.Name
 	}
-	userPrompt := aireview.BuildUserPrompt(request.AppName, toolNames)
+
+	// Bundle diff and manifests inline so the LLM can start reviewing immediately
+	renderedManifestsText := strings.Join(request.YamlManifests, "\n---\n")
+	userPrompt := aireview.BuildUserPrompt(request.AppName, renderedDiff, renderedManifestsText, toolNames)
 
 	// Run the agentic loop — blocking call
 	eventID := fmt.Sprintf("mr-%d/%s", request.Note.CheckID, request.AppName)
