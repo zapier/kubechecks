@@ -79,11 +79,32 @@ func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt str
 }
 
 // BuildUserPrompt creates the initial user message for the review agent.
-func BuildUserPrompt(appName string, toolNames []string) string {
+// Includes the diff and rendered manifests inline so the LLM can start reviewing immediately
+// without needing a tool call first.
+func BuildUserPrompt(appName string, diff string, renderedManifests string, toolNames []string) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Review the manifest changes for application %q.\n\n", appName)
-	sb.WriteString("Available tools: ")
-	sb.WriteString(strings.Join(toolNames, ", "))
-	sb.WriteString("\n\nStart by reading the diff, then assess the impact of the changes.")
+
+	if diff != "" {
+		sb.WriteString("## Diff\n```diff\n")
+		sb.WriteString(diff)
+		sb.WriteString("\n```\n\n")
+	} else {
+		sb.WriteString("## Diff\nNo changes detected.\n\n")
+	}
+
+	if renderedManifests != "" {
+		sb.WriteString("## Rendered Manifests\n```yaml\n")
+		sb.WriteString(renderedManifests)
+		sb.WriteString("\n```\n\n")
+	}
+
+	if len(toolNames) > 0 {
+		sb.WriteString("Additional tools available for deeper investigation: ")
+		sb.WriteString(strings.Join(toolNames, ", "))
+		sb.WriteString("\n\n")
+	}
+
+	sb.WriteString("Assess the impact of the changes and provide your review.")
 	return sb.String()
 }
