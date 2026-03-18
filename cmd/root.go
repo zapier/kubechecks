@@ -166,6 +166,9 @@ func init() {
 	stringFlag(flags, "ai-review-system-prompt", "Custom system prompt for AI review. Overrides the default review instructions.")
 	stringFlag(flags, "anthropic-api-key", "Anthropic API key for AI review.")
 	stringFlag(flags, "prometheus-url", "Prometheus/Thanos endpoint URL for AI review metrics queries.")
+	stringFlag(flags, "chart-cache-dir", "Directory for caching downloaded Helm charts for AI review.",
+		newStringOpts().
+			withDefault("/tmp/kubechecks/charts"))
 	stringFlag(flags, "worst-ai-review-state", "The worst state that can be returned from AI review.",
 		newStringOpts().
 			withDefault("warning"))

@@ -19,8 +19,13 @@ Your job is to assess the impact of the proposed changes — not just whether th
 1. Read the diff — understand what is changing
 2. Classify the change — scaling? resource config? env vars? new app? networking? RBAC?
 3. Read the full rendered manifests if you need more context beyond the diff
-4. Assess impact — what could go wrong? what is the blast radius?
-5. Recommend — approve, warn, or flag with specific reasoning
+4. If Helm chart tools are available (list_chart_files, read_chart_file):
+   - Read the chart's values.yaml to get the full list of accepted parameter names
+   - Compare every user-provided value key against the chart's accepted keys
+   - Flag any misspelled, deprecated, or unrecognized value names — Helm silently ignores unknown keys, so these are invisible bugs
+   - Check values.schema.json if the chart provides one for type validation
+5. Assess impact — what could go wrong? what is the blast radius?
+6. Recommend — approve, warn, or flag with specific reasoning
 
 ## Guidelines
 
@@ -79,9 +84,8 @@ func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt str
 }
 
 // BuildUserPrompt creates the initial user message for the review agent.
-// Includes the diff and rendered manifests inline so the LLM can start reviewing immediately
-// without needing a tool call first.
-func BuildUserPrompt(appName string, diff string, renderedManifests string, toolNames []string) string {
+// Includes the diff, rendered manifests, and Helm values inline so the LLM can start reviewing immediately.
+func BuildUserPrompt(appName string, diff string, renderedManifests string, helmValues string, toolNames []string) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Review the manifest changes for application %q.\n\n", appName)
 
@@ -96,6 +100,14 @@ func BuildUserPrompt(appName string, diff string, renderedManifests string, tool
 	if renderedManifests != "" {
 		sb.WriteString("## Rendered Manifests\n```yaml\n")
 		sb.WriteString(renderedManifests)
+		sb.WriteString("\n```\n\n")
+	}
+
+	if helmValues != "" {
+		sb.WriteString("## User-Provided Helm Values\n")
+		sb.WriteString("These are the values the user has set. Compare every key against the chart's values.yaml to detect misspelled or unrecognized parameters (Helm silently ignores unknown keys).\n")
+		sb.WriteString("```yaml\n")
+		sb.WriteString(helmValues)
 		sb.WriteString("\n```\n\n")
 	}
 

@@ -18,6 +18,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/checks/rego"
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/helmchart"
 )
 
 func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
@@ -90,6 +91,14 @@ func getAIReviewChecker(ctr container.Container) *aireviewcheck.Checker {
 	}
 	if ctr.Config.PrometheusURL != "" {
 		checkerOpts = append(checkerOpts, aireviewcheck.WithPrometheusURL(ctr.Config.PrometheusURL))
+	}
+	if ctr.Config.ChartCacheDir != "" {
+		chartCache, err := helmchart.NewCache(ctr.Config.ChartCacheDir)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to create chart cache, chart introspection disabled")
+		} else {
+			checkerOpts = append(checkerOpts, aireviewcheck.WithChartCache(chartCache))
+		}
 	}
 
 	log.Info().

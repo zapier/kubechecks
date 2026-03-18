@@ -42,6 +42,7 @@ configMap:
     KUBECHECKS_WORST_AI_REVIEW_STATE: "error"
     # KUBECHECKS_AI_REVIEW_SYSTEM_PROMPT: ""
     # KUBECHECKS_PROMETHEUS_URL: ""
+    KUBECHECKS_CHART_CACHE_DIR: "/tmp/kubechecks/charts"
 
 deployment:
   annotations:
