@@ -3,6 +3,8 @@ package aireview
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/aireview/tools"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/checks/diff"
+	"github.com/zapier/kubechecks/pkg/helmchart"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -53,6 +56,11 @@ func WithPrometheusURL(url string) NewCheckerOption {
 	return func(c *Checker) { c.prometheusURL = url }
 }
 
+// WithChartCache enables Helm chart introspection tools with the given cache.
+func WithChartCache(cache *helmchart.Cache) NewCheckerOption {
+	return func(c *Checker) { c.chartCache = cache }
+}
+
 // Checker holds the AI review agent and its configuration.
 type Checker struct {
 	provider      aiproviders.Provider
@@ -60,6 +68,7 @@ type Checker struct {
 	timeout       time.Duration
 	systemPrompt  string
 	prometheusURL string
+	chartCache    *helmchart.Cache
 }
 
 // New creates a Checker with the given config and options.
@@ -137,6 +146,14 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 		)
 	}
 
+	// Add Helm chart introspection tools if cache is configured
+	if c.chartCache != nil {
+		chartTools := c.buildChartTools(request)
+		reviewTools = append(reviewTools, chartTools...)
+	} else {
+		log.Debug().Caller().Msg("chart cache not configured, skipping helm chart introspection tools")
+	}
+
 	// Build prompts
 	systemPrompt := aireview.BuildSystemPrompt(
 		request.AppName,
@@ -151,9 +168,12 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 		toolNames[i] = t.Def.Name
 	}
 
-	// Bundle diff and manifests inline so the LLM can start reviewing immediately
+	// Extract user-provided Helm values if available
+	helmValues := extractHelmValues(request)
+
+	// Bundle diff, manifests, and Helm values inline so the LLM can start reviewing immediately
 	renderedManifestsText := strings.Join(request.YamlManifests, "\n---\n")
-	userPrompt := aireview.BuildUserPrompt(request.AppName, renderedDiff, renderedManifestsText, toolNames)
+	userPrompt := aireview.BuildUserPrompt(request.AppName, renderedDiff, renderedManifestsText, helmValues, toolNames)
 
 	// Run the agentic loop — blocking call
 	eventID := fmt.Sprintf("mr-%d/%s", request.Note.CheckID, request.AppName)
@@ -161,11 +181,8 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	result, err := agent.Run(ctx, eventID, systemPrompt, userPrompt, reviewTools)
 	if err != nil {
 		telemetry.SetError(span, err, "AI Review")
-		return msg.Result{
-			State:   pkg.StateNone,
-			Summary: "AI review failed",
-			Details: fmt.Sprintf("AI review error: %s", err.Error()),
-		}, nil // Return nil error so other checks continue
+		log.Error().Caller().Err(err).Str("app", request.AppName).Msg("AI review failed")
+		return msg.Result{}, nil // Return empty result — worker skips posting when Details is empty
 	}
 
 	return msg.Result{
@@ -195,6 +212,98 @@ func parseRecommendationState(review string) pkg.CommitState {
 	default:
 		return pkg.StateNone
 	}
+}
+
+// buildChartTools creates Helm chart introspection tools based on the app's source type.
+// Handles both direct chart references (spec.source.chart) and umbrella charts (Chart.yaml with dependencies).
+func (c *Checker) buildChartTools(request checks.Request) []aireview.Tool {
+	src := request.App.Spec.GetSource()
+	log.Debug().Caller().
+		Str("RepoURL", src.RepoURL).
+		Str("Chart", src.Chart).
+		Str("Path", src.Path).
+		Msg("checking helm chart source for introspection tools")
+
+	// Case 1: Direct chart reference (e.g., repoURL=https://charts.example.com, chart=podinfo)
+	if src.Chart != "" && src.RepoURL != "" {
+		chartSources := []tools.ChartSource{
+			{Name: src.Chart, Version: src.TargetRevision, Repository: src.RepoURL},
+		}
+		return []aireview.Tool{
+			tools.ListChartFilesTool(c.chartCache, chartSources),
+			tools.ReadChartFileTool(c.chartCache, chartSources),
+		}
+	}
+
+	// Case 2: Git repo with path — check for Chart.yaml with dependencies (umbrella chart)
+	if src.Path != "" && request.Repo != nil {
+		chartYAMLPath := filepath.Join(request.Repo.Directory, src.Path, "Chart.yaml")
+		deps, err := helmchart.ParseDependencies(chartYAMLPath)
+		if err != nil {
+			log.Debug().Caller().Err(err).Str("path", chartYAMLPath).Msg("no Chart.yaml dependencies found, skipping chart tools")
+			return nil
+		}
+
+		var chartSources []tools.ChartSource
+		for _, dep := range deps {
+			if dep.Repository == "" || dep.Name == "" {
+				continue
+			}
+			log.Debug().Caller().
+				Str("dep", dep.Name).
+				Str("version", dep.Version).
+				Str("repo", dep.Repository).
+				Msg("found chart dependency")
+			chartSources = append(chartSources, tools.ChartSource{
+				Name:       dep.Name,
+				Version:    dep.Version,
+				Repository: dep.Repository,
+			})
+		}
+		if len(chartSources) == 0 {
+			return nil
+		}
+		return []aireview.Tool{
+			tools.ListChartFilesTool(c.chartCache, chartSources),
+			tools.ReadChartFileTool(c.chartCache, chartSources),
+		}
+	}
+
+	log.Debug().Caller().Msg("no helm chart source detected, skipping chart introspection tools")
+	return nil
+}
+
+// extractHelmValues extracts user-provided Helm values from the ArgoCD Application spec.
+// Includes inline values and values from valueFiles (read from the cloned repo).
+func extractHelmValues(request checks.Request) string {
+	src := request.App.Spec.GetSource()
+	if src.Helm == nil {
+		return ""
+	}
+
+	var parts []string
+
+	// Inline values
+	if src.Helm.Values != "" {
+		parts = append(parts, "# Inline values (spec.source.helm.values)")
+		parts = append(parts, src.Helm.Values)
+	}
+
+	// Value files — read from cloned repo if available
+	if request.Repo != nil && len(src.Helm.ValueFiles) > 0 {
+		for _, vf := range src.Helm.ValueFiles {
+			filePath := filepath.Join(request.Repo.Directory, src.Path, vf)
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				log.Debug().Caller().Err(err).Str("file", vf).Msg("could not read values file")
+				continue
+			}
+			parts = append(parts, fmt.Sprintf("# Values file: %s", vf))
+			parts = append(parts, string(data))
+		}
+	}
+
+	return strings.Join(parts, "\n---\n")
 }
 
 // formatSourceInfo extracts source information from the ArgoCD Application.

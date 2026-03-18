@@ -153,10 +153,17 @@ func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appN
 
 	logger.Info().Str("app", appName).Msg("starting AI review")
 
+	// Get the cloned repo so the AI review can read Chart.yaml for dependencies
+	repo, err := w.getRepo(ctx, w.pullRequest.CloneURL, w.pullRequest.HeadRef)
+	if err != nil {
+		logger.Warn().Caller().Err(err).Msg("failed to get repo for AI review, continuing without chart introspection")
+	}
+
 	request := checks.Request{
 		App:               app,
 		AppName:           appName,
 		Container:         w.ctr,
+		Repo:              repo,
 		JsonManifests:     jsonManifests,
 		KubernetesVersion: k8sVersion,
 		Log:               logger,
@@ -167,6 +174,11 @@ func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appN
 	result, err := w.aiReviewChecker.Check(ctx, request)
 	if err != nil {
 		logger.Error().Caller().Err(err).Str("app", appName).Msg("AI review failed")
+		w.addAIReviewResult(appName, msg.Result{
+			State:   pkg.StateNone,
+			Summary: "AI review failed",
+			Details: fmt.Sprintf(":warning: AI review for `%s` encountered an error. Try again by commenting `%s`.", appName, w.ctr.Config.ReplanCommentMessage),
+		})
 		return
 	}
 
