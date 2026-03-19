@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -16,6 +17,7 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
+	"github.com/zapier/kubechecks/pkg/checks/diff"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
@@ -126,14 +128,30 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 
 	runner := newRunner(w.ctr, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger, w.vcsNote, w.queueApp, w.removeApp)
 
-	// Launch AI review in parallel — posts its own separate comment
+	// Launch AI review in parallel — but only if there are actual changes
 	var aiReviewWg sync.WaitGroup
 	if w.aiReviewChecker != nil {
-		aiReviewWg.Add(1)
-		go func() {
-			defer aiReviewWg.Done()
-			w.runAIReview(ctx, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger)
-		}()
+		// Pre-compute diff to check if there are changes before launching AI review
+		diffText, diffErr := diff.GenerateDiffText(ctx, checks.Request{
+			App:           app,
+			AppName:       appName,
+			Container:     w.ctr,
+			JsonManifests: jsonManifests,
+		})
+		if diffErr != nil {
+			rootLogger.Warn().Caller().Err(diffErr).Msg("failed to pre-compute diff for AI review skip check, running AI review anyway")
+			diffText = "unknown" // run AI review if we can't determine
+		}
+
+		if strings.TrimSpace(diffText) == "" {
+			rootLogger.Debug().Caller().Str("app", appName).Msg("no manifest changes detected, skipping AI review")
+		} else {
+			aiReviewWg.Add(1)
+			go func() {
+				defer aiReviewWg.Done()
+				w.runAIReview(ctx, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger)
+			}()
+		}
 	}
 
 	for _, processor := range w.processors {
