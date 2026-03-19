@@ -35,7 +35,8 @@ type worker struct {
 	done                func()
 	getRepo             func(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 	queueApp, removeApp func(application v1alpha1.Application)
-	addAIReviewResult   func(appName string, result msg.Result)
+	addAIReviewResult   func(appName string, result msg.Result, suggestions []vcs.ReviewSuggestion)
+	changedFiles        []string
 }
 
 // process apps
@@ -169,6 +170,7 @@ func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appN
 		Log:               logger,
 		Note:              w.vcsNote,
 		YamlManifests:     yamlManifests,
+		ChangedFiles:      w.changedFiles,
 	}
 
 	result, err := w.aiReviewChecker.Check(ctx, request)
@@ -178,17 +180,17 @@ func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appN
 			State:   pkg.StateNone,
 			Summary: "AI review failed",
 			Details: fmt.Sprintf(":warning: AI review for `%s` encountered an error. Try again by commenting `%s`.", appName, w.ctr.Config.ReplanCommentMessage),
-		})
+		}, nil)
 		return
 	}
 
-	if result.Details == "" {
+	if result.Result.Details == "" {
 		logger.Debug().Caller().Str("app", appName).Msg("AI review returned empty result, skipping")
 		return
 	}
 
-	w.addAIReviewResult(appName, result)
-	logger.Info().Str("app", appName).Str("state", result.State.BareString()).Msg("AI review completed")
+	w.addAIReviewResult(appName, result.Result, result.Suggestions)
+	logger.Info().Str("app", appName).Str("state", result.Result.State.BareString()).Msg("AI review completed")
 }
 
 func convertJsonToYamlManifests(jsonManifests []string) []string {

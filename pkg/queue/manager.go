@@ -12,13 +12,12 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
-	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
 // AIReviewChecker is the interface for the AI review checker (mirrors events.AIReviewChecker).
 type AIReviewChecker interface {
-	Check(ctx context.Context, request checks.Request) (msg.Result, error)
+	Check(ctx context.Context, request checks.Request) (vcs.AIReviewResult, error)
 }
 
 // ProcessFunc is the function signature for processing a check request
