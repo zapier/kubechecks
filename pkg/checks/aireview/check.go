@@ -100,6 +100,11 @@ func (c *Checker) buildAgent() *aireview.Agent {
 	)
 }
 
+// AggregateReviews consolidates multiple per-app reviews into a single concise review.
+func (c *Checker) AggregateReviews(ctx context.Context, appReviews map[string]string) (string, error) {
+	return aireview.AggregateReviews(ctx, c.provider, "", appReviews)
+}
+
 // Check runs the AI review and returns the result with any code suggestions.
 func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIReviewResult, error) {
 	ctx, span := tracer.Start(ctx, "AIReview")
