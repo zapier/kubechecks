@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/ghodss/yaml"
@@ -14,6 +15,9 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
@@ -102,7 +106,7 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 	}()
 
 	rootLogger.Debug().Caller().Msg("Getting manifests")
-	jsonManifests, err := w.ctr.ArgoClient.GetManifests(ctx, appName, app, w.pullRequest, w.getRepo)
+	jsonManifests, err := w.getManifestsWithRetry(ctx, appName, app, rootLogger)
 	if err != nil {
 		rootLogger.Error().Caller().Err(err).Str("app", appName).Str("repo", w.pullRequest.Name).Msg("Unable to get manifests")
 		w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
@@ -209,6 +213,101 @@ func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appN
 
 	w.addAIReviewResult(appName, result.Result, result.Suggestions)
 	logger.Info().Str("app", appName).Str("state", result.Result.State.BareString()).Msg("AI review completed")
+}
+
+// networkErrorPatterns are substrings in error messages that indicate a transient network error.
+// These are matched against the gRPC error description when the gRPC code alone is insufficient
+// (ArgoCD wraps both network and Helm errors as codes.Unknown).
+var networkErrorPatterns = []string{
+	"connection reset by peer",
+	"connection refused",
+	"no such host",
+	"TLS handshake timeout",
+	"i/o timeout",
+	"dial tcp",
+	"server misbehaving",
+	"temporary failure in name resolution",
+}
+
+const maxManifestRetries = 3
+
+// getManifestsWithRetry calls GetManifests and retries on transient errors.
+// Retries on:
+//   - gRPC Unavailable (code 14) — always transient
+//   - gRPC DeadlineExceeded (code 4) — timeout
+//   - gRPC ResourceExhausted (code 8) — rate limiting
+//   - gRPC Unknown (code 2) with network error patterns in the description
+//
+// Does NOT retry:
+//   - gRPC Unknown with Helm rendering errors (bad values, schema failures, template errors)
+//   - gRPC InvalidArgument, NotFound, PermissionDenied, etc.
+func (w *worker) getManifestsWithRetry(ctx context.Context, appName string, app v1alpha1.Application, logger zerolog.Logger) ([]string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= maxManifestRetries; attempt++ {
+		manifests, err := w.ctr.ArgoClient.GetManifests(ctx, appName, app, w.pullRequest, w.getRepo)
+		if err == nil {
+			return manifests, nil
+		}
+
+		lastErr = err
+		if !isRetryableError(err) {
+			return nil, err
+		}
+
+		logger.Warn().Caller().
+			Err(err).
+			Int("attempt", attempt).
+			Int("max_retries", maxManifestRetries).
+			Str("app", appName).
+			Msg("transient error getting manifests, retrying")
+
+		// Simple backoff: 2s, 4s
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(attempt*2) * time.Second):
+		}
+	}
+	return nil, lastErr
+}
+
+// isRetryableError determines if an error from ArgoCD manifest generation is transient and worth retrying.
+func isRetryableError(err error) bool {
+	// Check gRPC status code first
+	st, ok := grpcstatus.FromError(err)
+	if ok {
+		switch st.Code() {
+		case grpccodes.Unavailable:
+			// Always retry — server temporarily unavailable
+			return true
+		case grpccodes.DeadlineExceeded:
+			// Timeout — worth retrying
+			return true
+		case grpccodes.ResourceExhausted:
+			// Rate limited — worth retrying with backoff
+			return true
+		case grpccodes.Unknown:
+			// ArgoCD wraps both network and Helm errors as Unknown.
+			// Fall through to string matching on the description.
+			return isNetworkErrorMessage(st.Message())
+		default:
+			// InvalidArgument, NotFound, PermissionDenied, etc. — don't retry
+			return false
+		}
+	}
+
+	// Not a gRPC error — fall back to string matching
+	return isNetworkErrorMessage(err.Error())
+}
+
+// isNetworkErrorMessage checks if an error message contains patterns indicating a transient network issue.
+func isNetworkErrorMessage(msg string) bool {
+	for _, pattern := range networkErrorPatterns {
+		if strings.Contains(msg, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 func convertJsonToYamlManifests(jsonManifests []string) []string {
