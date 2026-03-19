@@ -509,7 +509,7 @@ func (ce *CheckEvent) createAIReviewNote(ctx context.Context) (*msg.Message, err
 
 	ce.logger.Info().Msg("Creating AI review note")
 
-	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s AI Review Report\n:hourglass: AI review running...", ce.ctr.Config.Identifier))
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report — AI Review\n:hourglass: AI review running...", ce.ctr.Config.Identifier))
 }
 
 // addAIReviewResult collects an AI review result (thread-safe).
@@ -525,10 +525,10 @@ func (ce *CheckEvent) buildAIReviewComment(ctx context.Context) (string, pkg.Com
 	ce.aiReviewResultsLock.Lock()
 	defer ce.aiReviewResultsLock.Unlock()
 
-	header := fmt.Sprintf("## Kubechecks %s AI Review Report\n\n", ce.ctr.Config.Identifier)
+	header := fmt.Sprintf("## Kubechecks %s Report — AI Review\n\n", ce.ctr.Config.Identifier)
 
 	if len(ce.aiReviewResults) == 0 {
-		return fmt.Sprintf("## Kubechecks %s AI Review Report\nNo review results.", ce.ctr.Config.Identifier), pkg.StateNone, nil
+		return fmt.Sprintf("## Kubechecks %s Report — AI Review\nNo review results.", ce.ctr.Config.Identifier), pkg.StateNone, nil
 	}
 
 	// Collect worst state and deduplicated suggestions
