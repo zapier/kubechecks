@@ -158,7 +158,24 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 			ce.logger.Error().Caller().Err(err).Msg("could not generate apps from appSet")
 			continue
 		}
-		ce.affectedItems.Applications = append(ce.affectedItems.Applications, apps...)
+
+		// Build a set of appset-generated app names for fast lookup.
+		generatedNames := make(map[string]struct{}, len(apps))
+		for _, a := range apps {
+			generatedNames[a.Name] = struct{}{}
+		}
+
+		// Remove matcher-found apps that the appset generator also produced,
+		// so the appset-generated version (which reflects PR template changes) wins.
+		filtered := ce.affectedItems.Applications[:0]
+		for _, existing := range ce.affectedItems.Applications {
+			if _, ok := generatedNames[existing.Name]; ok {
+				ce.logger.Debug().Caller().Msgf("replacing matcher app %s with appset-generated version", existing.Name)
+				continue
+			}
+			filtered = append(filtered, existing)
+		}
+		ce.affectedItems.Applications = append(filtered, apps...)
 	}
 
 	span.SetAttributes(
