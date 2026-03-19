@@ -34,6 +34,7 @@ type GLClient struct {
 	MergeRequests   MergeRequestsServices
 	RepositoryFiles RepositoryFilesServices
 	Notes           NotesServices
+	Discussions     DiscussionsServices
 	Pipelines       PipelinesServices
 	Projects        ProjectsServices
 	Commits         CommitsServices
@@ -75,6 +76,7 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 			MergeRequests:   &MergeRequestsService{c.MergeRequests},
 			RepositoryFiles: &RepositoryFilesService{c.RepositoryFiles},
 			Notes:           &NotesService{c.Notes},
+			Discussions:     &DiscussionsService{c.Discussions},
 			Projects:        &ProjectsService{c.Projects},
 			Commits:         &CommitsService{c.Commits},
 			Pipelines:       &PipelinesService{c.Pipelines},

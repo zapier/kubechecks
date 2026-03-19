@@ -126,7 +126,7 @@ func (c *Client) listExistingReviewComments(ctx context.Context, pr vcs.PullRequ
 		if resp.NextPage == 0 {
 			break
 		}
-		opts.ListOptions.Page = resp.NextPage
+		opts.Page = resp.NextPage
 	}
 
 	log.Debug().Caller().

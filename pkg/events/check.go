@@ -514,13 +514,21 @@ func (ce *CheckEvent) buildAIReviewComment() (string, pkg.CommitState, []vcs.Rev
 
 	worstState := pkg.StateNone
 	var allSuggestions []vcs.ReviewSuggestion
+	seen := make(map[string]bool) // dedup key: path+line+suggestion
 	for _, r := range ce.aiReviewResults {
 		fmt.Fprintf(&sb, "### `%s`\n\n", r.AppName)
 		sb.WriteString(r.Result.Details)
 		sb.WriteString("\n\n---\n\n")
 
 		worstState = pkg.WorstState(worstState, r.Result.State)
-		allSuggestions = append(allSuggestions, r.Suggestions...)
+		for _, s := range r.Suggestions {
+			key := fmt.Sprintf("%s:%d:%s", s.Path, s.EndLine, s.Suggestion)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			allSuggestions = append(allSuggestions, s)
+		}
 	}
 
 	return sb.String(), worstState, allSuggestions
