@@ -18,6 +18,7 @@ import (
 // AIReviewChecker is the interface for the AI review checker (mirrors events.AIReviewChecker).
 type AIReviewChecker interface {
 	Check(ctx context.Context, request checks.Request) (vcs.AIReviewResult, error)
+	AggregateReviews(ctx context.Context, appReviews map[string]string) (string, error)
 }
 
 // ProcessFunc is the function signature for processing a check request

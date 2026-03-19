@@ -30,11 +30,13 @@ import (
 
 var tracer = otel.Tracer("pkg/events")
 
-// AIReviewChecker is the interface for the AI review checker.
 // AIReviewChecker runs AI review for a single app.
 // Defined here to avoid import cycles with pkg/checks/aireview.
 type AIReviewChecker interface {
 	Check(ctx context.Context, request checks.Request) (vcs.AIReviewResult, error)
+	// AggregateReviews consolidates multiple per-app reviews into a single concise review.
+	// Only called when multiple apps are reviewed. Returns consolidated text.
+	AggregateReviews(ctx context.Context, appReviews map[string]string) (string, error)
 }
 
 // aiReviewAppResult holds the result of an AI review for a single app (used internally for aggregation).
@@ -394,7 +396,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	// Update the AI review comment with aggregated results
 	if ce.aiNote != nil {
-		aiComment, aiWorstState, suggestions := ce.buildAIReviewComment()
+		aiComment, aiWorstState, suggestions := ce.buildAIReviewComment(ctx)
 		if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.aiNote, aiComment); err != nil {
 			ce.logger.Error().Caller().Err(err).Msg("failed to update AI review comment")
 		}
@@ -501,25 +503,24 @@ func (ce *CheckEvent) addAIReviewResult(appName string, result msg.Result, sugge
 }
 
 // buildAIReviewComment aggregates all AI review results into a single comment and collects suggestions.
-func (ce *CheckEvent) buildAIReviewComment() (string, pkg.CommitState, []vcs.ReviewSuggestion) {
+// When multiple apps are reviewed, runs the aggregator LLM to consolidate duplicate findings.
+func (ce *CheckEvent) buildAIReviewComment(ctx context.Context) (string, pkg.CommitState, []vcs.ReviewSuggestion) {
 	ce.aiReviewResultsLock.Lock()
 	defer ce.aiReviewResultsLock.Unlock()
+
+	header := fmt.Sprintf("## Kubechecks %s AI Review Report\n\n", ce.ctr.Config.Identifier)
 
 	if len(ce.aiReviewResults) == 0 {
 		return fmt.Sprintf("## Kubechecks %s AI Review Report\nNo review results.", ce.ctr.Config.Identifier), pkg.StateNone, nil
 	}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("## Kubechecks %s AI Review Report\n\n", ce.ctr.Config.Identifier))
-
+	// Collect worst state and deduplicated suggestions
 	worstState := pkg.StateNone
 	var allSuggestions []vcs.ReviewSuggestion
-	seen := make(map[string]bool) // dedup key: path+line+suggestion
+	seen := make(map[string]bool)
+	appReviews := make(map[string]string)
 	for _, r := range ce.aiReviewResults {
-		fmt.Fprintf(&sb, "### `%s`\n\n", r.AppName)
-		sb.WriteString(r.Result.Details)
-		sb.WriteString("\n\n---\n\n")
-
+		appReviews[r.AppName] = r.Result.Details
 		worstState = pkg.WorstState(worstState, r.Result.State)
 		for _, s := range r.Suggestions {
 			key := fmt.Sprintf("%s:%d:%s", s.Path, s.EndLine, s.Suggestion)
@@ -531,5 +532,28 @@ func (ce *CheckEvent) buildAIReviewComment() (string, pkg.CommitState, []vcs.Rev
 		}
 	}
 
-	return sb.String(), worstState, allSuggestions
+	// If multiple apps, run aggregator to consolidate findings
+	var reviewBody string
+	if len(appReviews) > 1 && ce.aiReviewChecker != nil {
+		consolidated, err := ce.aiReviewChecker.AggregateReviews(ctx, appReviews)
+		if err != nil {
+			ce.logger.Warn().Caller().Err(err).Msg("aggregation failed, using raw reviews")
+			reviewBody = buildRawReviewBody(appReviews)
+		} else {
+			reviewBody = consolidated
+		}
+	} else {
+		reviewBody = buildRawReviewBody(appReviews)
+	}
+
+	return header + reviewBody, worstState, allSuggestions
+}
+
+// buildRawReviewBody concatenates per-app reviews without aggregation.
+func buildRawReviewBody(appReviews map[string]string) string {
+	var sb strings.Builder
+	for appName, review := range appReviews {
+		fmt.Fprintf(&sb, "### `%s`\n\n%s\n\n---\n\n", appName, review)
+	}
+	return sb.String()
 }
