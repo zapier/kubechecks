@@ -566,11 +566,11 @@ func (ce *CheckEvent) buildAIReviewComment(ctx context.Context) (string, pkg.Com
 	return header + reviewBody, worstState, allSuggestions
 }
 
-// buildRawReviewBody concatenates per-app reviews without aggregation.
+// buildRawReviewBody concatenates per-app reviews without aggregation, wrapped in <details> tags.
 func buildRawReviewBody(appReviews map[string]string) string {
 	var sb strings.Builder
 	for appName, review := range appReviews {
-		fmt.Fprintf(&sb, "### `%s`\n\n%s\n\n---\n\n", appName, review)
+		fmt.Fprintf(&sb, "<details>\n<summary><code>%s</code></summary>\n\n%s\n\n</details>\n\n", appName, review)
 	}
 	return sb.String()
 }
