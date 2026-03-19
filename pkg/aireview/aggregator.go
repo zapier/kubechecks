@@ -16,15 +16,51 @@ Multiple ArgoCD applications were reviewed independently and produced overlappin
 
 Your job:
 1. Identify findings that appear across multiple apps (shared source files, same values.yaml issues, same misspelled keys)
-   → Group these under "### Shared Findings" with a single clear description. Do NOT repeat the same finding for each app.
+   → Group these into a single clear description. Do NOT repeat the same finding for each app.
 2. Keep app-specific findings separate (scaling impact, cluster-specific configs, resource usage, different replica counts)
-   → Group these under "### App-Specific: <app-name>" — only include genuinely app-specific issues here.
+   → Only include genuinely app-specific issues.
 3. Deduplicate recommendations — the same issue flagged by multiple apps should appear once.
 4. Preserve the recommendation chain tables from each review — merge them into one consolidated table, removing duplicate entries.
 5. Be concise — remove redundant explanations. If 3 apps all flag "replicaCounts is misspelled", say it once.
 6. Do NOT add new findings or analysis — only consolidate what was already found.
 
-Output the consolidated review as markdown, starting directly with the content (no preamble).`
+IMPORTANT: You MUST use the following HTML structure for collapsible sections. This is required for rendering in GitHub/GitLab:
+
+<details>
+<summary><b>Shared Findings</b></summary>
+
+(shared findings content here)
+
+</details>
+
+<details>
+<summary><b>Consolidated Recommendation Chain</b></summary>
+
+(merged recommendation table here)
+
+</details>
+
+<details>
+<summary><b>App-Specific Findings</b></summary>
+
+<details>
+<summary><code>app-name-1</code></summary>
+
+(app-specific findings for app-name-1)
+
+</details>
+
+<details>
+<summary><code>app-name-2</code></summary>
+
+(app-specific findings for app-name-2)
+
+</details>
+
+</details>
+
+If there are no shared findings or no app-specific findings, omit that section entirely.
+Output the consolidated review starting directly with the content (no preamble).`
 
 // AggregateReviews consolidates multiple per-app review results into a single concise review.
 // Uses a cheap/fast LLM call since it's text processing with no tool calls.
@@ -68,11 +104,11 @@ func AggregateReviews(ctx context.Context, provider aiproviders.Provider, model 
 	return resp.Text, nil
 }
 
-// buildFallbackReview concatenates raw reviews when aggregation fails.
+// buildFallbackReview concatenates raw reviews when aggregation fails, wrapped in <details> tags.
 func buildFallbackReview(appReviews map[string]string) string {
 	var sb strings.Builder
 	for appName, review := range appReviews {
-		fmt.Fprintf(&sb, "### `%s`\n\n%s\n\n---\n\n", appName, review)
+		fmt.Fprintf(&sb, "<details>\n<summary><code>%s</code></summary>\n\n%s\n\n</details>\n\n", appName, review)
 	}
 	return sb.String()
 }

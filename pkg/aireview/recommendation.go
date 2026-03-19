@@ -71,8 +71,13 @@ func (c *RecommendationCollector) Summary() string {
 		return ""
 	}
 
+	worst := pkg.StateNone
+	for _, e := range c.entries {
+		worst = pkg.WorstState(worst, MapRecommendation(e.Recommendation))
+	}
+
 	var sb strings.Builder
-	sb.WriteString("#### Recommendation Chain\n\n")
+	fmt.Fprintf(&sb, "<details>\n<summary><b>Recommendation Chain</b> — Final: %s (worst-wins)</summary>\n\n", worst.BareString())
 	sb.WriteString("| # | Recommendation | Source | Reason |\n")
 	sb.WriteString("|---|----------------|--------|--------|\n")
 
@@ -81,11 +86,7 @@ func (c *RecommendationCollector) Summary() string {
 		fmt.Fprintf(&sb, "| %d | %s %s | %s | %s |\n", i+1, emoji, e.Recommendation, e.Source, e.Reason)
 	}
 
-	worst := pkg.StateNone
-	for _, e := range c.entries {
-		worst = pkg.WorstState(worst, MapRecommendation(e.Recommendation))
-	}
-	fmt.Fprintf(&sb, "\n**Final recommendation: %s** (worst-wins)\n", worst.BareString())
+	sb.WriteString("\n</details>")
 
 	return sb.String()
 }
