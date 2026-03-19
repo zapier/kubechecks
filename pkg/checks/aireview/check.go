@@ -341,7 +341,7 @@ func extractHelmValues(request checks.Request) string {
 			filePath := filepath.Join(request.Repo.Directory, src.Path, vf)
 			data, err := os.ReadFile(filePath)
 			if err != nil {
-				log.Debug().Caller().Err(err).Str("file", vf).Msg("could not read values file")
+				// some app doesn't have values-<clusterName>.yaml and will error here, dont bother print them.
 				continue
 			}
 			// Include the file path that matches the PR's changed files list

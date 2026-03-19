@@ -54,6 +54,9 @@ List any issues with severity (if none, say "No issues found"):
 
 Severity levels: critical, warning, info
 
+### Code Suggestions
+When you find an issue that has a concrete fix (e.g., misspelled key, wrong value, missing field), use the post_suggestion tool to propose the corrected code. The suggestion will appear as an "Apply suggestion" button in the PR that the reviewer can click to commit the fix directly. Use the exact file path and line numbers from the "Changed Files" section above.
+
 ### Recommendation
 Use the submit_recommendation tool for EACH distinct finding during your review. Call it multiple times if you find multiple issues. The final commit status will be the worst across all recommendations (FLAG > WARN > APPROVE).
 
@@ -61,7 +64,8 @@ Use the submit_recommendation tool for EACH distinct finding during your review.
 - WARN: minor issues worth noting but not blocking
 - FLAG: critical issues that should block merge
 
-You MUST call submit_recommendation at least once before completing your review.`
+You MUST call submit_recommendation at least once before completing your review.
+When a recommendation is WARN or FLAG and the fix is known, you MUST also call post_suggestion with the corrected code.`
 
 // BuildSystemPrompt creates the system prompt for a review.
 // The environment context (app name, namespace, etc.) is always prepended.
