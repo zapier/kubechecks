@@ -55,13 +55,13 @@ List any issues with severity (if none, say "No issues found"):
 Severity levels: critical, warning, info
 
 ### Recommendation
-One of: APPROVE, WARN, or FLAG — with a brief explanation.
+Use the submit_recommendation tool for EACH distinct finding during your review. Call it multiple times if you find multiple issues. The final commit status will be the worst across all recommendations (FLAG > WARN > APPROVE).
 
-IMPORTANT: At the very end of your response, you MUST emit exactly one of these tags on its own line:
-<!--RECOMMENDATION:APPROVE-->
-<!--RECOMMENDATION:WARN-->
-<!--RECOMMENDATION:FLAG-->
-This tag is machine-parsed. Do not modify its format.`
+- APPROVE: safe to merge, no significant issues
+- WARN: minor issues worth noting but not blocking
+- FLAG: critical issues that should block merge
+
+You MUST call submit_recommendation at least once before completing your review.`
 
 // BuildSystemPrompt creates the system prompt for a review.
 // The environment context (app name, namespace, etc.) is always prepended.
@@ -88,8 +88,8 @@ func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt str
 }
 
 // BuildUserPrompt creates the initial user message for the review agent.
-// Includes the diff, rendered manifests, and Helm values inline so the LLM can start reviewing immediately.
-func BuildUserPrompt(appName string, diff string, renderedManifests string, helmValues string, toolNames []string) string {
+// Includes the diff, rendered manifests, Helm values, and changed files inline so the LLM can start reviewing immediately.
+func BuildUserPrompt(appName string, diff string, renderedManifests string, helmValues string, changedFiles string, toolNames []string) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Review the manifest changes for application %q.\n\n", appName)
 
@@ -113,6 +113,11 @@ func BuildUserPrompt(appName string, diff string, renderedManifests string, helm
 		sb.WriteString("```yaml\n")
 		sb.WriteString(helmValues)
 		sb.WriteString("\n```\n\n")
+	}
+
+	if changedFiles != "" {
+		sb.WriteString(changedFiles)
+		sb.WriteString("\n\n")
 	}
 
 	if len(toolNames) > 0 {

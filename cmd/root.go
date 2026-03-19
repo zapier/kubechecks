@@ -187,9 +187,10 @@ func setupLogOutput() {
 
 	zerolog.SetGlobalLevel(level)
 
-	// short the caller output to file:line only
+	// short the caller output to folder/file:line only
 	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
-		return filepath.Base(file) + ":" + strconv.Itoa(line)
+		dir := filepath.Base(filepath.Dir(file))
+		return dir + "/" + filepath.Base(file) + ":" + strconv.Itoa(line)
 	}
 	output := zerolog.ConsoleWriter{Out: os.Stdout}
 	log.Logger = log.Output(output)

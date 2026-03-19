@@ -37,4 +37,5 @@ type Request struct {
 	KubernetesVersion string
 	JsonManifests     []string
 	YamlManifests     []string
+	ChangedFiles      []string // files changed in the PR/MR
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/helmchart"
 	client "github.com/zapier/kubechecks/pkg/kubernetes"
 	"github.com/zapier/kubechecks/pkg/msg"
+	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
 )
 
@@ -100,8 +100,8 @@ func (c *Checker) buildAgent() *aireview.Agent {
 	)
 }
 
-// Check implements the processor function signature for kubechecks.
-func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result, error) {
+// Check runs the AI review and returns the result with any code suggestions.
+func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIReviewResult, error) {
 	ctx, span := tracer.Start(ctx, "AIReview")
 	defer span.End()
 
@@ -170,6 +170,16 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 		log.Debug().Caller().Msg("chart cache not configured, skipping helm chart introspection tools")
 	}
 
+	// Add suggestion tool — collects suggestions to post as review comments after the review
+	suggestionCollector := aireview.NewSuggestionCollector()
+	if len(request.ChangedFiles) > 0 {
+		reviewTools = append(reviewTools, tools.PostSuggestionTool(suggestionCollector, request.ChangedFiles))
+	}
+
+	// Add recommendation tool — collects structured recommendations (worst-wins)
+	recommendationCollector := aireview.NewRecommendationCollector()
+	reviewTools = append(reviewTools, tools.SubmitRecommendationTool(recommendationCollector))
+
 	// Build prompts
 	systemPrompt := aireview.BuildSystemPrompt(
 		request.AppName,
@@ -187,9 +197,12 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	// Extract user-provided Helm values if available
 	helmValues := extractHelmValues(request)
 
+	// Build changed files content with line numbers for accurate suggestions
+	changedFilesContent := buildChangedFilesContent(request)
+
 	// Bundle diff, manifests, and Helm values inline so the LLM can start reviewing immediately
 	renderedManifestsText := strings.Join(request.YamlManifests, "\n---\n")
-	userPrompt := aireview.BuildUserPrompt(request.AppName, renderedDiff, renderedManifestsText, helmValues, toolNames)
+	userPrompt := aireview.BuildUserPrompt(request.AppName, renderedDiff, renderedManifestsText, helmValues, changedFilesContent, toolNames)
 
 	// Run the agentic loop — blocking call
 	eventID := fmt.Sprintf("mr-%d/%s", request.Note.CheckID, request.AppName)
@@ -198,36 +211,52 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (msg.Result
 	if err != nil {
 		telemetry.SetError(span, err, "AI Review")
 		log.Error().Caller().Err(err).Str("app", request.AppName).Msg("AI review failed")
-		return msg.Result{}, nil // Return empty result — worker skips posting when Details is empty
+		return vcs.AIReviewResult{}, nil
 	}
 
-	return msg.Result{
-		State:   parseRecommendationState(result),
-		Summary: "<b>AI Impact Review</b>",
-		Details: result,
+	// Convert collected suggestions to vcs.ReviewSuggestion
+	var suggestions []vcs.ReviewSuggestion
+	for _, s := range suggestionCollector.Suggestions() {
+		suggestions = append(suggestions, vcs.ReviewSuggestion{
+			Path:       s.Path,
+			StartLine:  s.StartLine,
+			EndLine:    s.EndLine,
+			Body:       s.Body,
+			Suggestion: s.Suggestion,
+		})
+	}
+
+	if len(suggestions) > 0 {
+		log.Info().Caller().Int("count", len(suggestions)).Str("app", request.AppName).Msg("AI review collected code suggestions")
+	}
+
+	// Build final details: LLM review text + recommendation chain
+	details := result
+	if recSummary := recommendationCollector.Summary(); recSummary != "" {
+		details += "\n\n" + recSummary
+	}
+
+	// Determine commit state from recommendations (worst-wins)
+	// Default to success if the LLM completed without submitting any recommendations
+	state := recommendationCollector.State()
+	if recommendationCollector.Len() == 0 {
+		state = pkg.StateSuccess
+	}
+	log.Info().Caller().
+		Str("app", request.AppName).
+		Str("state", state.BareString()).
+		Int("recommendations", recommendationCollector.Len()).
+		Int("suggestions", len(suggestions)).
+		Msg("AI review completed")
+
+	return vcs.AIReviewResult{
+		Result: msg.Result{
+			State:   state,
+			Summary: "<b>AI Impact Review</b>",
+			Details: details,
+		},
+		Suggestions: suggestions,
 	}, nil
-}
-
-// recommendationTagRe matches the machine-readable recommendation tag emitted by the LLM.
-// Example: <!--RECOMMENDATION:FLAG-->
-var recommendationTagRe = regexp.MustCompile(`<!--RECOMMENDATION:(APPROVE|WARN|FLAG)-->`)
-
-// parseRecommendationState extracts the commit state from the machine-readable tag in the AI review output.
-func parseRecommendationState(review string) pkg.CommitState {
-	match := recommendationTagRe.FindStringSubmatch(review)
-	if len(match) < 2 {
-		return pkg.StateNone
-	}
-	switch match[1] {
-	case "FLAG":
-		return pkg.StateError
-	case "WARN":
-		return pkg.StateWarning
-	case "APPROVE":
-		return pkg.StateSuccess
-	default:
-		return pkg.StateNone
-	}
 }
 
 // buildChartTools creates Helm chart introspection tools based on the app's source type.
@@ -291,6 +320,7 @@ func (c *Checker) buildChartTools(request checks.Request) []aireview.Tool {
 
 // extractHelmValues extracts user-provided Helm values from the ArgoCD Application spec.
 // Includes inline values and values from valueFiles (read from the cloned repo).
+// Values are shown with line numbers so the LLM can reference correct lines for suggestions.
 func extractHelmValues(request checks.Request) string {
 	src := request.App.Spec.GetSource()
 	if src.Helm == nil {
@@ -305,7 +335,7 @@ func extractHelmValues(request checks.Request) string {
 		parts = append(parts, src.Helm.Values)
 	}
 
-	// Value files — read from cloned repo if available
+	// Value files — read from cloned repo if available, with line numbers
 	if request.Repo != nil && len(src.Helm.ValueFiles) > 0 {
 		for _, vf := range src.Helm.ValueFiles {
 			filePath := filepath.Join(request.Repo.Directory, src.Path, vf)
@@ -314,12 +344,48 @@ func extractHelmValues(request checks.Request) string {
 				log.Debug().Caller().Err(err).Str("file", vf).Msg("could not read values file")
 				continue
 			}
-			parts = append(parts, fmt.Sprintf("# Values file: %s", vf))
-			parts = append(parts, string(data))
+			// Include the file path that matches the PR's changed files list
+			relPath := filepath.Join(src.Path, vf)
+			parts = append(parts, fmt.Sprintf("# Values file: %s (use this path and line numbers for post_suggestion)", relPath))
+			parts = append(parts, addLineNumbers(string(data)))
 		}
 	}
 
 	return strings.Join(parts, "\n---\n")
+}
+
+// addLineNumbers prepends line numbers to each line of content.
+func addLineNumbers(content string) string {
+	lines := strings.Split(content, "\n")
+	numbered := make([]string, len(lines))
+	for i, line := range lines {
+		numbered[i] = fmt.Sprintf("%4d | %s", i+1, line)
+	}
+	return strings.Join(numbered, "\n")
+}
+
+// buildChangedFilesContent reads changed files from the repo with line numbers.
+// This gives the LLM exact line references for post_suggestion.
+func buildChangedFilesContent(request checks.Request) string {
+	if request.Repo == nil || len(request.ChangedFiles) == 0 {
+		return ""
+	}
+
+	var parts []string
+	for _, f := range request.ChangedFiles {
+		filePath := filepath.Join(request.Repo.Directory, f)
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("### File: `%s`\n```\n%s\n```", f, addLineNumbers(string(data))))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return "## Changed Files (with line numbers)\nUse these line numbers when calling post_suggestion.\n\n" + strings.Join(parts, "\n\n")
 }
 
 // formatSourceInfo extracts source information from the ArgoCD Application.

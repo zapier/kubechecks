@@ -771,6 +771,75 @@ func (_c *MockClient_PostMessage_Call) RunAndReturn(run func(context1 context.Co
 	return _c
 }
 
+// PostReviewSuggestions provides a mock function for the type MockClient
+func (_mock *MockClient) PostReviewSuggestions(ctx context.Context, pr vcs.PullRequest, summary string, suggestions []vcs.ReviewSuggestion) error {
+	ret := _mock.Called(ctx, pr, summary, suggestions)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PostReviewSuggestions")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest, string, []vcs.ReviewSuggestion) error); ok {
+		r0 = returnFunc(ctx, pr, summary, suggestions)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockClient_PostReviewSuggestions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PostReviewSuggestions'
+type MockClient_PostReviewSuggestions_Call struct {
+	*mock.Call
+}
+
+// PostReviewSuggestions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pr vcs.PullRequest
+//   - summary string
+//   - suggestions []vcs.ReviewSuggestion
+func (_e *MockClient_Expecter) PostReviewSuggestions(ctx interface{}, pr interface{}, summary interface{}, suggestions interface{}) *MockClient_PostReviewSuggestions_Call {
+	return &MockClient_PostReviewSuggestions_Call{Call: _e.mock.On("PostReviewSuggestions", ctx, pr, summary, suggestions)}
+}
+
+func (_c *MockClient_PostReviewSuggestions_Call) Run(run func(ctx context.Context, pr vcs.PullRequest, summary string, suggestions []vcs.ReviewSuggestion)) *MockClient_PostReviewSuggestions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 vcs.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(vcs.PullRequest)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 []vcs.ReviewSuggestion
+		if args[3] != nil {
+			arg3 = args[3].([]vcs.ReviewSuggestion)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_PostReviewSuggestions_Call) Return(err error) *MockClient_PostReviewSuggestions_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockClient_PostReviewSuggestions_Call) RunAndReturn(run func(ctx context.Context, pr vcs.PullRequest, summary string, suggestions []vcs.ReviewSuggestion) error) *MockClient_PostReviewSuggestions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // TidyOutdatedComments provides a mock function for the type MockClient
 func (_mock *MockClient) TidyOutdatedComments(context1 context.Context, pullRequest vcs.PullRequest) error {
 	ret := _mock.Called(context1, pullRequest)

@@ -46,8 +46,27 @@ type Client interface {
 	// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
 	GetAuthHeaders() map[string]string
 
+	// PostReviewSuggestions posts a PR review with inline code suggestions.
+	// Each suggestion targets a specific file+line in the PR diff.
+	PostReviewSuggestions(ctx context.Context, pr PullRequest, summary string, suggestions []ReviewSuggestion) error
+
 	Username() string
 	CloneUsername() string
 	Email() string
 	ToEmoji(pkg.CommitState) string
+}
+
+// ReviewSuggestion represents a code suggestion to post on a specific file+line in a PR.
+type ReviewSuggestion struct {
+	Path       string // file path in the PR
+	StartLine  int    // first line for multi-line suggestion (0 = single line)
+	EndLine    int    // line number in the PR diff (RIGHT side)
+	Body       string // explanation text
+	Suggestion string // corrected code
+}
+
+// AIReviewResult holds the result of an AI review including any code suggestions.
+type AIReviewResult struct {
+	Result      msg.Result
+	Suggestions []ReviewSuggestion
 }

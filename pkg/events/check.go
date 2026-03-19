@@ -31,15 +31,17 @@ import (
 var tracer = otel.Tracer("pkg/events")
 
 // AIReviewChecker is the interface for the AI review checker.
+// AIReviewChecker runs AI review for a single app.
 // Defined here to avoid import cycles with pkg/checks/aireview.
 type AIReviewChecker interface {
-	Check(ctx context.Context, request checks.Request) (msg.Result, error)
+	Check(ctx context.Context, request checks.Request) (vcs.AIReviewResult, error)
 }
 
-// aiReviewResult holds the result of an AI review for a single app.
-type aiReviewResult struct {
-	AppName string
-	Result  msg.Result
+// aiReviewAppResult holds the result of an AI review for a single app (used internally for aggregation).
+type aiReviewAppResult struct {
+	AppName     string
+	Result      msg.Result
+	Suggestions []vcs.ReviewSuggestion
 }
 
 type CheckEvent struct {
@@ -61,7 +63,7 @@ type CheckEvent struct {
 	addedAppsSet     map[string]v1alpha1.Application
 	addedAppsSetLock sync.Mutex
 
-	aiReviewResults     []aiReviewResult
+	aiReviewResults     []aiReviewAppResult
 	aiReviewResultsLock sync.Mutex
 
 	appsSent   int32
@@ -350,6 +352,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 			processors:      ce.processors,
 			aiReviewChecker: ce.aiReviewChecker,
 			vcsNote:         ce.vcsNote,
+			changedFiles:    ce.fileList,
 
 			done:              ce.wg.Done,
 			getRepo:           ce.getRepo,
@@ -391,9 +394,15 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	// Update the AI review comment with aggregated results
 	if ce.aiNote != nil {
-		aiComment, aiWorstState := ce.buildAIReviewComment()
+		aiComment, aiWorstState, suggestions := ce.buildAIReviewComment()
 		if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.aiNote, aiComment); err != nil {
 			ce.logger.Error().Caller().Err(err).Msg("failed to update AI review comment")
+		}
+		// Post code suggestions as a separate review with inline comments
+		if len(suggestions) > 0 {
+			if err = ce.ctr.VcsClient.PostReviewSuggestions(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s AI Suggestion Report ##", ce.ctr.Config.Identifier), suggestions); err != nil {
+				ce.logger.Error().Caller().Err(err).Msg("failed to post AI review suggestions")
+			}
 		}
 		// Factor AI review state into overall commit status
 		cappedAIState := pkg.BestState(aiWorstState, ce.ctr.Config.WorstAIReviewState)
@@ -481,36 +490,38 @@ func (ce *CheckEvent) createAIReviewNote(ctx context.Context) (*msg.Message, err
 
 	ce.logger.Info().Msg("Creating AI review note")
 
-	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, "## AI Impact Review\n:hourglass: AI review running...")
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s AI Review Report\n:hourglass: AI review running...", ce.ctr.Config.Identifier))
 }
 
 // addAIReviewResult collects an AI review result (thread-safe).
-func (ce *CheckEvent) addAIReviewResult(appName string, result msg.Result) {
+func (ce *CheckEvent) addAIReviewResult(appName string, result msg.Result, suggestions []vcs.ReviewSuggestion) {
 	ce.aiReviewResultsLock.Lock()
 	defer ce.aiReviewResultsLock.Unlock()
-	ce.aiReviewResults = append(ce.aiReviewResults, aiReviewResult{AppName: appName, Result: result})
+	ce.aiReviewResults = append(ce.aiReviewResults, aiReviewAppResult{AppName: appName, Result: result, Suggestions: suggestions})
 }
 
-// buildAIReviewComment aggregates all AI review results into a single comment.
-func (ce *CheckEvent) buildAIReviewComment() (string, pkg.CommitState) {
+// buildAIReviewComment aggregates all AI review results into a single comment and collects suggestions.
+func (ce *CheckEvent) buildAIReviewComment() (string, pkg.CommitState, []vcs.ReviewSuggestion) {
 	ce.aiReviewResultsLock.Lock()
 	defer ce.aiReviewResultsLock.Unlock()
 
 	if len(ce.aiReviewResults) == 0 {
-		return "## AI Impact Review\nNo review results.", pkg.StateNone
+		return fmt.Sprintf("## Kubechecks %s AI Review Report\nNo review results.", ce.ctr.Config.Identifier), pkg.StateNone, nil
 	}
 
 	var sb strings.Builder
-	sb.WriteString("## AI Impact Review\n\n")
+	sb.WriteString(fmt.Sprintf("## Kubechecks %s AI Review Report\n\n", ce.ctr.Config.Identifier))
 
 	worstState := pkg.StateNone
+	var allSuggestions []vcs.ReviewSuggestion
 	for _, r := range ce.aiReviewResults {
 		fmt.Fprintf(&sb, "### `%s`\n\n", r.AppName)
 		sb.WriteString(r.Result.Details)
 		sb.WriteString("\n\n---\n\n")
 
 		worstState = pkg.WorstState(worstState, r.Result.State)
+		allSuggestions = append(allSuggestions, r.Suggestions...)
 	}
 
-	return sb.String(), worstState
+	return sb.String(), worstState, allSuggestions
 }
