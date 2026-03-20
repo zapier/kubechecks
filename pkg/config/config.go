@@ -82,7 +82,6 @@ type ServerConfig struct {
 	AIReviewSystemPrompt      string          `mapstructure:"ai-review-system-prompt"`
 	AIReviewExtraInstructions string          `mapstructure:"ai-review-extra-instructions"`
 	AnthropicAPIKey           string          `mapstructure:"anthropic-api-key"`
-	PrometheusURL             string          `mapstructure:"prometheus-url"`
 	ChartCacheDir             string          `mapstructure:"chart-cache-dir"`
 	WorstAIReviewState        pkg.CommitState `mapstructure:"worst-ai-review-state"`
 

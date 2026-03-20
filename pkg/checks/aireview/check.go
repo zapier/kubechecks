@@ -50,11 +50,6 @@ func WithSystemPrompt(prompt string) NewCheckerOption {
 	return func(c *Checker) { c.systemPrompt = prompt }
 }
 
-// WithPrometheusURL enables Prometheus/Thanos tools with the given endpoint.
-func WithPrometheusURL(url string) NewCheckerOption {
-	return func(c *Checker) { c.prometheusURL = url }
-}
-
 // WithChartCache enables Helm chart introspection tools with the given cache.
 func WithChartCache(cache *helmchart.Cache) NewCheckerOption {
 	return func(c *Checker) { c.chartCache = cache }
@@ -72,7 +67,6 @@ type Checker struct {
 	timeout           time.Duration
 	systemPrompt      string
 	extraInstructions string
-	prometheusURL     string
 	chartCache        *helmchart.Cache
 }
 
@@ -139,14 +133,6 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 		reviewTools = append(reviewTools,
 			tools.QueryAppResourcesTool(request.Container.ArgoClient),
 			tools.GetAppResourceTool(request.Container.ArgoClient),
-		)
-	}
-
-	// Add Prometheus tools if URL is configured
-	if c.prometheusURL != "" {
-		reviewTools = append(reviewTools,
-			tools.PrometheusRangeQueryTool(c.prometheusURL),
-			tools.PrometheusInstantQueryTool(c.prometheusURL),
 		)
 	}
 
