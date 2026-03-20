@@ -21,8 +21,10 @@ import (
 	"github.com/argoproj/gitops-engine/pkg/sync/ignore"
 	"github.com/argoproj/gitops-engine/pkg/utils/kube"
 	"github.com/ghodss/yaml"
+	"github.com/go-logr/logr"
 	"github.com/go-logr/zerologr"
 	"github.com/pmezard/go-difflib/difflib"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -32,6 +34,14 @@ import (
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
+
+// newDiffLogger creates a logr.Logger for the diff engine that suppresses V(1) debug noise.
+// gitops-engine logs CRD scheme warnings at V(1) which are harmless but noisy.
+// This creates a zerolog logger at WarnLevel so only warnings/errors pass through.
+func newDiffLogger() logr.Logger {
+	diffLogger := log.Logger.Level(zerolog.WarnLevel)
+	return zerologr.New(&diffLogger)
+}
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
 type objKeyLiveTarget struct {
@@ -205,7 +215,7 @@ func generateDiff(ctx context.Context, request checks.Request, argoSettings *set
 		JQExecutionTimeout: 1 * time.Second,
 	}
 	diffConfig, err := argodiff.NewDiffConfigBuilder().
-		WithLogger(zerologr.New(&log.Logger)).
+		WithLogger(newDiffLogger()).
 		WithDiffSettings(request.App.Spec.IgnoreDifferences, overrides, ignoreAggregatedRoles, ignoreNormalizerOpts).
 		WithTracking(argoSettings.AppLabelKey, argoSettings.TrackingMethod).
 		WithNoCache().
