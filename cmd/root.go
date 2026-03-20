@@ -164,6 +164,7 @@ func init() {
 		newDurationOpts().
 			withDefault(5*time.Minute))
 	stringFlag(flags, "ai-review-system-prompt", "Custom system prompt for AI review. Overrides the default review instructions.")
+	stringFlag(flags, "ai-review-extra-instructions", "Extra instructions appended to the AI review prompt. Use for org-wide policies (e.g. 'all deployments must have resource limits').")
 	stringFlag(flags, "anthropic-api-key", "Anthropic API key for AI review.")
 	stringFlag(flags, "prometheus-url", "Prometheus/Thanos endpoint URL for AI review metrics queries.")
 	stringFlag(flags, "chart-cache-dir", "Directory for caching downloaded Helm charts for AI review.",

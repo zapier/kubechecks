@@ -37,6 +37,7 @@ The full list of supported environment variables is described below:
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
 |`KUBECHECKS_ADDITIONAL_APPS_NAMESPACES`|Additional namespaces other than the ArgoCDNamespace to monitor for applications.|`[]`|
+|`KUBECHECKS_AI_REVIEW_EXTRA_INSTRUCTIONS`|Extra instructions appended to the AI review prompt. Use for org-wide policies (e.g. 'all deployments must have resource limits').||
 |`KUBECHECKS_AI_REVIEW_MAX_TURNS`|Maximum tool use iterations for AI review.|`20`|
 |`KUBECHECKS_AI_REVIEW_MODEL`|AI review model ID.|`claude-sonnet-4-6`|
 |`KUBECHECKS_AI_REVIEW_PROVIDER`|AI review provider. One of anthropic, openai.|`anthropic`|

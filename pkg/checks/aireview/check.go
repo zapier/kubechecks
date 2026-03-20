@@ -60,14 +60,20 @@ func WithChartCache(cache *helmchart.Cache) NewCheckerOption {
 	return func(c *Checker) { c.chartCache = cache }
 }
 
+// WithExtraInstructions appends additional instructions to the system prompt.
+func WithExtraInstructions(instructions string) NewCheckerOption {
+	return func(c *Checker) { c.extraInstructions = instructions }
+}
+
 // Checker holds the AI review agent and its configuration.
 type Checker struct {
-	provider      aiproviders.Provider
-	maxTurns      int
-	timeout       time.Duration
-	systemPrompt  string
-	prometheusURL string
-	chartCache    *helmchart.Cache
+	provider          aiproviders.Provider
+	maxTurns          int
+	timeout           time.Duration
+	systemPrompt      string
+	extraInstructions string
+	prometheusURL     string
+	chartCache        *helmchart.Cache
 }
 
 // New creates a Checker with the given config and options.
@@ -169,6 +175,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 		cluster,
 		request.KubernetesVersion,
 		c.systemPrompt,
+		c.extraInstructions,
 	)
 
 	toolNames := make([]string, len(reviewTools))

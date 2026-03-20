@@ -66,7 +66,7 @@ When a recommendation is WARN or FLAG and the fix is known, you MUST also call p
 // BuildSystemPrompt creates the system prompt for a review.
 // The environment context (app name, namespace, etc.) is always prepended.
 // If customPrompt is non-empty, it replaces the default review instructions.
-func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt string) string {
+func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt, extraInstructions string) string {
 	if namespace == "" {
 		namespace = "default"
 	}
@@ -84,7 +84,13 @@ func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt str
 		reviewPrompt = defaultReviewPrompt
 	}
 
-	return envContext + "\n\n" + reviewPrompt
+	result := envContext + "\n\n" + reviewPrompt
+
+	if extraInstructions != "" {
+		result += "\n\n## Additional Instructions\n\n" + extraInstructions
+	}
+
+	return result
 }
 
 // BuildUserPrompt creates the initial user message for the review agent.
