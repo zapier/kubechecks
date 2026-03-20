@@ -16,12 +16,12 @@ var tracer = otel.Tracer("pkg/aireview")
 
 // Agent orchestrates the agentic tool use loop.
 type Agent struct {
-	provider    aiproviders.Provider
-	model       string
-	maxTurns    int
-	timeout     time.Duration
-	maxTokens   int
-	temperature float64
+	provider        aiproviders.Provider
+	model           string
+	maxTurns        int
+	timeout         time.Duration
+	maxOutputTokens int
+	temperature     float64
 }
 
 // AgentOption configures an Agent.
@@ -39,8 +39,8 @@ func WithTimeout(d time.Duration) AgentOption {
 	return func(a *Agent) { a.timeout = d }
 }
 
-func WithMaxTokens(n int) AgentOption {
-	return func(a *Agent) { a.maxTokens = n }
+func WithMaxOutputTokens(n int) AgentOption {
+	return func(a *Agent) { a.maxOutputTokens = n }
 }
 
 func WithTemperature(t float64) AgentOption {
@@ -50,11 +50,11 @@ func WithTemperature(t float64) AgentOption {
 // NewAgent creates a new agentic review agent.
 func NewAgent(provider aiproviders.Provider, opts ...AgentOption) *Agent {
 	a := &Agent{
-		provider:    provider,
-		maxTurns:    20,
-		timeout:     5 * time.Minute,
-		maxTokens:   4096,
-		temperature: 0.2,
+		provider:        provider,
+		maxTurns:        20,
+		timeout:         5 * time.Minute,
+		maxOutputTokens: 8192,
+		temperature:     0.2,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -93,7 +93,7 @@ func (a *Agent) Run(ctx context.Context, eventID string, systemPrompt string, us
 			SystemPrompt: systemPrompt,
 			Messages:     messages,
 			Tools:        toolDefs,
-			MaxTokens:    a.maxTokens,
+			MaxTokens:    a.maxOutputTokens,
 			Temperature:  a.temperature,
 		})
 		if err != nil {
@@ -101,8 +101,12 @@ func (a *Agent) Run(ctx context.Context, eventID string, systemPrompt string, us
 		}
 
 		// If the model is done, return the text
-		if resp.StopReason == aiproviders.StopReasonEndTurn || resp.StopReason == aiproviders.StopReasonMaxTokens {
+		if resp.StopReason == aiproviders.StopReasonEndTurn {
 			return resp.Text, nil
+		}
+		if resp.StopReason == aiproviders.StopReasonMaxTokens {
+			log.Warn().Str("event_id", eventID).Int("turn", turn).Msg("AI review output truncated due to max output token limit")
+			return resp.Text + "\n\n> **Note:** This review was truncated due to output length limits.", nil
 		}
 
 		// Log the LLM's reasoning for calling tools
