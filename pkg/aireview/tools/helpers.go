@@ -3,14 +3,14 @@ package tools
 import "encoding/json"
 
 // cleanObject removes noisy fields from a Kubernetes object to reduce token usage.
-func cleanObject(obj map[string]any) map[string]any {
+// Modifies the map in place.
+func cleanObject(obj map[string]any) {
 	if metadata, ok := obj["metadata"].(map[string]any); ok {
 		delete(metadata, "managedFields")
 		if annotations, ok := metadata["annotations"].(map[string]any); ok {
 			delete(annotations, "kubectl.kubernetes.io/last-applied-configuration")
 		}
 	}
-	return obj
 }
 
 func marshalCompact(v any) (string, error) {
