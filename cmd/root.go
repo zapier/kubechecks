@@ -148,7 +148,7 @@ func init() {
 			withDefault("https://kubepug.xyz/data/data.json"))
 
 	// ai
-	boolFlag(flags, "enable-ai-diff-summary", "Enable OpenAI-powered diff summary. Requires openai-api-token.")
+	boolFlag(flags, "enable-ai-diff-summary", "Enable AI-powered diff summary. Requires openai-api-token or anthropic-api-key.")
 	boolFlag(flags, "enable-ai-review", "Enable AI-powered impact review of manifest changes.")
 	stringFlag(flags, "ai-review-provider", "AI review provider.",
 		newStringOpts().

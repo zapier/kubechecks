@@ -66,11 +66,16 @@ func (c *Cache) EnsureChart(repoURL, chart, version string) (string, error) {
 		if readErr != nil {
 			return "", fmt.Errorf("failed to read extracted chart: %w", readErr)
 		}
+		found := false
 		for _, entry := range entries {
 			if entry.IsDir() {
 				extractedDir = filepath.Join(tmpDir, entry.Name())
+				found = true
 				break
 			}
+		}
+		if !found {
+			return "", fmt.Errorf("no chart directory found after extracting %s@%s", chart, version)
 		}
 	}
 
@@ -113,7 +118,7 @@ func (c *Cache) ReadFile(chart, version, path string) (string, error) {
 
 	// Prevent path traversal
 	fullPath := filepath.Join(chartDir, filepath.Clean(path))
-	if !strings.HasPrefix(fullPath, chartDir) {
+	if !strings.HasPrefix(fullPath, chartDir+string(filepath.Separator)) {
 		return "", fmt.Errorf("invalid path: %s", path)
 	}
 

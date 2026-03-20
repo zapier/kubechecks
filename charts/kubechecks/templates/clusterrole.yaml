@@ -9,7 +9,7 @@ rules:
   - apiGroups: ['']
     resources: ['secrets']
     verbs: ['get', 'list', 'watch']
-  {{- if .Values.configMap.env.KUBECHECKS_ENABLE_AI_REVIEW }}
+  {{- if eq (default "false" .Values.configMap.env.KUBECHECKS_ENABLE_AI_REVIEW) "true" }}
   # AI review - read-only access to workload resources
   - apiGroups: ['']
     resources: ['namespaces', 'services', 'configmaps', 'pods', 'persistentvolumeclaims']
