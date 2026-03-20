@@ -92,7 +92,7 @@ func AggregateReviews(ctx context.Context, provider aiproviders.Provider, model 
 		Messages: []aiproviders.Message{
 			{Role: aiproviders.RoleUser, Text: sb.String()},
 		},
-		MaxTokens:   4096,
+		MaxTokens:   8192,
 		Temperature: 0.1,
 	})
 	if err != nil {
