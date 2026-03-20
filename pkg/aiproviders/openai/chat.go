@@ -8,6 +8,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/shared"
+	"github.com/rs/zerolog/log"
 
 	"github.com/zapier/kubechecks/pkg/aiproviders"
 )
@@ -113,7 +114,9 @@ func convertTools(tools []aiproviders.ToolDef) []openai.ChatCompletionToolUnionP
 	out := make([]openai.ChatCompletionToolUnionParam, len(tools))
 	for i, t := range tools {
 		var params shared.FunctionParameters
-		_ = json.Unmarshal(t.Parameters, &params)
+		if err := json.Unmarshal(t.Parameters, &params); err != nil {
+			log.Warn().Err(err).Str("tool", t.Name).Msg("failed to unmarshal tool parameter schema")
+		}
 
 		out[i] = openai.ChatCompletionFunctionTool(shared.FunctionDefinitionParam{
 			Name:        t.Name,

@@ -7,6 +7,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/rs/zerolog/log"
 
 	"github.com/zapier/kubechecks/pkg/aiproviders"
 )
@@ -79,7 +80,10 @@ func convertMessages(msgs []aiproviders.Message) []anthropic.MessageParam {
 			for _, tc := range m.ToolCalls {
 				// Re-serialize arguments to any for the SDK
 				var input any
-				_ = json.Unmarshal(tc.Arguments, &input)
+				if err := json.Unmarshal(tc.Arguments, &input); err != nil {
+					log.Warn().Err(err).Str("tool", tc.Name).Msg("failed to unmarshal tool call arguments")
+					input = map[string]any{}
+				}
 				blocks = append(blocks, anthropic.NewToolUseBlock(tc.ID, input, tc.Name))
 			}
 			out = append(out, anthropic.NewAssistantMessage(blocks...))
@@ -109,7 +113,9 @@ func convertTools(tools []aiproviders.ToolDef) []anthropic.ToolUnionParam {
 			Properties any      `json:"properties"`
 			Required   []string `json:"required"`
 		}
-		_ = json.Unmarshal(t.Parameters, &schema)
+		if err := json.Unmarshal(t.Parameters, &schema); err != nil {
+			log.Warn().Err(err).Str("tool", t.Name).Msg("failed to unmarshal tool parameter schema")
+		}
 
 		out[i] = anthropic.ToolUnionParam{
 			OfTool: &anthropic.ToolParam{
