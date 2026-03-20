@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -121,37 +122,45 @@ func (a *Agent) Run(ctx context.Context, eventID string, systemPrompt string, us
 			ToolCalls: resp.ToolCalls,
 		})
 
-		// Execute each tool call
-		var results []aiproviders.ToolResult
+		// Execute tool calls in parallel
+		results := make([]aiproviders.ToolResult, len(resp.ToolCalls))
+		var wg sync.WaitGroup
 		for i, tc := range resp.ToolCalls {
 			toolCallCount++
+			callNum := toolCallCount
+
 			executor, ok := toolMap[tc.Name]
 			if !ok {
-				log.Warn().Caller().Str("event_id", eventID).Int("tool_call", toolCallCount).Str("tool", tc.Name).Msg("unknown tool called")
-				results = append(results, aiproviders.ToolResult{
+				log.Warn().Caller().Str("event_id", eventID).Int("tool_call", callNum).Str("tool", tc.Name).Msg("unknown tool called")
+				results[i] = aiproviders.ToolResult{
 					ToolCallID: tc.ID,
 					Content:    fmt.Sprintf("error: unknown tool %q", tc.Name),
 					IsError:    true,
-				})
+				}
 				continue
 			}
 
-			log.Debug().Caller().Str("event_id", eventID).Int("turn", turn).Int("tool_call", toolCallCount).Int("batch_index", i).Str("tool", tc.Name).Msg("executing tool")
-			output, execErr := executor(ctx, tc.Arguments)
-			if execErr != nil {
-				log.Warn().Caller().Str("event_id", eventID).Int("tool_call", toolCallCount).Err(execErr).Str("tool", tc.Name).Msg("tool execution failed")
-				results = append(results, aiproviders.ToolResult{
-					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("error: %s", execErr.Error()),
-					IsError:    true,
-				})
-			} else {
-				results = append(results, aiproviders.ToolResult{
-					ToolCallID: tc.ID,
-					Content:    output,
-				})
-			}
+			log.Debug().Caller().Str("event_id", eventID).Int("turn", turn).Int("tool_call", callNum).Int("batch_index", i).Str("tool", tc.Name).Msg("executing tool")
+			wg.Add(1)
+			go func(idx int, tc aiproviders.ToolCall, callNum int) {
+				defer wg.Done()
+				output, execErr := executor(ctx, tc.Arguments)
+				if execErr != nil {
+					log.Warn().Caller().Str("event_id", eventID).Int("tool_call", callNum).Err(execErr).Str("tool", tc.Name).Msg("tool execution failed")
+					results[idx] = aiproviders.ToolResult{
+						ToolCallID: tc.ID,
+						Content:    fmt.Sprintf("error: %s", execErr.Error()),
+						IsError:    true,
+					}
+				} else {
+					results[idx] = aiproviders.ToolResult{
+						ToolCallID: tc.ID,
+						Content:    output,
+					}
+				}
+			}(i, tc, callNum)
 		}
+		wg.Wait()
 
 		// Append tool results
 		messages = append(messages, aiproviders.Message{
