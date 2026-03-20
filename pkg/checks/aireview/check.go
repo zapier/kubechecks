@@ -96,6 +96,8 @@ func (c *Checker) buildAgent() *aireview.Agent {
 		aireview.WithModel(c.model),
 		aireview.WithMaxTurns(c.maxTurns),
 		aireview.WithTimeout(c.timeout),
+		aireview.WithMaxOutputTokens(8192),
+		aireview.WithTemperature(0.2),
 	)
 }
 
