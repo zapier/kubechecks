@@ -24,7 +24,7 @@ var emptyInputSchema = json.RawMessage(`{"type":"object","properties":{}}`)
 func DiffTool(diff string) aireview.Tool {
 	return aireview.NewTool(
 		"get_diff",
-		"Get the unified diff of manifest changes between the proposed (desired) state and the currently deployed (live) state (CRDs excluded). Call this first to understand what changed.",
+		"Get the unified diff of manifest changes between the proposed (desired) state and the currently deployed (live) state (CRDs and Secrets excluded). Call this first to understand what changed.",
 		emptyInputSchema,
 		func(ctx context.Context, input json.RawMessage) (string, error) {
 			if diff == "" {
@@ -32,15 +32,16 @@ func DiffTool(diff string) aireview.Tool {
 			}
 			filtered := filterDiffSections(diff)
 			if filtered == "" {
-				return "No non-CRD changes detected.", nil
+				return "No changes detected (CRDs and Secrets excluded).", nil
 			}
 			return filtered, nil
 		},
 	)
 }
 
-// filterDiffSections removes CRD resource sections from the unified diff output.
+// filterDiffSections removes excluded resource kinds from the unified diff output.
 // Diff sections are delimited by "===== group/kind namespace/name ======" headers.
+// The header format is: "===== {Group}/{Kind} {Namespace}/{Name} ======"
 func filterDiffSections(diff string) string {
 	sections := strings.Split(diff, "===== ")
 	var kept []string
@@ -48,12 +49,36 @@ func filterDiffSections(diff string) string {
 		if section == "" {
 			continue
 		}
-		if strings.Contains(section, "CustomResourceDefinition") {
+		if kind := extractKindFromDiffHeader(section); excludedKinds[kind] {
 			continue
 		}
 		kept = append(kept, "===== "+section)
 	}
 	return strings.Join(kept, "")
+}
+
+// extractKindFromDiffHeader parses the Kind from a diff section header.
+// Header format: "{Group}/{Kind} {Namespace}/{Name} ======\n..."
+// e.g. "/Secret default/my-secret ======" → "Secret"
+// e.g. "apiextensions.k8s.io/CustomResourceDefinition /mycrd ======" → "CustomResourceDefinition"
+func extractKindFromDiffHeader(section string) string {
+	// Take the first line (the header)
+	header := section
+	if idx := strings.IndexByte(section, '\n'); idx >= 0 {
+		header = section[:idx]
+	}
+	// Header is "{Group}/{Kind} {Namespace}/{Name} ======"
+	// Split on space to get "{Group}/{Kind}"
+	parts := strings.SplitN(header, " ", 2)
+	if len(parts) == 0 {
+		return ""
+	}
+	groupKind := parts[0]
+	// Split on "/" to get Kind (last segment)
+	if idx := strings.LastIndex(groupKind, "/"); idx >= 0 {
+		return groupKind[idx+1:]
+	}
+	return groupKind
 }
 
 // maxManifestBytes is the max size of rendered manifests returned to the LLM to control token usage.
@@ -64,12 +89,12 @@ const maxManifestBytes = 100_000
 func RenderedManifestsTool(yamlManifests []string) aireview.Tool {
 	return aireview.NewTool(
 		"get_rendered_manifests",
-		"Get the full rendered YAML manifests that will be applied (CRDs excluded). Use this when you need more context beyond the diff, such as checking resource requests/limits, probes, or other fields that were not changed but are relevant to the review.",
+		"Get the full rendered YAML manifests that will be applied (CRDs and Secrets excluded). Use this when you need more context beyond the diff, such as checking resource requests/limits, probes, or other fields that were not changed but are relevant to the review.",
 		emptyInputSchema,
 		func(ctx context.Context, input json.RawMessage) (string, error) {
 			filtered := filterManifests(yamlManifests)
 			if len(filtered) == 0 {
-				return "No manifests available (CRDs were excluded).", nil
+				return "No manifests available (CRDs and Secrets excluded).", nil
 			}
 			result := strings.Join(filtered, "\n---\n")
 			if len(result) > maxManifestBytes {
@@ -80,11 +105,18 @@ func RenderedManifestsTool(yamlManifests []string) aireview.Tool {
 	)
 }
 
-// filterManifests removes CRDs from the manifest list.
+// excludedKinds are resource kinds filtered from manifests sent to the LLM.
+// CRDs are too large and not useful for review. Secrets may contain sensitive data.
+var excludedKinds = map[string]bool{
+	"CustomResourceDefinition": true,
+	"Secret":                   true,
+}
+
+// filterManifests removes excluded resource kinds from the manifest list.
 func filterManifests(manifests []string) []string {
 	var filtered []string
 	for _, m := range manifests {
-		if isCRD(m) {
+		if isExcludedKind(m) {
 			continue
 		}
 		filtered = append(filtered, m)
@@ -92,13 +124,13 @@ func filterManifests(manifests []string) []string {
 	return filtered
 }
 
-// isCRD checks if a YAML manifest is a CustomResourceDefinition by parsing the kind field.
-func isCRD(manifest string) bool {
+// isExcludedKind checks if a YAML manifest is a kind that should be excluded from LLM context.
+func isExcludedKind(manifest string) bool {
 	var meta typeMeta
 	if err := yaml.Unmarshal([]byte(manifest), &meta); err != nil {
 		return false
 	}
-	return meta.Kind == "CustomResourceDefinition"
+	return excludedKinds[meta.Kind]
 }
 
 // AppInfoTool returns a tool that provides the ArgoCD application spec.
