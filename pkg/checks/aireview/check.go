@@ -11,7 +11,6 @@ import (
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
-	"k8s.io/client-go/dynamic"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/aiproviders"
@@ -20,7 +19,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/checks/diff"
 	"github.com/zapier/kubechecks/pkg/helmchart"
-	client "github.com/zapier/kubechecks/pkg/kubernetes"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"github.com/zapier/kubechecks/telemetry"
@@ -62,11 +60,6 @@ func WithChartCache(cache *helmchart.Cache) NewCheckerOption {
 	return func(c *Checker) { c.chartCache = cache }
 }
 
-// WithMultiCluster enables multi-cluster Kubernetes tools.
-func WithMultiCluster(mcm *client.MultiClusterManager) NewCheckerOption {
-	return func(c *Checker) { c.multiCluster = mcm }
-}
-
 // Checker holds the AI review agent and its configuration.
 type Checker struct {
 	provider      aiproviders.Provider
@@ -75,7 +68,6 @@ type Checker struct {
 	systemPrompt  string
 	prometheusURL string
 	chartCache    *helmchart.Cache
-	multiCluster  *client.MultiClusterManager
 }
 
 // New creates a Checker with the given config and options.
@@ -136,26 +128,11 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 		tools.AppInfoTool(request.AppName, namespace, cluster, project, sourceInfo),
 	}
 
-	// Add local Kubernetes tools if client is available
-	if request.Container.KubeClientSet != nil {
-		clientset := request.Container.KubeClientSet.ClientSet()
-		dynamicClient, err := dynamic.NewForConfig(request.Container.KubeClientSet.Config())
-		if err != nil {
-			log.Warn().Caller().Err(err).Msg("failed to create dynamic k8s client, skipping k8s tools")
-		} else {
-			reviewTools = append(reviewTools,
-				tools.KubernetesQueryTool(dynamicClient, clientset.Discovery()),
-				tools.ListNamespacesTool(clientset),
-			)
-		}
-	}
-
-	// Add remote cluster tools if multi-cluster is configured
-	if c.multiCluster != nil {
+	// Add ArgoCD-backed resource tools — queries live state via ArgoCD API (works across all clusters)
+	if request.Container.ArgoClient != nil {
 		reviewTools = append(reviewTools,
-			tools.ListClustersTool(c.multiCluster),
-			tools.RemoteKubernetesQueryTool(c.multiCluster),
-			tools.RemoteListNamespacesTool(c.multiCluster),
+			tools.QueryAppResourcesTool(request.Container.ArgoClient),
+			tools.GetAppResourceTool(request.Container.ArgoClient),
 		)
 	}
 

@@ -19,7 +19,6 @@ import (
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/helmchart"
-	kubeclient "github.com/zapier/kubechecks/pkg/kubernetes"
 )
 
 func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
@@ -101,11 +100,6 @@ func getAIReviewChecker(ctr container.Container) *aireviewcheck.Checker {
 			checkerOpts = append(checkerOpts, aireviewcheck.WithChartCache(chartCache))
 		}
 	}
-	if ctr.KubeClientSet != nil {
-		mcm := kubeclient.NewMultiClusterManager(ctr.KubeClientSet.ClientSet(), ctr.Config.ArgoCDNamespace)
-		checkerOpts = append(checkerOpts, aireviewcheck.WithMultiCluster(mcm))
-	}
-
 	log.Info().
 		Str("provider", ctr.Config.AIReviewProvider).
 		Str("model", ctr.Config.AIReviewModel).
