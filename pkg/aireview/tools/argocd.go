@@ -84,6 +84,11 @@ func QueryAppResourcesTool(argoClient *argo_client.ArgoClient) aireview.Tool {
 			// Build a summary of all resources with their live state
 			var items []map[string]any
 			for _, r := range resources.Items {
+				// Skip Secrets to avoid leaking sensitive data to the LLM
+				if r.Kind == "Secret" {
+					continue
+				}
+
 				item := map[string]any{
 					"group":     r.Group,
 					"kind":      r.Kind,
@@ -124,6 +129,11 @@ func GetAppResourceTool(argoClient *argo_client.ArgoClient) aireview.Tool {
 			}
 			if err := json.Unmarshal(input, &params); err != nil {
 				return "", fmt.Errorf("invalid input: %w", err)
+			}
+
+			// Block Secret requests to avoid leaking sensitive data to the LLM
+			if strings.EqualFold(params.Kind, "Secret") {
+				return "Secret resources are excluded from AI review to prevent leaking sensitive data.", nil
 			}
 
 			closer, appClient := argoClient.GetApplicationClient()
