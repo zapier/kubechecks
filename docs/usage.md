@@ -55,7 +55,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ARGOCD_REPOSITORY_INSECURE`|True if you need to skip validating the grpc tls certificate.|`true`|
 |`KUBECHECKS_ARGOCD_SEND_FULL_REPOSITORY`|Set to true if you want to try to send the full repository to ArgoCD when generating manifests.|`false`|
 |`KUBECHECKS_CHART_CACHE_DIR`|Directory for caching downloaded Helm charts for AI review.|`/tmp/kubechecks/charts`|
-|`KUBECHECKS_ENABLE_AI_DIFF_SUMMARY`|Enable OpenAI-powered diff summary. Requires openai-api-token.|`false`|
+|`KUBECHECKS_ENABLE_AI_DIFF_SUMMARY`|Enable AI-powered diff summary. Requires openai-api-token or anthropic-api-key.|`false`|
 |`KUBECHECKS_ENABLE_AI_REVIEW`|Enable AI-powered impact review of manifest changes.|`false`|
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
 |`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
