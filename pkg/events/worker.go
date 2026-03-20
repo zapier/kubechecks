@@ -153,7 +153,7 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 			aiReviewWg.Add(1)
 			go func() {
 				defer aiReviewWg.Done()
-				w.runAIReview(ctx, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger)
+				w.runAIReview(ctx, app, appName, k8sVersion, jsonManifests, yamlManifests, diffText, rootLogger)
 			}()
 		}
 	}
@@ -167,7 +167,7 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 }
 
 // runAIReview runs the AI review for a single app and collects the result for aggregation.
-func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appName, k8sVersion string, jsonManifests, yamlManifests []string, logger zerolog.Logger) {
+func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appName, k8sVersion string, jsonManifests, yamlManifests []string, renderedDiff string, logger zerolog.Logger) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error().Caller().Any("error", r).Str("app", appName).Msg("panic in AI review")
@@ -193,6 +193,7 @@ func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appN
 		Note:              w.vcsNote,
 		YamlManifests:     yamlManifests,
 		ChangedFiles:      w.changedFiles,
+		RenderedDiff:      renderedDiff,
 	}
 
 	result, err := w.aiReviewChecker.Check(ctx, request)

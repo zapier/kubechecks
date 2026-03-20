@@ -38,4 +38,5 @@ type Request struct {
 	JsonManifests     []string
 	YamlManifests     []string
 	ChangedFiles      []string // files changed in the PR/MR
+	RenderedDiff      string   // pre-computed diff text; if empty, Check() will compute it
 }
