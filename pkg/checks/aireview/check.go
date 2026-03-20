@@ -113,11 +113,15 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 
 	log.Debug().Caller().Str("app", request.AppName).Msg("running AI impact review")
 
-	// Generate diff text using the shared diff logic
-	renderedDiff, err := diff.GenerateDiffText(ctx, request)
-	if err != nil {
-		log.Warn().Caller().Err(err).Str("app", request.AppName).Msg("failed to generate diff for AI review, continuing with manifests only")
-		renderedDiff = ""
+	// Use pre-computed diff if available, otherwise generate it
+	renderedDiff := request.RenderedDiff
+	if renderedDiff == "" {
+		var err error
+		renderedDiff, err = diff.GenerateDiffText(ctx, request)
+		if err != nil {
+			log.Warn().Caller().Err(err).Str("app", request.AppName).Msg("failed to generate diff for AI review, continuing with manifests only")
+			renderedDiff = ""
+		}
 	}
 
 	// Build app info from the ArgoCD Application spec
