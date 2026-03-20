@@ -541,7 +541,7 @@ func (ce *CheckEvent) buildAIReviewComment(ctx context.Context) (string, pkg.Com
 		appReviews[r.AppName] = r.Result.Details
 		worstState = pkg.WorstState(worstState, r.Result.State)
 		for _, s := range r.Suggestions {
-			key := fmt.Sprintf("%s:%d:%s", s.Path, s.EndLine, s.Suggestion)
+			key := fmt.Sprintf("%s:%d:%d:%s", s.Path, s.StartLine, s.EndLine, s.Suggestion)
 			if seen[key] {
 				continue
 			}

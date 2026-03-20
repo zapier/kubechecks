@@ -320,13 +320,23 @@ func extractHelmValues(request checks.Request) string {
 	// Inline values
 	if src.Helm.Values != "" {
 		parts = append(parts, "# Inline values (spec.source.helm.values)")
-		parts = append(parts, src.Helm.Values)
+		parts = append(parts, addLineNumbers(src.Helm.Values))
 	}
 
 	// Value files — read from cloned repo if available, with line numbers
 	if request.Repo != nil && len(src.Helm.ValueFiles) > 0 {
+		repoDir := request.Repo.Directory
+		absRepoDir, absErr := filepath.Abs(repoDir)
 		for _, vf := range src.Helm.ValueFiles {
-			filePath := filepath.Join(request.Repo.Directory, src.Path, vf)
+			filePath := filepath.Join(repoDir, src.Path, vf)
+			// Protect against path traversal
+			if absErr == nil {
+				absPath, err := filepath.Abs(filePath)
+				if err != nil || !strings.HasPrefix(absPath, absRepoDir+string(filepath.Separator)) {
+					log.Warn().Str("file", vf).Msg("skipping value file with path outside repo directory")
+					continue
+				}
+			}
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				// some app doesn't have values-<clusterName>.yaml and will error here, dont bother print them.
