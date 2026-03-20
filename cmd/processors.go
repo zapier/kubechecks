@@ -92,9 +92,6 @@ func getAIReviewChecker(ctr container.Container) *aireviewcheck.Checker {
 	if ctr.Config.AIReviewExtraInstructions != "" {
 		checkerOpts = append(checkerOpts, aireviewcheck.WithExtraInstructions(ctr.Config.AIReviewExtraInstructions))
 	}
-	if ctr.Config.PrometheusURL != "" {
-		checkerOpts = append(checkerOpts, aireviewcheck.WithPrometheusURL(ctr.Config.PrometheusURL))
-	}
 	if ctr.Config.ChartCacheDir != "" {
 		chartCache, err := helmchart.NewCache(ctr.Config.ChartCacheDir)
 		if err != nil {

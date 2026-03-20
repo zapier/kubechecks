@@ -83,7 +83,6 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_OTEL_ENABLED`|Enable OpenTelemetry.|`false`|
 |`KUBECHECKS_PERSIST_LOG_LEVEL`|Persists the set log level down to other module loggers.|`false`|
 |`KUBECHECKS_POLICIES_LOCATION`|Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.|`[./policies]`|
-|`KUBECHECKS_PROMETHEUS_URL`|Prometheus/Thanos endpoint URL for AI review metrics queries.||
 |`KUBECHECKS_REPLAN_COMMENT_MSG`|comment message which re-triggers kubechecks on PR.|`kubechecks again`|
 |`KUBECHECKS_REPO_CACHE_DIR`|Directory for persistent repository cache.|`/tmp/kubechecks/repos`|
 |`KUBECHECKS_REPO_CACHE_ENABLED`|Enable persistent repository caching.|`true`|
