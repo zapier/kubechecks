@@ -83,6 +83,7 @@ func getAIReviewChecker(ctr container.Container) *aireviewcheck.Checker {
 	}
 
 	checkerOpts := []aireviewcheck.NewCheckerOption{
+		aireviewcheck.WithModel(ctr.Config.AIReviewModel),
 		aireviewcheck.WithMaxTurns(ctr.Config.AIReviewMaxTurns),
 		aireviewcheck.WithTimeout(ctr.Config.AIReviewTimeout),
 	}

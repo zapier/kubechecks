@@ -35,6 +35,11 @@ type NewCheckerConfig struct {
 // NewCheckerOption configures optional Checker settings.
 type NewCheckerOption func(*Checker)
 
+// WithModel sets the model to use for AI review. Overrides the provider's default.
+func WithModel(model string) NewCheckerOption {
+	return func(c *Checker) { c.model = model }
+}
+
 // WithMaxTurns sets the maximum number of tool use iterations.
 func WithMaxTurns(n int) NewCheckerOption {
 	return func(c *Checker) { c.maxTurns = n }
@@ -63,6 +68,7 @@ func WithExtraInstructions(instructions string) NewCheckerOption {
 // Checker holds the AI review agent and its configuration.
 type Checker struct {
 	provider          aiproviders.Provider
+	model             string
 	maxTurns          int
 	timeout           time.Duration
 	systemPrompt      string
@@ -87,6 +93,7 @@ func New(cfg *NewCheckerConfig, opts ...NewCheckerOption) *Checker {
 
 func (c *Checker) buildAgent() *aireview.Agent {
 	return aireview.NewAgent(c.provider,
+		aireview.WithModel(c.model),
 		aireview.WithMaxTurns(c.maxTurns),
 		aireview.WithTimeout(c.timeout),
 	)
@@ -94,7 +101,7 @@ func (c *Checker) buildAgent() *aireview.Agent {
 
 // AggregateReviews consolidates multiple per-app reviews into a single concise review.
 func (c *Checker) AggregateReviews(ctx context.Context, appReviews map[string]string) (string, error) {
-	return aireview.AggregateReviews(ctx, c.provider, "", appReviews)
+	return aireview.AggregateReviews(ctx, c.provider, c.model, appReviews)
 }
 
 // Check runs the AI review and returns the result with any code suggestions.
