@@ -262,11 +262,13 @@ func (w *worker) getManifestsWithRetry(ctx context.Context, appName string, app 
 			Str("app", appName).
 			Msg("transient error getting manifests, retrying")
 
-		// Simple backoff: 2s, 4s
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(time.Duration(attempt*2) * time.Second):
+		// Simple backoff: 2s, 4s — skip sleep after final attempt
+		if attempt < maxManifestRetries {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt*2) * time.Second):
+			}
 		}
 	}
 	return nil, lastErr
