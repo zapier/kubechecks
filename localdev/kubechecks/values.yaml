@@ -31,9 +31,9 @@ configMap:
     KUBECHECKS_USE_ARCHIVE_MODE: "true"
     KUBECHECKS_ARCHIVE_CACHE_DIR: "/tmp/kubechecks/archives"
     KUBECHECKS_ARCHIVE_CACHE_TTL: "1h"
-    # AI Diff Summary (OpenAI)
+    # AI Diff Summary (Summary report as part of the manifest diff report, disable it if testing with AI-REVIEW)
     KUBECHECKS_ENABLE_AI_DIFF_SUMMARY: "false"
-    # AI Review
+    # AI Review (In-depth AI review, including recommendation, performance impact)
     KUBECHECKS_ENABLE_AI_REVIEW: "true"
     KUBECHECKS_AI_REVIEW_PROVIDER: "anthropic"
     KUBECHECKS_AI_REVIEW_MODEL: "claude-sonnet-4-6"
