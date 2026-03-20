@@ -195,7 +195,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 	if err != nil {
 		telemetry.SetError(span, err, "AI Review")
 		log.Error().Caller().Err(err).Str("app", request.AppName).Msg("AI review failed")
-		return vcs.AIReviewResult{}, nil
+		return vcs.AIReviewResult{}, fmt.Errorf("ai review agent failed: %w", err)
 	}
 
 	// Convert collected suggestions to vcs.ReviewSuggestion
