@@ -347,8 +347,22 @@ func buildChangedFilesContent(request checks.Request) string {
 	}
 
 	var parts []string
+	repoDir := request.Repo.Directory
 	for _, f := range request.ChangedFiles {
-		filePath := filepath.Join(request.Repo.Directory, f)
+		filePath := filepath.Join(repoDir, f)
+		// Protect against path traversal — ensure the resolved path stays within the repo
+		absPath, err := filepath.Abs(filePath)
+		if err != nil {
+			continue
+		}
+		absRepoDir, err := filepath.Abs(repoDir)
+		if err != nil {
+			continue
+		}
+		if !strings.HasPrefix(absPath, absRepoDir+string(filepath.Separator)) {
+			log.Warn().Str("file", f).Msg("skipping file with path outside repo directory")
+			continue
+		}
 		data, err := os.ReadFile(filePath)
 		if err != nil {
 			continue
