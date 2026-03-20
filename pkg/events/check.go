@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -567,10 +568,17 @@ func (ce *CheckEvent) buildAIReviewComment(ctx context.Context) (string, pkg.Com
 }
 
 // buildRawReviewBody concatenates per-app reviews without aggregation, wrapped in <details> tags.
+// App names are sorted for stable output across runs.
 func buildRawReviewBody(appReviews map[string]string) string {
+	names := make([]string, 0, len(appReviews))
+	for name := range appReviews {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	var sb strings.Builder
-	for appName, review := range appReviews {
-		fmt.Fprintf(&sb, "<details>\n<summary><code>%s</code></summary>\n\n%s\n\n</details>\n\n", appName, review)
+	for _, appName := range names {
+		fmt.Fprintf(&sb, "<details>\n<summary><code>%s</code></summary>\n\n%s\n\n</details>\n\n", appName, appReviews[appName])
 	}
 	return sb.String()
 }
