@@ -177,14 +177,30 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	var packageDir string
 
 	if isExternalHelmChart(source) {
-		// For external Helm charts, create an empty temp dir.  ArgoCD's repo-server
-		// will fetch the chart itself; we just need a valid (possibly empty) directory
-		// to satisfy the GenerateManifestWithFiles streaming protocol.
+		// For external Helm charts, create a temp dir with a stub Chart.yaml.
+		// ArgoCD's repo-server will fetch the actual chart itself; we just need
+		// a valid directory with a Chart.yaml to satisfy the
+		// GenerateManifestWithFiles streaming protocol and avoid
+		// "error reading helm chart from ... Chart.yaml: no such file" errors.
 		emptyDir, err := os.MkdirTemp("", "kubechecks-helm-external-*")
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create temp dir for external Helm chart")
 		}
 		defer pkg.WipeDir(emptyDir)
+
+		chartVersion := source.TargetRevision
+		if chartVersion == "" {
+			chartVersion = "0.0.0"
+		}
+		chartName := source.Chart
+		if chartName == "" {
+			chartName = "external-chart"
+		}
+		stubChart := fmt.Sprintf("apiVersion: v2\nname: %s\nversion: %s\ntype: application\n", chartName, chartVersion)
+		if err := os.WriteFile(filepath.Join(emptyDir, "Chart.yaml"), []byte(stubChart), 0644); err != nil {
+			return nil, errors.Wrap(err, "failed to write stub Chart.yaml for external Helm chart")
+		}
+
 		packageDir = emptyDir
 	} else {
 		repoTarget := source.TargetRevision
