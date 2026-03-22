@@ -213,8 +213,16 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 
 	app.Spec.Sources = append([]v1alpha1.ApplicationSource{source}, refs...)
 
+	// Get repository with enriched credentials from ArgoCD database
+	enrichedRepo, err := argoDB.GetRepository(ctx, source.RepoURL, app.Spec.Project)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repository with credentials: %w", err)
+	}
+	log.Debug().Msgf("using repository with credentials for %s", source.RepoURL)
+
+	// Use enriched repo instead of basic repo URL
 	q := repoapiclient.ManifestRequest{
-		Repo:               &v1alpha1.Repository{Repo: source.RepoURL},
+		Repo:               enrichedRepo,
 		Revision:           source.TargetRevision,
 		AppLabelKey:        argoSettings.AppLabelKey,
 		AppName:            app.Name,
