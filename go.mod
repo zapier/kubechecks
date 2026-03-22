@@ -33,7 +33,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/sashabaranov/go-openai v1.40.5
 	github.com/shurcooL/githubv4 v0.0.0-20231126234147-1cffa1f02456
-	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
+	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
