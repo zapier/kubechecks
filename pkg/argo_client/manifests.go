@@ -100,6 +100,27 @@ func preprocessSources(app *v1alpha1.Application, pullRequest vcs.PullRequest) (
 	return contentSources, refSources
 }
 
+// isExternalHelmChart returns true when a source refers to a Helm chart that is
+// fetched directly from a Helm registry (OCI or HTTPS), not from a Git repository.
+// Such sources cannot be git-cloned; ArgoCD's repo-server is responsible for
+// pulling the chart using its own credentials and OCI support.
+func isExternalHelmChart(source v1alpha1.ApplicationSource) bool {
+	// source.Chart is only set for Helm chart sources (not git-path sources)
+	if source.Chart == "" {
+		return false
+	}
+	// OCI registries are unambiguous
+	if strings.HasPrefix(source.RepoURL, "oci://") {
+		return true
+	}
+	// HTTPS Helm repos: no .git suffix and no source path means it is a plain
+	// Helm repository URL (e.g. https://charts.example.io)
+	if strings.HasPrefix(source.RepoURL, "https://") && !strings.HasSuffix(source.RepoURL, ".git") && source.Path == "" {
+		return true
+	}
+	return false
+}
+
 // generateManifests generates an Application along with all of its files, and sends it to the ArgoCD
 // Repository service to be transformed into raw kubernetes manifests. This allows us to take advantage of server
 // configuration and credentials.
@@ -109,6 +130,28 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	// 2. there must be one and only one non-ref source
 	// 3. ref sources that match the pull requests' repo and target branch need to have their target branch swapped to the head branch of the pull request
 	log.Info().Str("app", app.Name).Msg("generating manifests")
+
+	// External Helm chart sources (OCI or HTTPS Helm repos) cannot be git-cloned.
+	// When ArgoCDSendFullRepository is true we send an empty directory — ArgoCD's
+	// repo-server will fetch the chart from the registry on its own.
+	// When ArgoCDSendFullRepository is false we have no sensible local directory
+	// to package, so we skip manifest generation for this source.
+	if isExternalHelmChart(source) {
+		if !a.cfg.ArgoCDSendFullRepository {
+			log.Warn().
+				Str("app", app.Name).
+				Str("repoURL", source.RepoURL).
+				Str("chart", source.Chart).
+				Msg("skipping manifest generation for external Helm chart source: ArgoCDSendFullRepository is false")
+			return nil, nil
+		}
+		log.Info().
+			Str("app", app.Name).
+			Str("repoURL", source.RepoURL).
+			Str("chart", source.Chart).
+			Msg("external Helm chart source detected; using empty temp dir — ArgoCD repo-server will fetch the chart")
+	}
+
 	clusterCloser, clusterClient := a.GetClusterClient()
 	defer pkg.WithErrorLogging(clusterCloser.Close, "failed to close connection")
 
@@ -131,26 +174,39 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	settingsMgr := argosettings.NewSettingsManager(ctx, a.k8s, a.cfg.ArgoCDNamespace)
 	argoDB := db.NewDB(a.cfg.ArgoCDNamespace, settingsMgr, a.k8s)
 
-	repoTarget := source.TargetRevision
-	if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
-		repoTarget = pullRequest.HeadRef
-	}
-
-	log.Debug().Caller().Str("app", app.Name).Msg("get repo")
-	repo, err := getRepo(ctx, source.RepoURL, repoTarget)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get repo")
-	}
-
 	var packageDir string
-	if a.cfg.ArgoCDSendFullRepository {
-		log.Debug().Caller().Str("app", app.Name).Msg("sending full repository")
-		packageDir = repo.Directory
-	} else {
-		log.Debug().Caller().Str("app", app.Name).Msg("packaging app")
-		packageDir, err = packageApp(ctx, source, refs, repo, getRepo)
+
+	if isExternalHelmChart(source) {
+		// For external Helm charts, create an empty temp dir.  ArgoCD's repo-server
+		// will fetch the chart itself; we just need a valid (possibly empty) directory
+		// to satisfy the GenerateManifestWithFiles streaming protocol.
+		emptyDir, err := os.MkdirTemp("", "kubechecks-helm-external-*")
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to package application")
+			return nil, errors.Wrap(err, "failed to create temp dir for external Helm chart")
+		}
+		defer pkg.WipeDir(emptyDir)
+		packageDir = emptyDir
+	} else {
+		repoTarget := source.TargetRevision
+		if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
+			repoTarget = pullRequest.HeadRef
+		}
+
+		log.Debug().Caller().Str("app", app.Name).Msg("get repo")
+		repo, err := getRepo(ctx, source.RepoURL, repoTarget)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get repo")
+		}
+
+		if a.cfg.ArgoCDSendFullRepository {
+			log.Debug().Caller().Str("app", app.Name).Msg("sending full repository")
+			packageDir = repo.Directory
+		} else {
+			log.Debug().Caller().Str("app", app.Name).Msg("packaging app")
+			packageDir, err = packageApp(ctx, source, refs, repo, getRepo)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to package application")
+			}
 		}
 	}
 

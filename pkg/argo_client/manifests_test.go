@@ -20,6 +20,67 @@ import (
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
+func TestIsExternalHelmChart(t *testing.T) {
+	testcases := map[string]struct {
+		source   v1alpha1.ApplicationSource
+		expected bool
+	}{
+		"oci-chart": {
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "oci://registry.example.io/charts",
+				Chart:   "my-chart",
+			},
+			expected: true,
+		},
+		"https-helm-repo": {
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "https://charts.example.io",
+				Chart:   "my-chart",
+			},
+			expected: true,
+		},
+		"https-git-repo-with-chart-field": {
+			// .git suffix indicates it is a git repo, not a Helm HTTPS repo
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "https://github.com/org/repo.git",
+				Chart:   "my-chart",
+			},
+			expected: false,
+		},
+		"git-path-source-no-chart": {
+			// source.Chart is empty — it's a git-path source
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "oci://registry.example.io/charts",
+				Path:    "helm/app",
+			},
+			expected: false,
+		},
+		"plain-git-repo": {
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "git@github.com:org/repo.git",
+				Path:    "app/",
+			},
+			expected: false,
+		},
+		"https-helm-repo-with-path": {
+			// Has source.Path set — treat as git-path source, not external Helm chart
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "https://charts.example.io",
+				Chart:   "my-chart",
+				Path:    "some/path",
+			},
+			expected: false,
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			actual := isExternalHelmChart(tc.source)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 func TestAreSameTargetRef(t *testing.T) {
 	testcases := map[string]struct {
 		ref1, ref2 string
