@@ -71,6 +71,37 @@ func TestIsExternalHelmChart(t *testing.T) {
 			},
 			expected: false,
 		},
+		"oci-shorthand-docker-io": {
+			// OCI registry without scheme (ArgoCD shorthand format)
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "docker.io/envoyproxy",
+				Chart:   "gateway-helm",
+			},
+			expected: true,
+		},
+		"oci-shorthand-ghcr": {
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "ghcr.io/org/charts",
+				Chart:   "my-chart",
+			},
+			expected: true,
+		},
+		"oci-shorthand-no-chart": {
+			// No Chart field — not an external Helm chart
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "docker.io/envoyproxy",
+				Path:    "some/path",
+			},
+			expected: false,
+		},
+		"oci-shorthand-git-suffix": {
+			// .git suffix means it's a git repo even without scheme
+			source: v1alpha1.ApplicationSource{
+				RepoURL: "github.com/org/repo.git",
+				Chart:   "my-chart",
+			},
+			expected: false,
+		},
 	}
 
 	for name, tc := range testcases {

@@ -109,13 +109,20 @@ func isExternalHelmChart(source v1alpha1.ApplicationSource) bool {
 	if source.Chart == "" {
 		return false
 	}
-	// OCI registries are unambiguous
+	// OCI registries with explicit oci:// scheme
 	if strings.HasPrefix(source.RepoURL, "oci://") {
 		return true
 	}
 	// HTTPS Helm repos: no .git suffix and no source path means it is a plain
 	// Helm repository URL (e.g. https://charts.example.io)
 	if strings.HasPrefix(source.RepoURL, "https://") && !strings.HasSuffix(source.RepoURL, ".git") && source.Path == "" {
+		return true
+	}
+	// OCI registry shorthand without scheme (e.g. "docker.io/envoyproxy",
+	// "ghcr.io/org/charts"). ArgoCD accepts these for OCI Helm sources.
+	// If Chart is set and the URL has no scheme and doesn't end in .git,
+	// it's an OCI/Helm registry reference, not a git repo.
+	if source.Chart != "" && !strings.Contains(source.RepoURL, "://") && !strings.HasSuffix(source.RepoURL, ".git") {
 		return true
 	}
 	return false
