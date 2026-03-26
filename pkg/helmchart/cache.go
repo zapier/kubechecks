@@ -34,7 +34,10 @@ func (c *Cache) EnsureChart(repoURL, chart, version string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	chartDir := c.chartPath(chart, version)
+	chartDir, err := c.chartPath(chart, version)
+	if err != nil {
+		return "", err
+	}
 
 	// Check if already cached
 	if info, err := os.Stat(chartDir); err == nil && info.IsDir() {
@@ -93,18 +96,24 @@ func (c *Cache) EnsureChart(repoURL, chart, version string) (string, error) {
 
 // ListFiles returns all file paths relative to the chart root.
 func (c *Cache) ListFiles(chart, version string) ([]string, error) {
-	chartDir := c.chartPath(chart, version)
+	chartDir, err := c.chartPath(chart, version)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := os.Stat(chartDir); err != nil {
 		return nil, fmt.Errorf("chart %s@%s not cached", chart, version)
 	}
 
 	var files []string
-	err := filepath.Walk(chartDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(chartDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() {
-			rel, _ := filepath.Rel(chartDir, path)
+			rel, relErr := filepath.Rel(chartDir, path)
+			if relErr != nil {
+				return fmt.Errorf("failed to compute relative path for %s: %w", path, relErr)
+			}
 			files = append(files, rel)
 		}
 		return nil
@@ -114,7 +123,10 @@ func (c *Cache) ListFiles(chart, version string) ([]string, error) {
 
 // ReadFile reads a file from a cached chart.
 func (c *Cache) ReadFile(chart, version, path string) (string, error) {
-	chartDir := c.chartPath(chart, version)
+	chartDir, err := c.chartPath(chart, version)
+	if err != nil {
+		return "", err
+	}
 
 	// Prevent path traversal
 	fullPath := filepath.Join(chartDir, filepath.Clean(path))
@@ -132,8 +144,16 @@ func (c *Cache) ReadFile(chart, version, path string) (string, error) {
 	return string(data), nil
 }
 
-func (c *Cache) chartPath(chart, version string) string {
-	return filepath.Join(c.cacheDir, chart, version)
+func (c *Cache) chartPath(chart, version string) (string, error) {
+	// Sanitize to prevent path traversal via chart/version values
+	cleanChart := filepath.Clean(chart)
+	cleanVersion := filepath.Clean(version)
+	if cleanChart != chart || cleanVersion != version ||
+		filepath.IsAbs(cleanChart) || filepath.IsAbs(cleanVersion) ||
+		strings.Contains(cleanChart, "..") || strings.Contains(cleanVersion, "..") {
+		return "", fmt.Errorf("invalid chart %q or version %q: path traversal detected", chart, version)
+	}
+	return filepath.Join(c.cacheDir, cleanChart, cleanVersion), nil
 }
 
 func (c *Cache) pullChart(repoURL, chart, version, destDir string) error {
