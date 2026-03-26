@@ -104,11 +104,18 @@ func (c *Checker) buildAgent() *aireview.Agent {
 
 // AggregateReviews consolidates multiple per-app reviews into a single concise review.
 func (c *Checker) AggregateReviews(ctx context.Context, appReviews map[string]string) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("AI review checker is nil")
+	}
 	return aireview.AggregateReviews(ctx, c.provider, c.model, appReviews)
 }
 
 // Check runs the AI review and returns the result with any code suggestions.
 func (c *Checker) Check(ctx context.Context, request checks.Request) (retResult vcs.AIReviewResult, retErr error) {
+	if c == nil {
+		return vcs.AIReviewResult{}, fmt.Errorf("AI review checker is nil")
+	}
+
 	ctx, span := tracer.Start(ctx, "AIReview")
 	defer span.End()
 	defer func() {
