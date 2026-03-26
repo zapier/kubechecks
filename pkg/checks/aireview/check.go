@@ -193,7 +193,12 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 	userPrompt := aireview.BuildUserPrompt(request.AppName, renderedDiff, renderedManifestsText, helmValues, changedFilesContent, toolNames)
 
 	// Run the agentic loop — blocking call
-	eventID := fmt.Sprintf("mr-%d/%s", request.Note.CheckID, request.AppName)
+	var eventID string
+	if request.Note != nil {
+		eventID = fmt.Sprintf("mr-%d/%s", request.Note.CheckID, request.AppName)
+	} else {
+		eventID = fmt.Sprintf("local/%s", request.AppName)
+	}
 	agent := c.buildAgent()
 	result, err := agent.Run(ctx, eventID, systemPrompt, userPrompt, reviewTools)
 	if err != nil {
