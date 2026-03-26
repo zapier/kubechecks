@@ -170,7 +170,7 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appName, k8sVersion string, jsonManifests, yamlManifests []string, renderedDiff string, logger zerolog.Logger) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error().Caller().Any("error", r).Str("app", appName).Msg("panic in AI review")
+			logger.Error().Caller().Any("error", r).Str("stack", string(debug.Stack())).Str("app", appName).Msg("panic in AI review")
 		}
 	}()
 
