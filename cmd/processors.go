@@ -19,6 +19,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/config"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/helmchart"
+	"github.com/zapier/kubechecks/pkg/queue"
 )
 
 func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
@@ -71,8 +72,9 @@ func getProcessors(ctr container.Container) ([]checks.ProcessorEntry, error) {
 
 // getAIReviewChecker creates the AI review checker if enabled, or returns nil.
 // The AI review runs separately from the processor pipeline and posts its own comment.
-func getAIReviewChecker(ctr container.Container) *aireviewcheck.Checker {
+func getAIReviewChecker(ctr container.Container) queue.AIReviewChecker {
 	if !ctr.Config.EnableAIReview {
+		log.Info().Msg("AI review is disabled (KUBECHECKS_ENABLE_AI_REVIEW not set)")
 		return nil
 	}
 
