@@ -126,6 +126,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 
 	// Build app info from the ArgoCD Application spec
 	app := request.App
+	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: building app info")
 	namespace := app.Spec.Destination.Namespace
 	cluster := app.Spec.Destination.Server
 	if app.Spec.Destination.Name != "" {
@@ -135,6 +136,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 	sourceInfo := formatSourceInfo(app)
 
 	// Build tools as closures over the request data
+	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: building tools")
 	reviewTools := []aireview.Tool{
 		tools.DiffTool(renderedDiff),
 		tools.RenderedManifestsTool(request.YamlManifests),
@@ -150,6 +152,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 	}
 
 	// Add Helm chart introspection tools if cache is configured
+	log.Debug().Caller().Str("app", request.AppName).Bool("chartCacheNil", c.chartCache == nil).Msg("AI review: chart cache check")
 	if c.chartCache != nil {
 		chartTools := c.buildChartTools(request)
 		reviewTools = append(reviewTools, chartTools...)
@@ -158,6 +161,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 	}
 
 	// Add suggestion tool — collects suggestions to post as review comments after the review
+	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: past chart tools")
 	suggestionCollector := aireview.NewSuggestionCollector()
 	if len(request.ChangedFiles) > 0 {
 		reviewTools = append(reviewTools, tools.PostSuggestionTool(suggestionCollector, request.ChangedFiles))
@@ -168,6 +172,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 	reviewTools = append(reviewTools, tools.SubmitRecommendationTool(recommendationCollector))
 
 	// Build prompts
+	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: building prompts")
 	systemPrompt := aireview.BuildSystemPrompt(
 		request.AppName,
 		namespace,
