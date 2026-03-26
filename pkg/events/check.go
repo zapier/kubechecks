@@ -354,7 +354,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	// Create a separate placeholder comment for AI review
-	if ce.aiReviewChecker != nil {
+	if ce.ctr.Config.EnableAIReview {
 		ce.aiNote, err = ce.createAIReviewNote(ctx)
 		if err != nil {
 			ce.logger.Warn().Caller().Err(err).Msg("failed to create AI review note, AI review will be skipped")
@@ -552,7 +552,7 @@ func (ce *CheckEvent) buildAIReviewComment(ctx context.Context) (string, pkg.Com
 
 	// If multiple apps, run aggregator to consolidate findings
 	var reviewBody string
-	if len(appReviews) > 1 && ce.aiReviewChecker != nil {
+	if len(appReviews) > 1 && ce.ctr.Config.EnableAIReview && ce.aiReviewChecker != nil {
 		consolidated, err := ce.aiReviewChecker.AggregateReviews(ctx, appReviews)
 		if err != nil {
 			ce.logger.Warn().Caller().Err(err).Msg("aggregation failed, using raw reviews")

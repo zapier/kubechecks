@@ -134,7 +134,7 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 
 	// Launch AI review in parallel — but only if there are actual changes
 	var aiReviewWg sync.WaitGroup
-	if w.aiReviewChecker != nil {
+	if w.ctr.Config.EnableAIReview && w.aiReviewChecker != nil {
 		// Pre-compute diff to check if there are changes before launching AI review
 		diffText, diffErr := diff.GenerateDiffText(ctx, checks.Request{
 			App:           app,
