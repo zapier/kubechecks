@@ -47,7 +47,10 @@ func (p *Provider) Chat(ctx context.Context, req aiproviders.ChatRequest) (*aipr
 
 	if req.SystemPrompt != "" {
 		params.System = []anthropic.TextBlockParam{
-			{Text: req.SystemPrompt},
+			{
+				Text:         req.SystemPrompt,
+				CacheControl: anthropic.NewCacheControlEphemeralParam(),
+			},
 		}
 	}
 
@@ -69,7 +72,6 @@ func (p *Provider) Chat(ctx context.Context, req aiproviders.ChatRequest) (*aipr
 
 func convertMessages(msgs []aiproviders.Message) []anthropic.MessageParam {
 	var out []anthropic.MessageParam
-
 	for _, m := range msgs {
 		switch m.Role {
 		case aiproviders.RoleAssistant:
@@ -97,7 +99,10 @@ func convertMessages(msgs []aiproviders.Message) []anthropic.MessageParam {
 				}
 				out = append(out, anthropic.NewUserMessage(blocks...))
 			} else {
-				out = append(out, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Text)))
+				// Cache user message (the review context that stays constant across tool-use rounds)
+				block := anthropic.NewTextBlock(m.Text)
+				*block.GetCacheControl() = anthropic.NewCacheControlEphemeralParam()
+				out = append(out, anthropic.NewUserMessage(block))
 			}
 		}
 	}
