@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -107,9 +108,15 @@ func (c *Checker) AggregateReviews(ctx context.Context, appReviews map[string]st
 }
 
 // Check runs the AI review and returns the result with any code suggestions.
-func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIReviewResult, error) {
+func (c *Checker) Check(ctx context.Context, request checks.Request) (retResult vcs.AIReviewResult, retErr error) {
 	ctx, span := tracer.Start(ctx, "AIReview")
 	defer span.End()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().Str("app", request.AppName).Str("stack", string(debug.Stack())).Msgf("panic in AI review Check: %v", r)
+			retErr = fmt.Errorf("panic in AI review: %v", r)
+		}
+	}()
 
 	log.Debug().Caller().Str("app", request.AppName).Msg("running AI impact review")
 
@@ -137,11 +144,13 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 
 	// Build tools as closures over the request data
 	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: building tools")
-	reviewTools := []aireview.Tool{
-		tools.DiffTool(renderedDiff),
-		tools.RenderedManifestsTool(request.YamlManifests),
-		tools.AppInfoTool(request.AppName, namespace, cluster, project, sourceInfo),
-	}
+	diffTool := tools.DiffTool(renderedDiff)
+	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: diff tool built")
+	manifestsTool := tools.RenderedManifestsTool(request.YamlManifests)
+	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: manifests tool built")
+	appInfoTool := tools.AppInfoTool(request.AppName, namespace, cluster, project, sourceInfo)
+	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: appinfo tool built")
+	reviewTools := []aireview.Tool{diffTool, manifestsTool, appInfoTool}
 
 	// Add ArgoCD-backed resource tools — queries live state via ArgoCD API (works across all clusters)
 	if request.Container.ArgoClient != nil {
@@ -151,6 +160,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (vcs.AIRevi
 		)
 	}
 
+	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: past ArgoCD tools")
 	// Add Helm chart introspection tools if cache is configured
 	log.Debug().Caller().Str("app", request.AppName).Bool("chartCacheNil", c.chartCache == nil).Msg("AI review: chart cache check")
 	if c.chartCache != nil {
