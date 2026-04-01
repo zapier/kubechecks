@@ -149,75 +149,83 @@ func (m *Message) buildFooter(
 		hostname, duration.Round(time.Second), pkg.GitCommit, envStr, appsChecked, totalChecked)
 }
 
-// BuildComment iterates the map of all apps in this message, building a final comment from their current state
+// buildAppSection renders a single app's check results as a <details> block.
+// Returns the rendered string and false if the app was skipped (no changes).
+func (m *Message) buildAppSection(appName string, results *AppResults) (string, bool) {
+	var checkStrings []string
+
+	appState := pkg.StateSuccess
+	noChangesDetected := false
+
+	for _, check := range results.results {
+		if check.NoChangesDetected {
+			noChangesDetected = true
+			continue
+		}
+
+		if check.State == pkg.StateSkip {
+			continue
+		}
+
+		var summary string
+		if check.State == pkg.StateNone {
+			summary = check.Summary
+		} else {
+			summary = fmt.Sprintf("%s %s %s", check.Summary, check.State.BareString(), m.vcs.ToEmoji(check.State))
+		}
+
+		msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
+		checkStrings = append(checkStrings, msg)
+		appState = pkg.WorstState(appState, check.State)
+	}
+
+	if noChangesDetected {
+		return "", false
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<details>\n")
+	sb.WriteString("<summary>\n\n")
+	fmt.Fprintf(&sb, "## ArgoCD Application Checks: `%s` %s\n", appName, m.vcs.ToEmoji(appState))
+	sb.WriteString("</summary>\n\n")
+	sb.WriteString(strings.Join(checkStrings, "\n\n---\n\n"))
+	sb.WriteString("</details>")
+
+	return sb.String(), true
+}
+
+// BuildComment iterates the map of all apps in this message, building a final
+// comment from their current state. The result is split into chunks that each
+// fit within maxCommentLength.
 func (m *Message) BuildComment(
-	ctx context.Context, start time.Time, commitSHA, labelFilter string, showDebugInfo bool, identifier string,
+	ctx context.Context, start time.Time, commitSHA, labelFilter string,
+	showDebugInfo bool, identifier string,
+	maxCommentLength, maxCommentsPerCheck int,
 	appsChecked, totalChecked int,
-) string {
+) []string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
 
 	names := getSortedKeys(m.apps)
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# Kubechecks %s Report\n", identifier))
-
-	updateWritten := false
+	var appSections []string
 	for _, appName := range names {
 		if m.isDeleted(appName) {
 			continue
 		}
-
-		var checkStrings []string
-		results := m.apps[appName]
-
-		appState := pkg.StateSuccess
-		noChangesDetected := false
-
-		for _, check := range results.results {
-			if check.NoChangesDetected {
-				noChangesDetected = true
-				continue
-			}
-
-			if check.State == pkg.StateSkip {
-				continue
-			}
-
-			var summary string
-			if check.State == pkg.StateNone {
-				summary = check.Summary
-			} else {
-				summary = fmt.Sprintf("%s %s %s", check.Summary, check.State.BareString(), m.vcs.ToEmoji(check.State))
-			}
-
-			msg := fmt.Sprintf("<details>\n<summary>%s</summary>\n\n%s\n</details>", summary, check.Details)
-			checkStrings = append(checkStrings, msg)
-			appState = pkg.WorstState(appState, check.State)
+		section, ok := m.buildAppSection(appName, m.apps[appName])
+		if ok {
+			appSections = append(appSections, section)
 		}
-
-		if noChangesDetected {
-			continue
-		}
-
-		sb.WriteString("<details>\n")
-		sb.WriteString("<summary>\n\n")
-		sb.WriteString(fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, m.vcs.ToEmoji(appState)))
-		sb.WriteString("</summary>\n\n")
-		sb.WriteString(strings.Join(checkStrings, "\n\n---\n\n"))
-		sb.WriteString("</details>")
-
-		updateWritten = true
-	}
-
-	if !updateWritten {
-		sb.WriteString("No changes")
 	}
 
 	footer := m.buildFooter(start, commitSHA, labelFilter, showDebugInfo, appsChecked, totalChecked)
-	sb.WriteString(fmt.Sprintf("\n\n%s", footer))
 
-	return sb.String()
+	return SplitIntoChunks(appSections, footer, ChunkConfig{
+		MaxLength:  maxCommentLength,
+		MaxChunks:  maxCommentsPerCheck,
+		Identifier: identifier,
+	})
 }
 
 func getSortedKeys[K constraints.Ordered, V any](m map[K]V) []K {
