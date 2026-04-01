@@ -325,26 +325,39 @@ func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([
 		Int("mr_number", pr.CheckID).
 		Msg("fetching MR files from GitLab API")
 
-	// List all diffs for the merge request
-	diffs, _, err := c.c.MergeRequests.ListMergeRequestDiffs(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list MR diffs from GitLab")
-	}
-
-	// Extract file paths from diffs
+	// List all diffs for the merge request, handling pagination
 	var allFiles []string
 	filesSeen := make(map[string]bool) // Deduplicate files
 
-	for _, diff := range diffs {
-		// Use NewPath for added/modified files, OldPath for deleted files
-		filePath := diff.NewPath
-		if filePath == "" || filePath == "/dev/null" {
-			filePath = diff.OldPath
+	opts := &gitlab.ListMergeRequestDiffsOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+			Page:    1,
+		},
+	}
+
+	for {
+		diffs, resp, err := c.c.MergeRequests.ListMergeRequestDiffs(pr.FullName, pr.CheckID, opts, gitlab.WithContext(ctx))
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to list MR diffs from GitLab")
 		}
-		if filePath != "" && filePath != "/dev/null" && !filesSeen[filePath] {
-			allFiles = append(allFiles, filePath)
-			filesSeen[filePath] = true
+
+		for _, diff := range diffs {
+			// Use NewPath for added/modified files, OldPath for deleted files
+			filePath := diff.NewPath
+			if filePath == "" || filePath == "/dev/null" {
+				filePath = diff.OldPath
+			}
+			if filePath != "" && filePath != "/dev/null" && !filesSeen[filePath] {
+				allFiles = append(allFiles, filePath)
+				filesSeen[filePath] = true
+			}
 		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
 	}
 
 	log.Debug().
