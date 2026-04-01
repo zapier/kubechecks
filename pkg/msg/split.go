@@ -3,22 +3,33 @@ package msg
 import (
 	"fmt"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
-// ChunkConfig controls how the report is assembled into VCS comment chunks.
+// ChunkConfig controls how a report is assembled into VCS comment chunks.
 type ChunkConfig struct {
-	MaxLength  int // per-VCS comment size limit
-	MaxChunks  int // 0 = unlimited
-	Identifier string
+	MaxLength  int    // per-VCS comment size limit (bytes)
+	MaxChunks  int    // hard cap on number of comments; 0 = unlimited
+	Identifier string // kubechecks instance identifier shown in headers
 }
 
 const (
+	// sectionSeparator is placed between app sections within a single chunk.
+	sectionSeparator = "\n\n"
+
+	// Continuation notes inserted into multi-chunk reports so the reader
+	// knows the report spans several comments.
 	continuedFrom = "\n*Continued from previous comment.*\n\n"
 	continuedIn   = "\n\n**Continued in next comment.**"
+
+	// truncatedNote is appended to the final chunk when the MaxChunks cap
+	// caused sections to be dropped.
 	truncatedNote = "\n\n**Warning**: Report exceeded the maximum number of comments. Some output was truncated."
 )
 
-// chunkHeader builds the header for chunk part (1-indexed) of total.
+// chunkHeader returns the markdown heading for a chunk.
+// Single-chunk reports omit the part number for a cleaner look.
 func chunkHeader(identifier string, part, total int) string {
 	if total == 1 {
 		return fmt.Sprintf("# Kubechecks %s Report\n", identifier)
@@ -26,26 +37,30 @@ func chunkHeader(identifier string, part, total int) string {
 	return fmt.Sprintf("# Kubechecks %s Report (Part %d of %d)\n", identifier, part, total)
 }
 
-// maxHeaderLen returns a worst-case header length estimate for capacity planning.
-// Assumes up to 3-digit part numbers, which covers up to 999 chunks.
+// maxHeaderLen returns a worst-case header length for capacity planning.
+// Assumes up to 3-digit part numbers (999 chunks).
 func maxHeaderLen(identifier string) int {
 	return len(fmt.Sprintf("# Kubechecks %s Report (Part 999 of 999)\n", identifier))
 }
 
-// maxOverhead returns the worst-case per-chunk overhead (header + continuation notes).
+// maxOverhead returns the worst-case per-chunk overhead (header + continuation
+// notes). Used to compute the available space for section content.
 func maxOverhead(identifier string) int {
 	return maxHeaderLen(identifier) + len(continuedFrom) + len(continuedIn)
 }
 
-// SplitIntoChunks packs appSections into decorated chunks that each fit within
-// cfg.MaxLength. Footer is appended to the final chunk only.
+// SplitIntoChunks packs pre-split sections into decorated VCS comment chunks
+// that each fit within cfg.MaxLength. The footer is appended only to the final
+// chunk.
 //
-// Splitting strategy:
-//  1. Structural: app sections are kept intact wherever possible.
-//  2. Byte-level fallback: if a single section exceeds the available space,
-//     it is split at byte boundaries with open markdown constructs repaired.
-//  3. Cap: if MaxChunks > 0 and chunks exceed the cap, the last chunk is
-//     truncated with a warning.
+// Sections are expected to arrive pre-split from [Message.buildAppSections] so
+// that each individual section already fits within the available space. This
+// function handles:
+//
+//  1. Greedy bin-packing of sections into chunks.
+//  2. Decorating each chunk with a header, continuation notes, and the footer.
+//  3. Enforcing MaxChunks - if the cap is hit, the last chunk carries a
+//     truncation warning.
 func SplitIntoChunks(appSections []string, footer string, cfg ChunkConfig) []string {
 	overhead := maxOverhead(cfg.Identifier)
 	available := cfg.MaxLength - overhead - len(footer)
@@ -74,7 +89,7 @@ func SplitIntoChunks(appSections []string, footer string, cfg ChunkConfig) []str
 			sb.WriteString(continuedFrom)
 		}
 
-		sb.WriteString(strings.Join(sections, "\n\n"))
+		sb.WriteString(strings.Join(sections, sectionSeparator))
 
 		isLast := i == total-1
 		if isLast {
@@ -94,6 +109,10 @@ func SplitIntoChunks(appSections []string, footer string, cfg ChunkConfig) []str
 
 // packSections greedily packs sections into chunks where each chunk's
 // content does not exceed availablePerChunk bytes.
+//
+// Sections are expected to be pre-split by buildAppSections so that each
+// individual section fits within the limit. If a section still exceeds the
+// limit (defensive), it is placed alone in its own chunk with a warning log.
 func packSections(sections []string, availablePerChunk int) [][]string {
 	if len(sections) == 0 {
 		return nil
@@ -107,19 +126,18 @@ func packSections(sections []string, availablePerChunk int) [][]string {
 		sectionLen := len(section)
 		separatorLen := 0
 		if len(current) > 0 {
-			separatorLen = 2 // "\n\n"
+			separatorLen = len(sectionSeparator)
 		}
 
 		if sectionLen > availablePerChunk {
+			log.Warn().Int("section_len", sectionLen).Int("limit", availablePerChunk).
+				Msg("section exceeds chunk limit; placing in its own chunk")
 			if len(current) > 0 {
 				chunks = append(chunks, current)
 				current = nil
 				currentLen = 0
 			}
-			parts := byteSplitMarkdown(section, availablePerChunk)
-			for _, part := range parts {
-				chunks = append(chunks, []string{part})
-			}
+			chunks = append(chunks, []string{section})
 			continue
 		}
 
@@ -140,102 +158,8 @@ func packSections(sections []string, availablePerChunk int) [][]string {
 	return chunks
 }
 
-// byteSplitMarkdown splits content into pieces of at most maxLen bytes.
-// At each split point it closes any open markdown code blocks (```) and
-// <details> tags, then reopens them at the start of the next piece.
-func byteSplitMarkdown(content string, maxLen int) []string {
-	if maxLen <= 0 {
-		return []string{content}
-	}
-	if len(content) <= maxLen {
-		return []string{content}
-	}
-
-	var parts []string
-	remaining := content
-
-	for len(remaining) > 0 {
-		if len(remaining) <= maxLen {
-			parts = append(parts, remaining)
-			break
-		}
-
-		splitAt := maxLen
-		suffix := closingTags(remaining[:splitAt])
-		prefix := reopeningTags(remaining[:splitAt])
-
-		for len(remaining[:splitAt])+len(suffix) > maxLen && splitAt > 0 {
-			splitAt--
-			suffix = closingTags(remaining[:splitAt])
-		}
-		if splitAt == 0 {
-			splitAt = maxLen
-			suffix = ""
-			prefix = ""
-		}
-
-		parts = append(parts, remaining[:splitAt]+suffix)
-		remaining = prefix + remaining[splitAt:]
-	}
-
-	return parts
-}
-
-// closingTags returns markdown closing tags needed for any constructs left
-// open in the given text (code fences and <details> tags).
-func closingTags(text string) string {
-	var sb strings.Builder
-	if hasOpenCodeFence(text) {
-		sb.WriteString("\n```\n")
-	}
-	openDetails := countOpen(text, "<details>", "</details>")
-	for range openDetails {
-		sb.WriteString("</details>")
-	}
-	return sb.String()
-}
-
-// reopeningTags returns the markdown opening tags that need to be prepended
-// to the next chunk to continue any constructs that were left open.
-func reopeningTags(text string) string {
-	var sb strings.Builder
-	openDetails := countOpen(text, "<details>", "</details>")
-	for range openDetails {
-		sb.WriteString("<details>\n")
-	}
-	if hasOpenCodeFence(text) {
-		sb.WriteString("```\n")
-	}
-	return sb.String()
-}
-
-// hasOpenCodeFence returns true if the text has an odd number of ``` fences,
-// meaning a code block is left open.
-func hasOpenCodeFence(text string) bool {
-	count := 0
-	idx := 0
-	for {
-		pos := strings.Index(text[idx:], "```")
-		if pos == -1 {
-			break
-		}
-		count++
-		idx += pos + 3
-	}
-	return count%2 != 0
-}
-
-// countOpen returns how many opening tags are unmatched by closing tags.
-func countOpen(text, open, close string) int {
-	opens := strings.Count(text, open)
-	closes := strings.Count(text, close)
-	n := opens - closes
-	if n < 0 {
-		return 0
-	}
-	return n
-}
-
+// countSections returns the total number of sections across all chunks.
+// Used to detect whether the MaxChunks cap caused sections to be dropped.
 func countSections(chunks [][]string) int {
 	n := 0
 	for _, c := range chunks {

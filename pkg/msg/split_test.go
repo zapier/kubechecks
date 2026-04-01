@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 func TestSplitIntoChunks(t *testing.T) {
@@ -72,98 +74,6 @@ func TestSplitIntoChunks(t *testing.T) {
 	})
 }
 
-func TestByteSplitMarkdown(t *testing.T) {
-	t.Run("content fits in one piece", func(t *testing.T) {
-		result := byteSplitMarkdown("hello", 100)
-		require.Len(t, result, 1)
-		assert.Equal(t, "hello", result[0])
-	})
-
-	t.Run("content is split across pieces", func(t *testing.T) {
-		content := strings.Repeat("a", 100)
-		result := byteSplitMarkdown(content, 30)
-
-		joined := strings.Join(result, "")
-		assert.Equal(t, content, joined)
-		for _, part := range result[:len(result)-1] {
-			assert.LessOrEqual(t, len(part), 30)
-		}
-	})
-
-	t.Run("code fence is closed and reopened", func(t *testing.T) {
-		content := "before\n```\ncode line 1\ncode line 2\ncode line 3\n```\nafter"
-		result := byteSplitMarkdown(content, 30)
-
-		require.Greater(t, len(result), 1)
-
-		openFenceFound := false
-		for i, part := range result {
-			if i > 0 && i < len(result)-1 {
-				if hasOpenCodeFence(part[:strings.LastIndex(part, "```")]) {
-					continue
-				}
-			}
-			_ = part
-		}
-		_ = openFenceFound
-
-		for _, part := range result {
-			fenceCount := strings.Count(part, "```")
-			assert.Equal(t, 0, fenceCount%2, "chunk should have balanced code fences: %q", part)
-		}
-	})
-
-	t.Run("details tags are closed and reopened", func(t *testing.T) {
-		content := "<details>\n<summary>title</summary>\n" + strings.Repeat("x", 100) + "\n</details>"
-		result := byteSplitMarkdown(content, 60)
-
-		require.Greater(t, len(result), 1)
-		for _, part := range result {
-			opens := strings.Count(part, "<details>")
-			closes := strings.Count(part, "</details>")
-			assert.Equal(t, opens, closes, "chunk should have balanced details tags: %q", part)
-		}
-	})
-}
-
-func TestHasOpenCodeFence(t *testing.T) {
-	tests := []struct {
-		name string
-		text string
-		want bool
-	}{
-		{"no fences", "plain text", false},
-		{"closed fence", "```\ncode\n```", false},
-		{"open fence", "```\ncode", true},
-		{"two closed fences", "```\na\n```\n```\nb\n```", false},
-		{"one open after closed", "```\na\n```\n```\nb", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, hasOpenCodeFence(tt.text))
-		})
-	}
-}
-
-func TestCountOpen(t *testing.T) {
-	tests := []struct {
-		name string
-		text string
-		want int
-	}{
-		{"none", "plain text", 0},
-		{"one open", "<details>content", 1},
-		{"balanced", "<details>content</details>", 0},
-		{"two open one closed", "<details><details>inner</details>", 1},
-		{"more closes than opens", "</details></details>", 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, countOpen(tt.text, "<details>", "</details>"))
-		})
-	}
-}
-
 func TestChunkHeader(t *testing.T) {
 	t.Run("single chunk has no part number", func(t *testing.T) {
 		h := chunkHeader("staging", 1, 1)
@@ -175,3 +85,162 @@ func TestChunkHeader(t *testing.T) {
 		assert.Equal(t, "# Kubechecks staging Report (Part 2 of 5)\n", h)
 	})
 }
+
+func TestSplitDetailsAtLines(t *testing.T) {
+	t.Run("content fits in one piece", func(t *testing.T) {
+		result := splitDetailsAtLines("short content", 100)
+		require.Len(t, result, 1)
+		assert.Equal(t, "short content", result[0])
+	})
+
+	t.Run("splits at line boundaries", func(t *testing.T) {
+		lines := "line1\nline2\nline3\nline4\nline5\n"
+		result := splitDetailsAtLines(lines, 18)
+
+		require.Greater(t, len(result), 1)
+		joined := strings.Join(result, "")
+		assert.Equal(t, lines, joined)
+		for _, part := range result {
+			assert.True(t, strings.HasSuffix(part, "\n"), "each piece should end at a line boundary: %q", part)
+		}
+	})
+
+	t.Run("code fence is closed and reopened with language", func(t *testing.T) {
+		content := "```diff\n-old\n+new\n+more\n+lines\n+here\n```\n"
+		result := splitDetailsAtLines(content, 30)
+
+		require.Greater(t, len(result), 1)
+		for _, part := range result {
+			opens := strings.Count(part, "```")
+			assert.Equal(t, 0, opens%2, "each piece should have balanced fences: %q", part)
+		}
+		assert.True(t, strings.HasPrefix(result[0], "```diff\n"))
+		for _, part := range result[1:] {
+			assert.True(t, strings.HasPrefix(part, "```diff\n"),
+				"continuation should reopen with language hint: %q", part)
+		}
+	})
+
+	t.Run("plain code fence without language", func(t *testing.T) {
+		content := "```\ncode1\ncode2\ncode3\ncode4\n```\n"
+		result := splitDetailsAtLines(content, 20)
+
+		require.Greater(t, len(result), 1)
+		for _, part := range result[1:] {
+			assert.True(t, strings.HasPrefix(part, "```\n"),
+				"continuation should reopen fence: %q", part)
+		}
+	})
+
+	t.Run("content without code fence", func(t *testing.T) {
+		content := "text line 1\ntext line 2\ntext line 3\ntext line 4\n"
+		result := splitDetailsAtLines(content, 25)
+
+		require.Greater(t, len(result), 1)
+		joined := strings.Join(result, "")
+		assert.Equal(t, content, joined)
+	})
+
+	t.Run("oversized single line is truncated", func(t *testing.T) {
+		longLine := strings.Repeat("x", 200) + "\n"
+		content := "short\n" + longLine + "also short\n"
+		result := splitDetailsAtLines(content, 80)
+
+		for _, part := range result {
+			assert.LessOrEqual(t, len(part), 80, "each piece must fit within maxLen: len=%d", len(part))
+		}
+		combined := strings.Join(result, "")
+		assert.Contains(t, combined, "short\n")
+		assert.Contains(t, combined, "... (line truncated)")
+		assert.Contains(t, combined, "also short\n")
+	})
+
+	t.Run("oversized line inside code fence accounts for reopen prefix", func(t *testing.T) {
+		longLine := strings.Repeat("y", 200) + "\n"
+		content := "```diff\n" + longLine + "```\n"
+		result := splitDetailsAtLines(content, 80)
+
+		for i, part := range result {
+			assert.LessOrEqual(t, len(part), 80,
+				"piece %d must fit within maxLen: len=%d, content=%q", i, len(part), part)
+		}
+		assert.Contains(t, strings.Join(result, ""), "... (line truncated)")
+	})
+}
+
+func TestBuildAppSections(t *testing.T) {
+	mockVcs := &mockEmoji{}
+
+	t.Run("small app fits in one section", func(t *testing.T) {
+		m := NewMessage("test/repo", 1, 1, mockVcs)
+		results := &AppResults{}
+		results.AddCheckResult(Result{
+			State:   pkg.StateSuccess,
+			Summary: "Check",
+			Details: "small details",
+		})
+
+		sections := m.buildAppSections("my-app", results, 10000)
+		require.Len(t, sections, 1)
+		assert.Contains(t, sections[0], "my-app")
+		assert.Contains(t, sections[0], "small details")
+	})
+
+	t.Run("multiple checks split per-check", func(t *testing.T) {
+		m := NewMessage("test/repo", 1, 1, mockVcs)
+		results := &AppResults{}
+		results.AddCheckResult(Result{
+			State:   pkg.StateSuccess,
+			Summary: "Check A",
+			Details: strings.Repeat("a", 100),
+		})
+		results.AddCheckResult(Result{
+			State:   pkg.StateSuccess,
+			Summary: "Check B",
+			Details: strings.Repeat("b", 100),
+		})
+
+		sections := m.buildAppSections("my-app", results, 300)
+
+		require.Greater(t, len(sections), 1, "checks should be in separate sections")
+		assert.Contains(t, sections[0], "Check A")
+		assert.Contains(t, sections[1], "Check B")
+		for _, s := range sections {
+			assert.Contains(t, s, "my-app", "every section should have the app header")
+			assert.LessOrEqual(t, len(s), 300, "each section should fit within the limit")
+		}
+	})
+
+	t.Run("large check is split at line boundaries", func(t *testing.T) {
+		m := NewMessage("test/repo", 1, 1, mockVcs)
+		results := &AppResults{}
+
+		var lines []string
+		for i := range 50 {
+			lines = append(lines, fmt.Sprintf("+line %d of the diff content", i))
+		}
+		bigDiff := "```diff\n" + strings.Join(lines, "\n") + "\n```"
+
+		results.AddCheckResult(Result{
+			State:   pkg.StateSuccess,
+			Summary: "Diff",
+			Details: bigDiff,
+		})
+
+		sections := m.buildAppSections("my-app", results, 500)
+
+		require.Greater(t, len(sections), 1, "should split into multiple sections")
+		for _, s := range sections {
+			assert.Contains(t, s, "my-app", "every section should have the app header")
+			assert.Contains(t, s, "<details>", "every section should be wrapped in details")
+			assert.Contains(t, s, "</details>", "every section should have closing details")
+			assert.LessOrEqual(t, len(s), 500, "each section should fit within the limit")
+		}
+		assert.Contains(t, sections[0], "Part 1 of")
+		assert.Contains(t, sections[1], "Part 2 of")
+	})
+}
+
+type mockEmoji struct{}
+
+func (m *mockEmoji) ToEmoji(_ pkg.CommitState) string { return ":white_check_mark:" }
