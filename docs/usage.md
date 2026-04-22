@@ -38,8 +38,10 @@ The full list of supported environment variables is described below:
 |-----------|-------------|------|
 |`KUBECHECKS_ADDITIONAL_APPS_NAMESPACES`|Additional namespaces other than the ArgoCDNamespace to monitor for applications.|`[]`|
 |`KUBECHECKS_AI_REVIEW_EXTRA_INSTRUCTIONS`|Extra instructions appended to the AI review prompt. Use for org-wide policies (e.g. 'all deployments must have resource limits').||
+|`KUBECHECKS_AI_REVIEW_MAX_APPS`|Maximum number of apps to AI review per MR/PR. Apps beyond this cap are skipped.|`10`|
 |`KUBECHECKS_AI_REVIEW_MAX_TURNS`|Maximum tool use iterations for AI review.|`20`|
 |`KUBECHECKS_AI_REVIEW_MODEL`|AI review model ID.|`claude-sonnet-4-6`|
+|`KUBECHECKS_AI_REVIEW_POST_SUGGESTIONS`|Post AI-generated inline code suggestions as PR/MR review comments. When false, the AI review summary comment is still posted but inline suggestions are suppressed.|`false`|
 |`KUBECHECKS_AI_REVIEW_PROVIDER`|AI review provider. One of anthropic, openai.|`anthropic`|
 |`KUBECHECKS_AI_REVIEW_SYSTEM_PROMPT`|Custom system prompt for AI review. Overrides the default review instructions.||
 |`KUBECHECKS_AI_REVIEW_TIMEOUT`|Timeout per AI review.|`5m0s`|

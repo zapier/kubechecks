@@ -197,6 +197,8 @@ func (w *worker) runAIReview(ctx context.Context, app v1alpha1.Application, appN
 		YamlManifests:     yamlManifests,
 		ChangedFiles:      w.changedFiles,
 		RenderedDiff:      renderedDiff,
+		PRTitle:           w.pullRequest.Title,
+		PRDescription:     w.pullRequest.Description,
 	}
 
 	result, err := w.aiReviewChecker.Check(ctx, request)

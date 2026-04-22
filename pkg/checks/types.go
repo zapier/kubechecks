@@ -39,4 +39,6 @@ type Request struct {
 	YamlManifests     []string
 	ChangedFiles      []string // files changed in the PR/MR
 	RenderedDiff      string   // pre-computed diff text; if empty, Check() will compute it
+	PRTitle           string   // MR/PR title — author's stated intent
+	PRDescription     string   // MR/PR description — author's stated intent (passed to LLM, truncated at send time)
 }

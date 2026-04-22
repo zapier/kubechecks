@@ -75,6 +75,7 @@ type ServerConfig struct {
 	// ai
 	EnableAIDiffSummary       bool            `mapstructure:"enable-ai-diff-summary"`
 	EnableAIReview            bool            `mapstructure:"enable-ai-review"`
+	AIReviewPostSuggestions   bool            `mapstructure:"ai-review-post-suggestions"`
 	AIReviewProvider          string          `mapstructure:"ai-review-provider"`
 	AIReviewModel             string          `mapstructure:"ai-review-model"`
 	AIReviewMaxApps           int             `mapstructure:"ai-review-max-apps"`

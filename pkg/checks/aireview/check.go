@@ -212,7 +212,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (retResult 
 
 	// Bundle diff, manifests, and Helm values inline so the LLM can start reviewing immediately
 	renderedManifestsText := strings.Join(request.YamlManifests, "\n---\n")
-	userPrompt := aireview.BuildUserPrompt(request.AppName, renderedDiff, renderedManifestsText, helmValues, changedFilesContent, toolNames)
+	userPrompt := aireview.BuildUserPrompt(request.AppName, request.PRTitle, request.PRDescription, renderedDiff, renderedManifestsText, helmValues, changedFilesContent, toolNames)
 
 	// Run the agentic loop — blocking call
 	var eventID string
