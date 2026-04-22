@@ -157,6 +157,9 @@ func init() {
 	stringFlag(flags, "ai-review-model", "AI review model ID.",
 		newStringOpts().
 			withDefault("claude-sonnet-4-6"))
+	int64Flag(flags, "ai-review-max-apps", "Maximum number of apps to AI review per MR/PR. Apps beyond this cap are skipped.",
+		newInt64Opts().
+			withDefault(10))
 	int64Flag(flags, "ai-review-max-turns", "Maximum tool use iterations for AI review.",
 		newInt64Opts().
 			withDefault(20))

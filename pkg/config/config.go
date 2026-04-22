@@ -77,6 +77,7 @@ type ServerConfig struct {
 	EnableAIReview            bool            `mapstructure:"enable-ai-review"`
 	AIReviewProvider          string          `mapstructure:"ai-review-provider"`
 	AIReviewModel             string          `mapstructure:"ai-review-model"`
+	AIReviewMaxApps           int             `mapstructure:"ai-review-max-apps"`
 	AIReviewMaxTurns          int             `mapstructure:"ai-review-max-turns"`
 	AIReviewTimeout           time.Duration   `mapstructure:"ai-review-timeout"`
 	AIReviewSystemPrompt      string          `mapstructure:"ai-review-system-prompt"`
