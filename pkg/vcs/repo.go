@@ -19,6 +19,8 @@ type PullRequest struct {
 	Username      string   // Username of auth'd client
 	Email         string   // Email of auth'd client
 	Labels        []string // Labels associated with the MR/PR
+	Title         string   // MR/PR title — author's one-line intent
+	Description   string   // MR/PR description — author's stated intent (may be truncated before sending to LLM)
 
 	Config config.ServerConfig
 }

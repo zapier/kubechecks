@@ -221,6 +221,7 @@ helm_resource(name='kubechecks',
                 '--set=secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
                 '--set=secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
                 '--set=secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
+                '--set=secrets.env.KUBECHECKS_ANTHROPIC_API_KEY=' + (os.getenv('ANTHROPIC_API_KEY') if os.getenv('ANTHROPIC_API_KEY') != None else ""),
               ],
               labels=["kubechecks"],
               resource_deps=[

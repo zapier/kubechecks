@@ -68,7 +68,8 @@ var processCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to create processors")
 		}
 
-		if err := server.ProcessCheckEvent(ctx, repo, ctr, processors); err != nil {
+		aiReviewChecker := getAIReviewChecker(ctr)
+		if err := server.ProcessCheckEvent(ctx, repo, ctr, processors, aiReviewChecker); err != nil {
 			log.Fatal().Err(err).Msg("failed to process check")
 		}
 	},

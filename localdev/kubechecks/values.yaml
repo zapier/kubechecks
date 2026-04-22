@@ -31,6 +31,17 @@ configMap:
     KUBECHECKS_USE_ARCHIVE_MODE: "true"
     KUBECHECKS_ARCHIVE_CACHE_DIR: "/tmp/kubechecks/archives"
     KUBECHECKS_ARCHIVE_CACHE_TTL: "1h"
+    # AI Diff Summary (Summary report as part of the manifest diff report, disable it if testing with AI-REVIEW)
+    KUBECHECKS_ENABLE_AI_DIFF_SUMMARY: "false"
+    # AI Review (In-depth AI review, including recommendation, performance impact)
+    KUBECHECKS_ENABLE_AI_REVIEW: "true"
+    KUBECHECKS_AI_REVIEW_PROVIDER: "anthropic"
+    KUBECHECKS_AI_REVIEW_MODEL: "claude-sonnet-4-6"
+    KUBECHECKS_AI_REVIEW_MAX_TURNS: "20"
+    KUBECHECKS_AI_REVIEW_TIMEOUT: "5m"
+    KUBECHECKS_WORST_AI_REVIEW_STATE: "error"
+    # KUBECHECKS_AI_REVIEW_SYSTEM_PROMPT: ""
+    KUBECHECKS_CHART_CACHE_DIR: "/tmp/kubechecks/charts"
 
 deployment:
   annotations:

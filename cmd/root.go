@@ -147,6 +147,36 @@ func init() {
 		newStringOpts().
 			withDefault("https://kubepug.xyz/data/data.json"))
 
+	// ai
+	boolFlag(flags, "enable-ai-diff-summary", "Enable AI-powered diff summary. Requires openai-api-token or anthropic-api-key.")
+	boolFlag(flags, "enable-ai-review", "Enable AI-powered impact review of manifest changes.")
+	boolFlag(flags, "ai-review-post-suggestions", "Post AI-generated inline code suggestions as PR/MR review comments. When false, the AI review summary comment is still posted but inline suggestions are suppressed.")
+	stringFlag(flags, "ai-review-provider", "AI review provider.",
+		newStringOpts().
+			withChoices("anthropic", "openai").
+			withDefault("anthropic"))
+	stringFlag(flags, "ai-review-model", "AI review model ID.",
+		newStringOpts().
+			withDefault("claude-sonnet-4-6"))
+	int64Flag(flags, "ai-review-max-apps", "Maximum number of apps to AI review per MR/PR. Apps beyond this cap are skipped.",
+		newInt64Opts().
+			withDefault(10))
+	int64Flag(flags, "ai-review-max-turns", "Maximum tool use iterations for AI review.",
+		newInt64Opts().
+			withDefault(20))
+	durationFlag(flags, "ai-review-timeout", "Timeout per AI review.",
+		newDurationOpts().
+			withDefault(5*time.Minute))
+	stringFlag(flags, "ai-review-system-prompt", "Custom system prompt for AI review. Overrides the default review instructions.")
+	stringFlag(flags, "ai-review-extra-instructions", "Extra instructions appended to the AI review prompt. Use for org-wide policies (e.g. 'all deployments must have resource limits').")
+	stringFlag(flags, "anthropic-api-key", "Anthropic API key for AI review.")
+	stringFlag(flags, "chart-cache-dir", "Directory for caching downloaded Helm charts for AI review.",
+		newStringOpts().
+			withDefault("/tmp/kubechecks/charts"))
+	stringFlag(flags, "worst-ai-review-state", "The worst state that can be returned from AI review.",
+		newStringOpts().
+			withDefault("warning"))
+
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()
 }
@@ -161,9 +191,10 @@ func setupLogOutput() {
 
 	zerolog.SetGlobalLevel(level)
 
-	// short the caller output to file:line only
+	// short the caller output to folder/file:line only
 	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
-		return filepath.Base(file) + ":" + strconv.Itoa(line)
+		dir := filepath.Base(filepath.Dir(file))
+		return dir + "/" + filepath.Base(file) + ":" + strconv.Itoa(line)
 	}
 	output := zerolog.ConsoleWriter{Out: os.Stdout}
 	log.Logger = log.Output(output)

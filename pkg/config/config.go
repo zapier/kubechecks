@@ -72,6 +72,21 @@ type ServerConfig struct {
 	WorstPreupgradeState  pkg.CommitState `mapstructure:"worst-preupgrade-state"`
 	KubepugGeneratedStore string          `mapstructure:"kubepug-generated-store"`
 
+	// ai
+	EnableAIDiffSummary       bool            `mapstructure:"enable-ai-diff-summary"`
+	EnableAIReview            bool            `mapstructure:"enable-ai-review"`
+	AIReviewPostSuggestions   bool            `mapstructure:"ai-review-post-suggestions"`
+	AIReviewProvider          string          `mapstructure:"ai-review-provider"`
+	AIReviewModel             string          `mapstructure:"ai-review-model"`
+	AIReviewMaxApps           int             `mapstructure:"ai-review-max-apps"`
+	AIReviewMaxTurns          int             `mapstructure:"ai-review-max-turns"`
+	AIReviewTimeout           time.Duration   `mapstructure:"ai-review-timeout"`
+	AIReviewSystemPrompt      string          `mapstructure:"ai-review-system-prompt"`
+	AIReviewExtraInstructions string          `mapstructure:"ai-review-extra-instructions"`
+	AnthropicAPIKey           string          `mapstructure:"anthropic-api-key"`
+	ChartCacheDir             string          `mapstructure:"chart-cache-dir"`
+	WorstAIReviewState        pkg.CommitState `mapstructure:"worst-ai-review-state"`
+
 	// misc
 	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`
 	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`

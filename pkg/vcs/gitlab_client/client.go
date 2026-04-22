@@ -34,6 +34,7 @@ type GLClient struct {
 	MergeRequests   MergeRequestsServices
 	RepositoryFiles RepositoryFilesServices
 	Notes           NotesServices
+	Discussions     DiscussionsServices
 	Pipelines       PipelinesServices
 	Projects        ProjectsServices
 	Commits         CommitsServices
@@ -75,6 +76,7 @@ func CreateGitlabClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 			MergeRequests:   &MergeRequestsService{c.MergeRequests},
 			RepositoryFiles: &RepositoryFilesService{c.RepositoryFiles},
 			Notes:           &NotesService{c.Notes},
+			Discussions:     &DiscussionsService{c.Discussions},
 			Projects:        &ProjectsService{c.Projects},
 			Commits:         &CommitsService{c.Commits},
 			Pipelines:       &PipelinesService{c.Pipelines},
@@ -263,6 +265,8 @@ func (c *Client) LoadHook(ctx context.Context, id string) (vcs.PullRequest, erro
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        mergeRequest.Labels,
+		Title:         mergeRequest.Title,
+		Description:   mergeRequest.Description,
 
 		Config: c.cfg,
 	}, nil
@@ -287,6 +291,8 @@ func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) vcs.PullRequest {
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
+		Title:         event.ObjectAttributes.Title,
+		Description:   event.ObjectAttributes.Description,
 
 		Config: c.cfg,
 	}
@@ -310,6 +316,8 @@ func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullR
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
+		Title:         event.MergeRequest.Title,
+		Description:   event.MergeRequest.Description,
 
 		Config: c.cfg,
 	}
@@ -323,26 +331,39 @@ func (c *Client) GetPullRequestFiles(ctx context.Context, pr vcs.PullRequest) ([
 		Int("mr_number", pr.CheckID).
 		Msg("fetching MR files from GitLab API")
 
-	// List all diffs for the merge request
-	diffs, _, err := c.c.MergeRequests.ListMergeRequestDiffs(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list MR diffs from GitLab")
-	}
-
-	// Extract file paths from diffs
+	// List all diffs for the merge request, handling pagination
 	var allFiles []string
 	filesSeen := make(map[string]bool) // Deduplicate files
 
-	for _, diff := range diffs {
-		// Use NewPath for added/modified files, OldPath for deleted files
-		filePath := diff.NewPath
-		if filePath == "" || filePath == "/dev/null" {
-			filePath = diff.OldPath
+	opts := &gitlab.ListMergeRequestDiffsOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+			Page:    1,
+		},
+	}
+
+	for {
+		diffs, resp, err := c.c.MergeRequests.ListMergeRequestDiffs(pr.FullName, pr.CheckID, opts, gitlab.WithContext(ctx))
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to list MR diffs from GitLab")
 		}
-		if filePath != "" && filePath != "/dev/null" && !filesSeen[filePath] {
-			allFiles = append(allFiles, filePath)
-			filesSeen[filePath] = true
+
+		for _, diff := range diffs {
+			// Use NewPath for added/modified files, OldPath for deleted files
+			filePath := diff.NewPath
+			if filePath == "" || filePath == "/dev/null" {
+				filePath = diff.OldPath
+			}
+			if filePath != "" && filePath != "/dev/null" && !filesSeen[filePath] {
+				allFiles = append(allFiles, filePath)
+				filesSeen[filePath] = true
+			}
 		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
 	}
 
 	log.Debug().

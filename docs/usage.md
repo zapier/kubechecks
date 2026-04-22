@@ -37,6 +37,15 @@ The full list of supported environment variables is described below:
 |Env Var|Description|Default Value|
 |-----------|-------------|------|
 |`KUBECHECKS_ADDITIONAL_APPS_NAMESPACES`|Additional namespaces other than the ArgoCDNamespace to monitor for applications.|`[]`|
+|`KUBECHECKS_AI_REVIEW_EXTRA_INSTRUCTIONS`|Extra instructions appended to the AI review prompt. Use for org-wide policies (e.g. 'all deployments must have resource limits').||
+|`KUBECHECKS_AI_REVIEW_MAX_APPS`|Maximum number of apps to AI review per MR/PR. Apps beyond this cap are skipped.|`10`|
+|`KUBECHECKS_AI_REVIEW_MAX_TURNS`|Maximum tool use iterations for AI review.|`20`|
+|`KUBECHECKS_AI_REVIEW_MODEL`|AI review model ID.|`claude-sonnet-4-6`|
+|`KUBECHECKS_AI_REVIEW_POST_SUGGESTIONS`|Post AI-generated inline code suggestions as PR/MR review comments. When false, the AI review summary comment is still posted but inline suggestions are suppressed.|`false`|
+|`KUBECHECKS_AI_REVIEW_PROVIDER`|AI review provider. One of anthropic, openai.|`anthropic`|
+|`KUBECHECKS_AI_REVIEW_SYSTEM_PROMPT`|Custom system prompt for AI review. Overrides the default review instructions.||
+|`KUBECHECKS_AI_REVIEW_TIMEOUT`|Timeout per AI review.|`5m0s`|
+|`KUBECHECKS_ANTHROPIC_API_KEY`|Anthropic API key for AI review.||
 |`KUBECHECKS_ARCHIVE_CACHE_DIR`|Directory for archive cache.|`/tmp/kubechecks/archives`|
 |`KUBECHECKS_ARCHIVE_CACHE_TTL`|Time-to-live for cached archives.|`1h0m0s`|
 |`KUBECHECKS_ARGOCD_API_INSECURE`|Enable to use insecure connections over TLS to the ArgoCD API server.|`false`|
@@ -47,6 +56,9 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ARGOCD_REPOSITORY_ENDPOINT`|Location of the argocd repository service endpoint.|`argocd-repo-server.argocd:8081`|
 |`KUBECHECKS_ARGOCD_REPOSITORY_INSECURE`|True if you need to skip validating the grpc tls certificate.|`true`|
 |`KUBECHECKS_ARGOCD_SEND_FULL_REPOSITORY`|Set to true if you want to try to send the full repository to ArgoCD when generating manifests.|`false`|
+|`KUBECHECKS_CHART_CACHE_DIR`|Directory for caching downloaded Helm charts for AI review.|`/tmp/kubechecks/charts`|
+|`KUBECHECKS_ENABLE_AI_DIFF_SUMMARY`|Enable AI-powered diff summary. Requires openai-api-token or anthropic-api-key.|`false`|
+|`KUBECHECKS_ENABLE_AI_REVIEW`|Enable AI-powered impact review of manifest changes.|`false`|
 |`KUBECHECKS_ENABLE_CONFTEST`|Set to true to enable conftest policy checking of manifests.|`false`|
 |`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
@@ -90,6 +102,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.||
 |`KUBECHECKS_WEBHOOK_URL_BASE`|The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.||
 |`KUBECHECKS_WEBHOOK_URL_PREFIX`|If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.||
+|`KUBECHECKS_WORST_AI_REVIEW_STATE`|The worst state that can be returned from AI review.|`warning`|
 |`KUBECHECKS_WORST_CONFTEST_STATE`|The worst state that can be returned from conftest.|`panic`|
 |`KUBECHECKS_WORST_HOOKS_STATE`|The worst state that can be returned from the hooks renderer.|`panic`|
 |`KUBECHECKS_WORST_KUBECONFORM_STATE`|The worst state that can be returned from kubeconform.|`panic`|
