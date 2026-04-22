@@ -42,6 +42,7 @@ type worker struct {
 	getRepo             func(ctx context.Context, cloneURL, branchName string) (*git.Repo, error)
 	queueApp, removeApp func(application v1alpha1.Application)
 	addAIReviewResult   func(appName string, result msg.Result, suggestions []vcs.ReviewSuggestion)
+	claimAIReviewSlot   func() bool
 	changedFiles        []string
 }
 
@@ -149,6 +150,8 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 
 		if strings.TrimSpace(diffText) == "" {
 			rootLogger.Debug().Caller().Str("app", appName).Msg("no manifest changes detected, skipping AI review")
+		} else if !w.claimAIReviewSlot() {
+			rootLogger.Info().Str("app", appName).Msg("AI review cap reached, skipping AI review for this app")
 		} else {
 			aiReviewWg.Add(1)
 			go func() {

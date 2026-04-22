@@ -31,6 +31,10 @@ import (
 
 var tracer = otel.Tracer("pkg/events")
 
+// AIReviewHardMaxApps is the absolute upper bound for AI reviews per MR/PR.
+// Even if the user configures a higher value, this limit applies.
+const AIReviewHardMaxApps = 50
+
 // AIReviewChecker runs AI review for a single app.
 // Defined here to avoid import cycles with pkg/checks/aireview.
 type AIReviewChecker interface {
@@ -68,6 +72,8 @@ type CheckEvent struct {
 
 	aiReviewResults     []aiReviewAppResult
 	aiReviewResultsLock sync.Mutex
+	aiReviewCount       int32 // atomic counter for AI reviews claimed
+	aiReviewSkipped     int32 // atomic counter for AI reviews skipped due to cap
 
 	appsSent   int32
 	appChannel chan *v1alpha1.Application
@@ -379,6 +385,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 			queueApp:          ce.queueApp,
 			removeApp:         ce.removeApp,
 			addAIReviewResult: ce.addAIReviewResult,
+			claimAIReviewSlot: ce.claimAIReviewSlot,
 		}
 		go w.run(ctx)
 	}
@@ -513,6 +520,28 @@ func (ce *CheckEvent) createAIReviewNote(ctx context.Context) (*msg.Message, err
 	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report — AI Review\n:hourglass: AI review running...", ce.ctr.Config.Identifier))
 }
 
+// effectiveAIReviewMax returns the effective AI review cap, clamped to the hard limit.
+func (ce *CheckEvent) effectiveAIReviewMax() int {
+	max := ce.ctr.Config.AIReviewMaxApps
+	if max <= 0 {
+		max = AIReviewHardMaxApps
+	}
+	if max > AIReviewHardMaxApps {
+		max = AIReviewHardMaxApps
+	}
+	return max
+}
+
+// claimAIReviewSlot atomically claims an AI review slot. Returns true if under the cap.
+func (ce *CheckEvent) claimAIReviewSlot() bool {
+	n := int(atomic.AddInt32(&ce.aiReviewCount, 1))
+	if n > ce.effectiveAIReviewMax() {
+		atomic.AddInt32(&ce.aiReviewSkipped, 1)
+		return false
+	}
+	return true
+}
+
 // addAIReviewResult collects an AI review result (thread-safe).
 func (ce *CheckEvent) addAIReviewResult(appName string, result msg.Result, suggestions []vcs.ReviewSuggestion) {
 	ce.aiReviewResultsLock.Lock()
@@ -562,6 +591,22 @@ func (ce *CheckEvent) buildAIReviewComment(ctx context.Context) (string, pkg.Com
 		}
 	} else {
 		reviewBody = buildRawReviewBody(appReviews)
+	}
+
+	// Append cap notice if any apps were skipped
+	skipped := int(atomic.LoadInt32(&ce.aiReviewSkipped))
+	if skipped > 0 {
+		totalApps := len(ce.affectedItems.Applications)
+		reviewed := len(ce.aiReviewResults)
+		effectiveMax := ce.effectiveAIReviewMax()
+		capType := "configured limit"
+		if effectiveMax == AIReviewHardMaxApps && ce.ctr.Config.AIReviewMaxApps > AIReviewHardMaxApps {
+			capType = "hard limit"
+		}
+		reviewBody += fmt.Sprintf(
+			"\n---\n:warning: **AI review cap reached** — reviewed %d of %d affected apps (%s: %d). %d apps were skipped.\n",
+			reviewed, totalApps, capType, effectiveMax, skipped,
+		)
 	}
 
 	return header + reviewBody, worstState, allSuggestions
