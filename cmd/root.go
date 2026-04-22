@@ -150,6 +150,7 @@ func init() {
 	// ai
 	boolFlag(flags, "enable-ai-diff-summary", "Enable AI-powered diff summary. Requires openai-api-token or anthropic-api-key.")
 	boolFlag(flags, "enable-ai-review", "Enable AI-powered impact review of manifest changes.")
+	boolFlag(flags, "ai-review-post-suggestions", "Post AI-generated inline code suggestions as PR/MR review comments. When false, the AI review summary comment is still posted but inline suggestions are suppressed.")
 	stringFlag(flags, "ai-review-provider", "AI review provider.",
 		newStringOpts().
 			withChoices("anthropic", "openai").

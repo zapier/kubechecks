@@ -265,6 +265,8 @@ func (c *Client) LoadHook(ctx context.Context, id string) (vcs.PullRequest, erro
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        mergeRequest.Labels,
+		Title:         mergeRequest.Title,
+		Description:   mergeRequest.Description,
 
 		Config: c.cfg,
 	}, nil
@@ -289,6 +291,8 @@ func (c *Client) buildRepoFromEvent(event *gitlab.MergeEvent) vcs.PullRequest {
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
+		Title:         event.ObjectAttributes.Title,
+		Description:   event.ObjectAttributes.Description,
 
 		Config: c.cfg,
 	}
@@ -312,6 +316,8 @@ func (c *Client) buildRepoFromComment(event *gitlab.MergeCommentEvent) vcs.PullR
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
+		Title:         event.MergeRequest.Title,
+		Description:   event.MergeRequest.Description,
 
 		Config: c.cfg,
 	}

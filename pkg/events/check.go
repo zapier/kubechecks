@@ -427,7 +427,9 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		}
 		// Post code suggestions as a separate review with inline comments
 		if len(suggestions) > 0 {
-			if err = ce.ctr.VcsClient.PostReviewSuggestions(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s AI Suggestion Report ##", ce.ctr.Config.Identifier), suggestions); err != nil {
+			if !ce.ctr.Config.AIReviewPostSuggestions {
+				ce.logger.Info().Int("count", len(suggestions)).Msg("AI review inline suggestions suppressed by config (ai-review-post-suggestions=false)")
+			} else if err = ce.ctr.VcsClient.PostReviewSuggestions(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s AI Suggestion Report ##", ce.ctr.Config.Identifier), suggestions); err != nil {
 				ce.logger.Error().Caller().Err(err).Msg("failed to post AI review suggestions")
 			}
 		}
@@ -522,14 +524,14 @@ func (ce *CheckEvent) createAIReviewNote(ctx context.Context) (*msg.Message, err
 
 // effectiveAIReviewMax returns the effective AI review cap, clamped to the hard limit.
 func (ce *CheckEvent) effectiveAIReviewMax() int {
-	max := ce.ctr.Config.AIReviewMaxApps
-	if max <= 0 {
-		max = AIReviewHardMaxApps
+	maxApps := ce.ctr.Config.AIReviewMaxApps
+	if maxApps <= 0 {
+		maxApps = AIReviewHardMaxApps
 	}
-	if max > AIReviewHardMaxApps {
-		max = AIReviewHardMaxApps
+	if maxApps > AIReviewHardMaxApps {
+		maxApps = AIReviewHardMaxApps
 	}
-	return max
+	return maxApps
 }
 
 // claimAIReviewSlot atomically claims an AI review slot. Returns true if under the cap.
