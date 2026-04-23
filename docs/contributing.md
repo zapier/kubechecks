@@ -66,28 +66,100 @@ It creates:
 
 To get started do the following:
 
-* Copy the `.secret.example` and set required values.
+#### 1. Store secrets in your OS keychain
 
-    ```sh
-    cp .secret.example .secret
-    ```
+The OS keychain is the recommended path: secrets are loaded at `tilt up` time and never written to disk by Tilt. (A `.secret` file fallback still exists for backwards compatibility — see below — but that path *does* keep plaintext on disk and should be avoided.)
 
-    You will need to fill in either `GITLAB_TOKEN` or `GITLAB_TOKEN`  
-    If you are testing with GITHUB, please set the tilt_config.json file to specify the vcs-type as the default is `gitlab`:
+**macOS (Keychain Access):**
 
-      ```json title="tilt_config.json"
-      {
-        "vcs-type": "github"
-      }
-      ```
+> Note: the examples below use `-w` with **no value** on purpose, so `security` prompts for the secret interactively and it never lands in your shell history (or briefly in `ps`). Avoid the `-w "<value>"` form.
 
-    The token you specify must have ability to get repositories, add/delete comment and webhooks.
+```sh
+# Required: one of GITLAB_TOKEN or GITHUB_TOKEN
+security add-generic-password -a "$USER" -s "kubechecks/GITLAB_TOKEN" -w
+# or
+security add-generic-password -a "$USER" -s "kubechecks/GITHUB_TOKEN" -w
 
-* From the root directory of this repo:
+# Optional
+security add-generic-password -a "$USER" -s "kubechecks/KUBECHECKS_WEBHOOK_SECRET" -w
+security add-generic-password -a "$USER" -s "kubechecks/OPENAI_API_TOKEN" -w
+security add-generic-password -a "$USER" -s "kubechecks/ANTHROPIC_API_KEY" -w
+```
 
-    ```sh
-    tilt up
-    ```
+To update an existing secret, add the `-U` flag (still omit the value so it prompts):
+```sh
+security add-generic-password -a "$USER" -s "kubechecks/GITLAB_TOKEN" -U -w
+```
+
+To verify a secret is stored:
+```sh
+security find-generic-password -a "$USER" -s "kubechecks/GITLAB_TOKEN" -w
+```
+
+**Linux (pass - password-store):**
+
+First, install and initialize `pass` if you haven't already:
+```sh
+# Ubuntu/Debian
+sudo apt install pass
+
+# Fedora/RHEL
+sudo dnf install pass
+
+# Arch
+sudo pacman -S pass
+
+# Initialize with your GPG key (one-time setup)
+gpg --gen-key           # if you don't have a GPG key yet
+pass init "your-email@example.com"
+```
+
+Then store your secrets:
+```sh
+# Required: one of GITLAB_TOKEN or GITHUB_TOKEN
+pass insert kubechecks/GITLAB_TOKEN
+# or
+pass insert kubechecks/GITHUB_TOKEN
+
+# Optional
+pass insert kubechecks/KUBECHECKS_WEBHOOK_SECRET
+pass insert kubechecks/OPENAI_API_TOKEN
+pass insert kubechecks/ANTHROPIC_API_KEY
+```
+
+To verify a secret is stored:
+```sh
+pass kubechecks/GITLAB_TOKEN
+```
+
+**Fallback (.secret file):**
+
+For backwards compatibility, the Tiltfile still supports the `.secret` file approach. If a `.secret` file exists, it will be loaded first, with keychain values taking precedence.
+
+```sh
+cp .secret.example .secret
+# Edit .secret with your values
+```
+
+#### 2. Configure VCS type
+
+The token you specify must have the ability to get repositories, add/delete comments, and manage webhooks.
+
+If you are testing with GitHub, set the `tilt_config.json` file to specify the vcs-type (default is `gitlab`):
+
+```json title="tilt_config.json"
+{
+    "vcs-type": "github"
+}
+```
+
+#### 3. Start Tilt
+
+From the root directory of this repo:
+
+```sh
+tilt up
+```
 
 You should see output like:
 
