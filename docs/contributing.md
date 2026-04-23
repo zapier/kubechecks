@@ -68,25 +68,27 @@ To get started do the following:
 
 #### 1. Store secrets in your OS keychain
 
-Secrets are loaded from your OS keychain at `tilt up` time. No plaintext secret files are stored on disk.
+The OS keychain is the recommended path: secrets are loaded at `tilt up` time and never written to disk by Tilt. (A `.secret` file fallback still exists for backwards compatibility — see below — but that path *does* keep plaintext on disk and should be avoided.)
 
 **macOS (Keychain Access):**
 
+> Note: the examples below use `-w` with **no value** on purpose, so `security` prompts for the secret interactively and it never lands in your shell history (or briefly in `ps`). Avoid the `-w "<value>"` form.
+
 ```sh
 # Required: one of GITLAB_TOKEN or GITHUB_TOKEN
-security add-generic-password -a "$USER" -s "kubechecks/GITLAB_TOKEN" -w "glpat-xxxxxxxxxxxx"
+security add-generic-password -a "$USER" -s "kubechecks/GITLAB_TOKEN" -w
 # or
-security add-generic-password -a "$USER" -s "kubechecks/GITHUB_TOKEN" -w "ghp_xxxxxxxxxxxx"
+security add-generic-password -a "$USER" -s "kubechecks/GITHUB_TOKEN" -w
 
 # Optional
-security add-generic-password -a "$USER" -s "kubechecks/KUBECHECKS_WEBHOOK_SECRET" -w "your-webhook-secret"
-security add-generic-password -a "$USER" -s "kubechecks/OPENAI_API_TOKEN" -w "sk-xxxxxxxxxxxx"
-security add-generic-password -a "$USER" -s "kubechecks/ANTHROPIC_API_KEY" -w "sk-ant-xxxxxxxxxxxx"
+security add-generic-password -a "$USER" -s "kubechecks/KUBECHECKS_WEBHOOK_SECRET" -w
+security add-generic-password -a "$USER" -s "kubechecks/OPENAI_API_TOKEN" -w
+security add-generic-password -a "$USER" -s "kubechecks/ANTHROPIC_API_KEY" -w
 ```
 
-To update an existing secret, add the `-U` flag:
+To update an existing secret, add the `-U` flag (still omit the value so it prompts):
 ```sh
-security add-generic-password -a "$USER" -s "kubechecks/GITLAB_TOKEN" -w "new-value" -U
+security add-generic-password -a "$USER" -s "kubechecks/GITLAB_TOKEN" -U -w
 ```
 
 To verify a secret is stored:

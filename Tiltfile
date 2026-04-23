@@ -19,12 +19,12 @@ load('./.tilt/utils/Tiltfile', 'check_env_set')
 #   Linux:  pass insert kubechecks/<KEY_NAME>
 #
 # See docs/contributing.md for full setup instructions.
+_os_name = str(local('uname -s', quiet=True)).strip()
 
 def _get_secret(key_name, required=False):
     """Retrieve a secret from OS keychain, falling back to environment variable."""
-    os_name = str(local('uname -s', quiet=True)).strip()
     val = ''
-    if os_name == 'Darwin':
+    if _os_name == 'Darwin':
         val = str(local(
             'security find-generic-password -a "$USER" -s "kubechecks/%s" -w 2>/dev/null || echo ""' % key_name,
             quiet=True,
@@ -254,18 +254,40 @@ cmd_button('restart-pod',
 )
 
 
-# Build helm flags, only including secrets that are actually set
+# Keychain-loaded secrets are applied via k8s_yaml(blob(...)) so their values
+# never appear on a helm CLI arg (visible to `ps`) or on disk. Tilt auto-scrubs
+# values of applied Secrets from its log panes (secret_settings is a builtin).
+secret_settings(disable_scrub=False)
+
+_vcs_token = _gitlab_token if 'gitlab' in cfg.get('vcs-type', 'gitlab') else _github_token
+_local_secret_name = 'kubechecks-local-secrets'
+_local_secret_data = {'KUBECHECKS_VCS_TOKEN': _vcs_token}
+if _webhook_secret: _local_secret_data['KUBECHECKS_WEBHOOK_SECRET'] = _webhook_secret
+if _openai_token:   _local_secret_data['KUBECHECKS_OPENAI_API_TOKEN'] = _openai_token
+if _anthropic_key:  _local_secret_data['KUBECHECKS_ANTHROPIC_API_KEY'] = _anthropic_key
+
+k8s_yaml(encode_yaml({
+    'apiVersion': 'v1',
+    'kind': 'Secret',
+    'metadata': {'name': _local_secret_name, 'namespace': k8s_namespace},
+    'type': 'Opaque',
+    'stringData': _local_secret_data,
+}))
+k8s_resource(
+    objects=[_local_secret_name + ':secret'],
+    new_name=_local_secret_name,
+    resource_deps=['k8s:namespace'],
+    labels=['kubechecks'],
+)
+
 _helm_flags = [
     '--values=./localdev/kubechecks/values.yaml',
+    '--values=./localdev/kubechecks/secrets-values.yaml',
     '--set=configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg),
     '--set=configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
     '--set=configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
     '--set=configMap.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
-    '--set=secrets.env.KUBECHECKS_VCS_TOKEN=' + (_gitlab_token if 'gitlab' in cfg.get('vcs-type', 'gitlab') else _github_token),
 ]
-if _webhook_secret: _helm_flags.append('--set=secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + _webhook_secret)
-if _openai_token:   _helm_flags.append('--set=secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + _openai_token)
-if _anthropic_key:  _helm_flags.append('--set=secrets.env.KUBECHECKS_ANTHROPIC_API_KEY=' + _anthropic_key)
 
 helm_resource(name='kubechecks',
               chart='./charts/kubechecks',
@@ -276,6 +298,7 @@ helm_resource(name='kubechecks',
               labels=["kubechecks"],
               resource_deps=[
                 'k8s:namespace',
+                _local_secret_name,
                 'argocd',
                 'argocd-crds',
                 'tf-vcs' if cfg.get('enable_repo', True) else '',
