@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ghodss/yaml"
+	"github.com/masterminds/semver"
 	"github.com/rs/zerolog/log"
 	"github.com/zapier/kubechecks/pkg/vcs"
 	"go.opentelemetry.io/otel/attribute"
@@ -115,10 +116,10 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 	if err != nil {
 		rootLogger.Error().Caller().Err(err).Msg("Error retrieving the Kubernetes version")
 		k8sVersion = w.ctr.Config.FallbackK8sVersion
-	} else {
-		k8sVersion = fmt.Sprintf("%s.0", k8sVersion)
-		rootLogger.Info().Msgf("Kubernetes version: %s", k8sVersion)
 	}
+	rootLogger.Debug().Msgf("Kubernetes version (raw): %s", k8sVersion)
+	k8sVersion = normalizeK8sVersion(k8sVersion, w.ctr.Config.FallbackK8sVersion)
+	rootLogger.Info().Msgf("Kubernetes version (normalized): %s", k8sVersion)
 
 	runner := newRunner(w.ctr, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger, w.vcsNote, w.queueApp, w.removeApp)
 
@@ -127,6 +128,21 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 	}
 
 	runner.Wait()
+}
+
+// normalizeK8sVersion normalizes a Kubernetes version string to the format v$major.$minor.0.
+// It handles various input formats:
+//   - v1 -> v1.0.0
+//   - v1.2 -> v1.2.0
+//   - v1.2.3 -> v1.2.0 (patch is always zeroed)
+//   - v1.2.3+build -> v1.2.0 (metadata stripped, patch zeroed)
+//   - 1.2 -> v1.2.0 (v prefix added)
+func normalizeK8sVersion(version, fallbackVersion string) string {
+	v, err := semver.NewVersion(version)
+	if err != nil {
+		return fallbackVersion
+	}
+	return fmt.Sprintf("v%d.%d.0", v.Major(), v.Minor())
 }
 
 func convertJsonToYamlManifests(jsonManifests []string) []string {
