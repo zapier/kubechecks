@@ -1,55 +1,14 @@
 package events
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetK8sVersionWithFallback(t *testing.T) {
-	const fallbackVersion = "v1.25.0"
-
-	testcases := map[string]struct {
-		version  string
-		err      error
-		expected string
-	}{
-		"success with major.minor": {
-			version:  "v1.28",
-			err:      nil,
-			expected: "v1.28.0",
-		},
-		"success with full version - patch zeroed": {
-			version:  "v1.28.5",
-			err:      nil,
-			expected: "v1.28.0",
-		},
-		"success with build metadata - patch zeroed": {
-			version:  "v1.28.5+k3s1",
-			err:      nil,
-			expected: "v1.28.0",
-		},
-		"error returns fallback": {
-			version:  "",
-			err:      errors.New("cluster not found"),
-			expected: fallbackVersion,
-		},
-		"empty version with no error returns fallback": {
-			version:  "",
-			err:      errors.New("no version found"),
-			expected: fallbackVersion,
-		},
-	}
-	for name, tc := range testcases {
-		t.Run(name, func(t *testing.T) {
-			actual := getK8sVersionWithFallback(tc.version, tc.err, fallbackVersion)
-			assert.Equal(t, tc.expected, actual)
-		})
-	}
-}
-
 func TestNormalizeK8sVersion(t *testing.T) {
+	fallbackVersion := "fallback"
+
 	testcases := map[string]struct {
 		input    string
 		expected string
@@ -86,10 +45,14 @@ func TestNormalizeK8sVersion(t *testing.T) {
 			input:    "1.28.5",
 			expected: "v1.28.0",
 		},
+		"invalid version": {
+			input:    "just-testing",
+			expected: fallbackVersion,
+		},
 	}
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
-			actual := normalizeK8sVersion(tc.input)
+			actual := normalizeK8sVersion(tc.input, fallbackVersion)
 			assert.Equal(t, tc.expected, actual)
 		})
 	}
