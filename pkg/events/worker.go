@@ -142,7 +142,7 @@ func normalizeK8sVersion(version, fallbackVersion string) string {
 	if err != nil {
 		return fallbackVersion
 	}
-	return fmt.Sprintf("v%d.%d.0", v.Major(), v.Minor())
+	return fmt.Sprintf("%d.%d.0", v.Major(), v.Minor())
 }
 
 func convertJsonToYamlManifests(jsonManifests []string) []string {

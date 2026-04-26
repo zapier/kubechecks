@@ -68,6 +68,16 @@ var processCmd = &cobra.Command{
 			log.Fatal().Err(err).Msg("failed to create processors")
 		}
 
+		log.Info().Strs("locations", cfg.PoliciesLocation).Msg("processing policies locations")
+		if err = processLocations(ctx, ctr, cfg.PoliciesLocation); err != nil {
+			log.Fatal().Err(err).Msg("failed to process policy locations")
+		}
+
+		log.Info().Strs("locations", cfg.SchemasLocations).Msg("processing schemas locations")
+		if err = processLocations(ctx, ctr, cfg.SchemasLocations); err != nil {
+			log.Fatal().Err(err).Msg("failed to process schema locations")
+		}
+
 		if err := server.ProcessCheckEvent(ctx, repo, ctr, processors); err != nil {
 			log.Fatal().Err(err).Msg("failed to process check")
 		}
