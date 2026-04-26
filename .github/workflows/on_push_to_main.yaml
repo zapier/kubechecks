@@ -9,6 +9,8 @@ jobs:
 
     permissions:
       contents: write
+      packages: write
+      id-token: write
 
     steps:
       - name: Checkout source code
@@ -27,3 +29,16 @@ jobs:
           config: .github/cr.yaml
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      # see https://github.com/helm/chart-releaser/issues/183
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push chart to GHCR
+        run: |
+          helm package charts/kubechecks
+          helm push kubechecks-*.tgz oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts
