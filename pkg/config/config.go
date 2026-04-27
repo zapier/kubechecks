@@ -93,6 +93,7 @@ type ServerConfig struct {
 	MaxRepoWorkerQueueSize   int           `mapstructure:"max-repo-worker-queue-size"`
 	ReplanCommentMessage     string        `mapstructure:"replan-comment-msg"`
 	Identifier               string        `mapstructure:"identifier"`
+	MaxCommentsPerCheck      int           `mapstructure:"max-comments-per-check"`
 }
 
 func (cfg ServerConfig) IsGithubApp() bool {

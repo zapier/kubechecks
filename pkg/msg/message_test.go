@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zapier/kubechecks/pkg"
 )
@@ -31,7 +32,8 @@ func TestBuildComment(t *testing.T) {
 	}
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2)
+	chunks := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 64*1024, 0, 1, 2)
+	require.Len(t, chunks, 1)
 	assert.Equal(t, `# Kubechecks test-identifier Report
 <details>
 <summary>
@@ -46,7 +48,7 @@ should add some important details here
 </details></details>
 
 <small> _Done. CommitSHA: commit-sha_ <small>
-`, comment)
+`, chunks[0])
 }
 
 func TestBuildComment_SkipUnchanged(t *testing.T) {
@@ -79,7 +81,8 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	comment := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2)
+	chunks := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 64*1024, 0, 1, 2)
+	require.Len(t, chunks, 1)
 	assert.Equal(t, `# Kubechecks test-identifier Report
 <details>
 <summary>
@@ -94,7 +97,7 @@ should add some important details here
 </details></details>
 
 <small> _Done. CommitSHA: commit-sha_ <small>
-`, comment)
+`, chunks[0])
 }
 
 func TestMessageIsSuccess(t *testing.T) {
@@ -226,7 +229,9 @@ func TestMultipleItemsWithNewlines(t *testing.T) {
 		Summary: "summary-2",
 		Details: "detail-2",
 	})
-	result := message.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 1, 2)
+	chunks := message.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 64*1024, 0, 1, 2)
+	require.NotEmpty(t, chunks)
+	result := chunks[0]
 
 	// header rows need double newlines before and after
 	index := 0
