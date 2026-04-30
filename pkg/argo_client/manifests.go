@@ -100,6 +100,151 @@ func preprocessSources(app *v1alpha1.Application, pullRequest vcs.PullRequest) (
 	return contentSources, refSources
 }
 
+// isExternalHelmChart returns true when a source refers to a Helm chart that is
+// fetched directly from a Helm registry (OCI or HTTPS), not from a Git repository.
+// Such sources cannot be git-cloned; ArgoCD's repo-server is responsible for
+// pulling the chart using its own credentials and OCI support.
+func isExternalHelmChart(source v1alpha1.ApplicationSource) bool {
+	// source.Chart is only set for Helm chart sources (not git-path sources)
+	if source.Chart == "" {
+		return false
+	}
+	// OCI registries with explicit oci:// scheme
+	if strings.HasPrefix(source.RepoURL, "oci://") {
+		return true
+	}
+	// HTTPS Helm repos: no .git suffix and no source path means it is a plain
+	// Helm repository URL (e.g. https://charts.example.io)
+	if strings.HasPrefix(source.RepoURL, "https://") && !strings.HasSuffix(source.RepoURL, ".git") && source.Path == "" {
+		return true
+	}
+	// OCI registry shorthand without scheme (e.g. "docker.io/envoyproxy",
+	// "ghcr.io/org/charts"). ArgoCD accepts these for OCI Helm sources.
+	// If Chart is set and the URL has no scheme and doesn't end in .git,
+	// it's an OCI/Helm registry reference, not a git repo.
+	if source.Chart != "" && !strings.Contains(source.RepoURL, "://") && !strings.HasSuffix(source.RepoURL, ".git") {
+		return true
+	}
+	return false
+}
+
+// generateManifestForExternalChart handles manifest generation for external Helm chart
+// sources (OCI registries and HTTPS Helm repos). Instead of streaming local files via
+// GenerateManifestWithFiles, it calls GenerateManifest directly — the repo-server will
+// fetch the chart from the registry using its own credentials and OCI/Helm support.
+// This avoids needing a local copy of the chart and correctly handles chart dependencies.
+func (a *ArgoClient) generateManifestForExternalChart(ctx context.Context, app v1alpha1.Application, source v1alpha1.ApplicationSource, refs []v1alpha1.ApplicationSource) ([]string, error) {
+	clusterCloser, clusterClient := a.GetClusterClient()
+	defer pkg.WithErrorLogging(clusterCloser.Close, "failed to close connection")
+
+	clusterData, err := clusterClient.Get(ctx, &cluster.ClusterQuery{Name: app.Spec.Destination.Name, Server: app.Spec.Destination.Server})
+	if err != nil {
+		getManifestsFailed.WithLabelValues(app.Name).Inc()
+		return nil, errors.Wrap(err, "failed to get cluster")
+	}
+
+	settingsCloser, settingsClient := a.GetSettingsClient()
+	defer pkg.WithErrorLogging(settingsCloser.Close, "failed to close connection")
+
+	argoSettings, err := settingsClient.Get(ctx, &settings.SettingsQuery{})
+	if err != nil {
+		getManifestsFailed.WithLabelValues(app.Name).Inc()
+		return nil, errors.Wrap(err, "failed to get settings")
+	}
+
+	settingsMgr := argosettings.NewSettingsManager(ctx, a.k8s, a.cfg.ArgoCDNamespace)
+	argoDB := db.NewDB(a.cfg.ArgoCDNamespace, settingsMgr, a.k8s)
+
+	helmRepos, err := argoDB.ListHelmRepositories(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error listing helm repositories: %w", err)
+	}
+
+	proj, err := func() (*v1alpha1.AppProject, error) {
+		closer, projectClient, err := a.client.NewProjectClient()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get project client")
+		}
+		defer pkg.WithErrorLogging(closer.Close, "failed to close connection")
+		return projectClient.Get(ctx, &project.ProjectQuery{Name: app.Spec.Project})
+	}()
+	if err != nil {
+		return nil, fmt.Errorf("error getting app project: %w", err)
+	}
+
+	permittedHelmRepos, err := argo.GetPermittedRepos(proj, helmRepos)
+	if err != nil {
+		return nil, fmt.Errorf("error getting permitted helm repos: %w", err)
+	}
+
+	helmRepositoryCredentials, err := argoDB.GetAllHelmRepositoryCredentials(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting helm repository credentials: %w", err)
+	}
+	permittedHelmCredentials, err := argo.GetPermittedReposCredentials(proj, helmRepositoryCredentials)
+	if err != nil {
+		return nil, fmt.Errorf("error getting permitted repos credentials: %w", err)
+	}
+
+	enabledSourceTypes, err := settingsMgr.GetEnabledSourceTypes()
+	if err != nil {
+		return nil, fmt.Errorf("error getting settings enabled source types: %w", err)
+	}
+
+	helmOptions, err := settingsMgr.GetHelmSettings()
+	if err != nil {
+		return nil, fmt.Errorf("error getting helm settings: %w", err)
+	}
+
+	refSources, err := argo.GetRefSources(context.Background(), app.Spec.Sources, app.Spec.Project, argoDB.GetRepository, []string{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ref sources: %w", err)
+	}
+
+	// Resolve the repository object so repo-server has credentials for the chart registry.
+	repo, err := argoDB.GetRepository(ctx, source.RepoURL, app.Spec.Project)
+	if err != nil {
+		log.Warn().Err(err).Str("repoURL", source.RepoURL).Msg("could not resolve repository credentials; proceeding without them")
+		repo = &v1alpha1.Repository{Repo: source.RepoURL}
+	}
+
+	q := repoapiclient.ManifestRequest{
+		Repo:               repo,
+		Revision:           source.TargetRevision,
+		AppLabelKey:        argoSettings.AppLabelKey,
+		AppName:            app.Name,
+		Namespace:          app.Spec.Destination.Namespace,
+		ApplicationSource:  &source,
+		Repos:              permittedHelmRepos,
+		KustomizeOptions:   argoSettings.KustomizeOptions,
+		KubeVersion:        clusterData.Info.ServerVersion,
+		ApiVersions:        clusterData.Info.APIVersions,
+		HelmRepoCreds:      permittedHelmCredentials,
+		HelmOptions:        helmOptions,
+		TrackingMethod:     argoSettings.TrackingMethod,
+		EnabledSourceTypes: enabledSourceTypes,
+		ProjectName:        proj.Name,
+		ProjectSourceRepos: proj.Spec.SourceRepos,
+		HasMultipleSources: app.Spec.HasMultipleSources(),
+		RefSources:         refSources,
+	}
+
+	repoClient, conn, err := a.createRepoServerClient()
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating repo client")
+	}
+	defer pkg.WithErrorLogging(conn.Close, "failed to close connection")
+
+	log.Debug().Caller().Str("app", app.Name).Msg("calling GenerateManifest for external Helm chart")
+	resp, err := repoClient.GenerateManifest(ctx, &q)
+	if err != nil {
+		getManifestsFailed.WithLabelValues(app.Name).Inc()
+		return nil, fmt.Errorf("failed to generate manifests for external Helm chart %s: %w", app.Name, err)
+	}
+	getManifestsSuccess.WithLabelValues(app.Name).Inc()
+	return resp.Manifests, nil
+}
+
 // generateManifests generates an Application along with all of its files, and sends it to the ArgoCD
 // Repository service to be transformed into raw kubernetes manifests. This allows us to take advantage of server
 // configuration and credentials.
@@ -109,6 +254,20 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	// 2. there must be one and only one non-ref source
 	// 3. ref sources that match the pull requests' repo and target branch need to have their target branch swapped to the head branch of the pull request
 	log.Info().Str("app", app.Name).Msg("generating manifests")
+
+	// External Helm chart sources (OCI or HTTPS Helm repos) cannot be git-cloned.
+	// Instead of streaming files via GenerateManifestWithFiles (which would require
+	// a local copy of the chart), we delegate directly to GenerateManifest — the
+	// repo-server will fetch the chart from the registry using its own credentials.
+	if isExternalHelmChart(source) {
+		log.Info().
+			Str("app", app.Name).
+			Str("repoURL", source.RepoURL).
+			Str("chart", source.Chart).
+			Msg("external Helm chart source detected; delegating to repo-server GenerateManifest")
+		return a.generateManifestForExternalChart(ctx, app, source, refs)
+	}
+
 	clusterCloser, clusterClient := a.GetClusterClient()
 	defer pkg.WithErrorLogging(clusterCloser.Close, "failed to close connection")
 
@@ -131,26 +290,29 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	settingsMgr := argosettings.NewSettingsManager(ctx, a.k8s, a.cfg.ArgoCDNamespace)
 	argoDB := db.NewDB(a.cfg.ArgoCDNamespace, settingsMgr, a.k8s)
 
-	repoTarget := source.TargetRevision
-	if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
-		repoTarget = pullRequest.HeadRef
-	}
-
-	log.Debug().Caller().Str("app", app.Name).Msg("get repo")
-	repo, err := getRepo(ctx, source.RepoURL, repoTarget)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get repo")
-	}
-
 	var packageDir string
-	if a.cfg.ArgoCDSendFullRepository {
-		log.Debug().Caller().Str("app", app.Name).Msg("sending full repository")
-		packageDir = repo.Directory
-	} else {
-		log.Debug().Caller().Str("app", app.Name).Msg("packaging app")
-		packageDir, err = packageApp(ctx, source, refs, repo, getRepo)
+
+	{
+		repoTarget := source.TargetRevision
+		if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
+			repoTarget = pullRequest.HeadRef
+		}
+
+		log.Debug().Caller().Str("app", app.Name).Msg("get repo")
+		repo, err := getRepo(ctx, source.RepoURL, repoTarget)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to package application")
+			return nil, errors.Wrap(err, "failed to get repo")
+		}
+
+		if a.cfg.ArgoCDSendFullRepository {
+			log.Debug().Caller().Str("app", app.Name).Msg("sending full repository")
+			packageDir = repo.Directory
+		} else {
+			log.Debug().Caller().Str("app", app.Name).Msg("packaging app")
+			packageDir, err = packageApp(ctx, source, refs, repo, getRepo)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to package application")
+			}
 		}
 	}
 
