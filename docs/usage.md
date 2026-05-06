@@ -63,6 +63,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_KUBERNETES_TYPE`|Kubernetes Type One of eks, or local.|`local`|
 |`KUBECHECKS_LABEL_FILTER`|(Optional) If set, The label that must be set on an MR (as "kubechecks:<value>") for kubechecks to process the merge request webhook.||
 |`KUBECHECKS_LOG_LEVEL`|Set the log output level. One of error, warn, info, debug, trace.|`info`|
+|`KUBECHECKS_MAX_COMMENTS_PER_CHECK`|Maximum number of comments posted per check run. 0 means unlimited.|`0`|
 |`KUBECHECKS_MAX_CONCURRENT_CHECKS`|Number of concurrent checks to run.|`32`|
 |`KUBECHECKS_MAX_QUEUE_SIZE`|Size of app diff check queue.|`1024`|
 |`KUBECHECKS_MAX_REPO_WORKER_QUEUE_SIZE`|Maximum size of check request queue per repository worker.|`100`|

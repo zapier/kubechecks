@@ -143,6 +143,9 @@ func init() {
 	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
 		newStringOpts().
 			withDefault(""))
+	int64Flag(flags, "max-comments-per-check", "Maximum number of comments posted per check run. 0 means unlimited.",
+		newInt64Opts().
+			withDefault(0))
 	stringFlag(flags, "kubepug-generated-store", "URL for the kubepug generated store.",
 		newStringOpts().
 			withDefault("https://kubepug.xyz/data/data.json"))

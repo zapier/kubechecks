@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"gitlab.com/gitlab-org/api/client-go"
@@ -15,15 +16,17 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-const MaxCommentLength = 1_000_000
+const maxCommentLength = 1_000_000
+
+func (c *Client) MaxCommentLength() int { return maxCommentLength }
 
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
 	_, span := tracer.Start(ctx, "PostMessage")
 	defer span.End()
 
-	if len(message) > MaxCommentLength {
-		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
-		message = message[:MaxCommentLength]
+	if len(message) > maxCommentLength {
+		telemetry.SetError(span, fmt.Errorf("message length %d exceeds limit %d", len(message), maxCommentLength), "PostMessage")
+		return nil, fmt.Errorf("message length %d exceeds GitLab comment limit %d", len(message), maxCommentLength)
 	}
 
 	n, _, err := c.c.Notes.CreateMergeRequestNote(
@@ -66,9 +69,9 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 </details>
 			`, c.cfg.Identifier, note.Body)
 
-		if len(newBody) > MaxCommentLength {
+		if len(newBody) > maxCommentLength {
 			log.Warn().Int("original_length", len(newBody)).Msg("trimming the comment size")
-			newBody = newBody[:MaxCommentLength]
+			newBody = newBody[:maxCommentLength]
 		}
 
 		log.Debug().Caller().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
@@ -86,27 +89,35 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 	return nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message string) error {
-	log.Debug().Caller().Msgf("Updating message %d for %s", m.NoteID, m.Name)
-
-	if len(message) > MaxCommentLength {
-		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
-		message = message[:MaxCommentLength]
+func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, chunks []string) error {
+	log.Debug().Caller().Msgf("Deleting placeholder note %d for MR %d in %s", m.NoteID, pr.CheckID, pr.FullName)
+	if _, err := c.c.Notes.DeleteMergeRequestNote(pr.FullName, pr.CheckID, m.NoteID); err != nil {
+		log.Error().Err(err).Msg("failed to delete placeholder note")
+		return fmt.Errorf("deleting placeholder note: %w", err)
 	}
 
-	n, _, err := c.c.Notes.UpdateMergeRequestNote(m.Name, m.CheckID, m.NoteID, &gitlab.UpdateMergeRequestNoteOptions{
-		Body: pkg.Pointer(message),
-	},
-		gitlab.WithContext(ctx),
-	)
-
-	if err != nil {
-		log.Error().Err(err).Msg("could not update message to MR")
-		return err
+	log.Info().Int("chunks", len(chunks)).Msgf("Posting %d note(s) to MR %d in %s", len(chunks), pr.CheckID, pr.FullName)
+	for i, chunk := range chunks {
+		var note *gitlab.Note
+		err := backoff.Retry(func() error {
+			var resp *gitlab.Response
+			var createErr error
+			note, resp, createErr = c.c.Notes.CreateMergeRequestNote(
+				pr.FullName, pr.CheckID,
+				&gitlab.CreateMergeRequestNoteOptions{
+					Body: pkg.Pointer(chunk),
+				},
+				gitlab.WithContext(ctx),
+			)
+			return checkReturnForBackoff(resp, createErr)
+		}, getBackOff())
+		if err != nil {
+			log.Error().Err(err).Int("chunk", i+1).Msg("failed to post note chunk after retries")
+			return fmt.Errorf("posting note chunk %d of %d: %w", i+1, len(chunks), err)
+		}
+		m.NoteID = note.ID
 	}
 
-	// just incase the note ID changes
-	m.NoteID = n.ID
 	return nil
 }
 
