@@ -24,13 +24,14 @@ import (
 const KubeChecksHooksPathPrefix = "/hooks"
 
 type Server struct {
-	ctr          container.Container
-	processors   []checks.ProcessorEntry
-	queueManager *queue.QueueManager
-	echo         *echo.Echo
+	ctr             container.Container
+	processors      []checks.ProcessorEntry
+	aiReviewChecker queue.AIReviewChecker
+	queueManager    *queue.QueueManager
+	echo            *echo.Echo
 }
 
-func NewServer(ctr container.Container, processors []checks.ProcessorEntry) *Server {
+func NewServer(ctr container.Container, processors []checks.ProcessorEntry, aiReviewChecker queue.AIReviewChecker) *Server {
 	// Create queue manager with configurable queue size
 	queueSize := ctr.Config.MaxRepoWorkerQueueSize
 	if queueSize <= 0 {
@@ -47,9 +48,10 @@ func NewServer(ctr container.Container, processors []checks.ProcessorEntry) *Ser
 		Msg("initialized repo worker queue manager")
 
 	return &Server{
-		ctr:          ctr,
-		processors:   processors,
-		queueManager: queueManager,
+		ctr:             ctr,
+		processors:      processors,
+		aiReviewChecker: aiReviewChecker,
+		queueManager:    queueManager,
 	}
 }
 
@@ -103,7 +105,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	hooksGroup := s.echo.Group(s.hooksPrefix())
 
-	ghHooks := NewVCSHookHandler(s.ctr, s.processors, s.queueManager)
+	ghHooks := NewVCSHookHandler(s.ctr, s.processors, s.aiReviewChecker, s.queueManager)
 	ghHooks.AttachHandlers(hooksGroup)
 
 	fmt.Println("Method\tPath")

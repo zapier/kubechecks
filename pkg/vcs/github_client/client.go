@@ -177,6 +177,8 @@ func (c *Client) buildRepo(pullRequest *github.PullRequest) vcs.PullRequest {
 		Username:      c.username,
 		Email:         c.email,
 		Labels:        labels,
+		Title:         pullRequest.GetTitle(),
+		Description:   pullRequest.GetBody(),
 
 		Config: c.cfg,
 	}

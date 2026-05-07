@@ -191,6 +191,8 @@ func (c *Client) LoadHook(ctx context.Context, id string) (vcs.PullRequest, erro
 		Username:      userName,
 		Email:         userEmail,
 		Labels:        labels,
+		Title:         pullRequest.GetTitle(),
+		Description:   pullRequest.GetBody(),
 
 		Config: c.cfg,
 	}, nil

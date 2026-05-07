@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,22 +31,49 @@ import (
 
 var tracer = otel.Tracer("pkg/events")
 
+// AIReviewHardMaxApps is the absolute upper bound for AI reviews per MR/PR.
+// Even if the user configures a higher value, this limit applies.
+const AIReviewHardMaxApps = 50
+
+// AIReviewChecker runs AI review for a single app.
+// Defined here to avoid import cycles with pkg/checks/aireview.
+type AIReviewChecker interface {
+	Check(ctx context.Context, request checks.Request) (vcs.AIReviewResult, error)
+	// AggregateReviews consolidates multiple per-app reviews into a single concise review.
+	// Only called when multiple apps are reviewed. Returns consolidated text.
+	AggregateReviews(ctx context.Context, appReviews map[string]string) (string, error)
+}
+
+// aiReviewAppResult holds the result of an AI review for a single app (used internally for aggregation).
+type aiReviewAppResult struct {
+	AppName     string
+	Result      msg.Result
+	Suggestions []vcs.ReviewSuggestion
+}
+
 type CheckEvent struct {
 	fileList    []string // What files have changed in this PR/MR
 	pullRequest vcs.PullRequest
 	logger      zerolog.Logger
 	vcsNote     *msg.Message
+	aiNote      *msg.Message // separate comment for AI review
 
 	affectedItems affected_apps.AffectedItems
 
-	ctr         container.Container
-	repoManager repoManager
-	processors  []checks.ProcessorEntry
-	repoLock    sync.Mutex
-	clonedRepos map[repoKey]*git.Repo
+	ctr             container.Container
+	repoManager     repoManager
+	processors      []checks.ProcessorEntry
+	aiReviewChecker AIReviewChecker // runs separately, posts its own comment
+	repoLock        sync.Mutex
+	clonedRepos     map[repoKey]*git.Repo
 
 	addedAppsSet     map[string]v1alpha1.Application
 	addedAppsSetLock sync.Mutex
+
+	aiReviewResults     []aiReviewAppResult
+	aiReviewResultsLock sync.Mutex
+	aiReviewCount       int32 // atomic counter for AI reviews claimed
+	aiReviewSkipped     int32 // atomic counter for AI reviews skipped due to cap
 
 	appsSent   int32
 	appChannel chan *v1alpha1.Application
@@ -76,17 +104,18 @@ func generateMatcher(ce *CheckEvent, repo *git.Repo) error {
 	return nil
 }
 
-func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry) *CheckEvent {
+func NewCheckEvent(pullRequest vcs.PullRequest, ctr container.Container, repoManager repoManager, processors []checks.ProcessorEntry, aiReviewChecker AIReviewChecker) *CheckEvent {
 
 	ce := &CheckEvent{
-		addedAppsSet: make(map[string]v1alpha1.Application),
-		appChannel:   make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
-		ctr:          ctr,
-		clonedRepos:  make(map[repoKey]*git.Repo),
-		processors:   processors,
-		pullRequest:  pullRequest,
-		repoManager:  repoManager,
-		generator:    generator.New(),
+		addedAppsSet:    make(map[string]v1alpha1.Application),
+		appChannel:      make(chan *v1alpha1.Application, ctr.Config.MaxQueueSize),
+		ctr:             ctr,
+		clonedRepos:     make(map[repoKey]*git.Repo),
+		processors:      processors,
+		aiReviewChecker: aiReviewChecker,
+		pullRequest:     pullRequest,
+		repoManager:     repoManager,
+		generator:       generator.New(),
 		logger: log.Logger.With().
 			Str("repo", pullRequest.Name).
 			Int("event_id", pullRequest.CheckID).
@@ -136,7 +165,24 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 			ce.logger.Error().Caller().Err(err).Msg("could not generate apps from appSet")
 			continue
 		}
-		ce.affectedItems.Applications = append(ce.affectedItems.Applications, apps...)
+
+		// Build a set of appset-generated app names for fast lookup.
+		generatedNames := make(map[string]struct{}, len(apps))
+		for _, a := range apps {
+			generatedNames[a.Name] = struct{}{}
+		}
+
+		// Remove matcher-found apps that the appset generator also produced,
+		// so the appset-generated version (which reflects PR template changes) wins.
+		filtered := ce.affectedItems.Applications[:0]
+		for _, existing := range ce.affectedItems.Applications {
+			if _, ok := generatedNames[existing.Name]; ok {
+				ce.logger.Debug().Caller().Msgf("replacing matcher app %s with appset-generated version", existing.Name)
+				continue
+			}
+			filtered = append(filtered, existing)
+		}
+		ce.affectedItems.Applications = append(filtered, apps...)
 	}
 
 	span.SetAttributes(
@@ -313,20 +359,33 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create note")
 	}
 
+	// Create a separate placeholder comment for AI review
+	if ce.ctr.Config.EnableAIReview {
+		ce.aiNote, err = ce.createAIReviewNote(ctx)
+		if err != nil {
+			ce.logger.Warn().Caller().Err(err).Msg("failed to create AI review note, AI review will be skipped")
+			ce.aiReviewChecker = nil // disable AI review for this run
+		}
+	}
+
 	for num := 0; num <= ce.ctr.Config.MaxConcurrentChecks; num++ {
 
 		w := worker{
-			appChannel:  ce.appChannel,
-			ctr:         ce.ctr,
-			logger:      ce.logger.With().Int("workerID", num).Logger(),
-			pullRequest: ce.pullRequest,
-			processors:  ce.processors,
-			vcsNote:     ce.vcsNote,
+			appChannel:      ce.appChannel,
+			ctr:             ce.ctr,
+			logger:          ce.logger.With().Int("workerID", num).Logger(),
+			pullRequest:     ce.pullRequest,
+			processors:      ce.processors,
+			aiReviewChecker: ce.aiReviewChecker,
+			vcsNote:         ce.vcsNote,
+			changedFiles:    ce.fileList,
 
-			done:      ce.wg.Done,
-			getRepo:   ce.getRepo,
-			queueApp:  ce.queueApp,
-			removeApp: ce.removeApp,
+			done:              ce.wg.Done,
+			getRepo:           ce.getRepo,
+			queueApp:          ce.queueApp,
+			removeApp:         ce.removeApp,
+			addAIReviewResult: ce.addAIReviewResult,
+			claimAIReviewSlot: ce.claimAIReviewSlot,
 		}
 		go w.run(ctx)
 	}
@@ -359,6 +418,26 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	worstStatus := ce.vcsNote.WorstState()
+
+	// Update the AI review comment with aggregated results
+	if ce.aiNote != nil {
+		aiComment, aiWorstState, suggestions := ce.buildAIReviewComment(ctx)
+		if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.aiNote, aiComment); err != nil {
+			ce.logger.Error().Caller().Err(err).Msg("failed to update AI review comment")
+		}
+		// Post code suggestions as a separate review with inline comments
+		if len(suggestions) > 0 {
+			if !ce.ctr.Config.AIReviewPostSuggestions {
+				ce.logger.Info().Int("count", len(suggestions)).Msg("AI review inline suggestions suppressed by config (ai-review-post-suggestions=false)")
+			} else if err = ce.ctr.VcsClient.PostReviewSuggestions(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s AI Suggestion Report ##", ce.ctr.Config.Identifier), suggestions); err != nil {
+				ce.logger.Error().Caller().Err(err).Msg("failed to post AI review suggestions")
+			}
+		}
+		// Factor AI review state into overall commit status
+		cappedAIState := pkg.BestState(aiWorstState, ce.ctr.Config.WorstAIReviewState)
+		worstStatus = pkg.WorstState(worstStatus, cappedAIState)
+	}
+
 	ce.CommitStatus(ctx, worstStatus)
 
 	return nil
@@ -431,4 +510,122 @@ func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
 	ce.logger.Info().Msgf("Creating note")
 
 	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\n:hourglass: kubechecks running...", ce.ctr.Config.Identifier))
+}
+
+// createAIReviewNote creates the initial placeholder comment for the AI review.
+func (ce *CheckEvent) createAIReviewNote(ctx context.Context) (*msg.Message, error) {
+	ctx, span := otel.Tracer("check").Start(ctx, "createAIReviewNote")
+	defer span.End()
+
+	ce.logger.Info().Msg("Creating AI review note")
+
+	return ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report — AI Review\n:hourglass: AI review running...", ce.ctr.Config.Identifier))
+}
+
+// effectiveAIReviewMax returns the effective AI review cap, clamped to the hard limit.
+func (ce *CheckEvent) effectiveAIReviewMax() int {
+	maxApps := ce.ctr.Config.AIReviewMaxApps
+	if maxApps <= 0 {
+		maxApps = AIReviewHardMaxApps
+	}
+	if maxApps > AIReviewHardMaxApps {
+		maxApps = AIReviewHardMaxApps
+	}
+	return maxApps
+}
+
+// claimAIReviewSlot atomically claims an AI review slot. Returns true if under the cap.
+func (ce *CheckEvent) claimAIReviewSlot() bool {
+	n := int(atomic.AddInt32(&ce.aiReviewCount, 1))
+	if n > ce.effectiveAIReviewMax() {
+		atomic.AddInt32(&ce.aiReviewSkipped, 1)
+		return false
+	}
+	return true
+}
+
+// addAIReviewResult collects an AI review result (thread-safe).
+func (ce *CheckEvent) addAIReviewResult(appName string, result msg.Result, suggestions []vcs.ReviewSuggestion) {
+	ce.aiReviewResultsLock.Lock()
+	defer ce.aiReviewResultsLock.Unlock()
+	ce.aiReviewResults = append(ce.aiReviewResults, aiReviewAppResult{AppName: appName, Result: result, Suggestions: suggestions})
+}
+
+// buildAIReviewComment aggregates all AI review results into a single comment and collects suggestions.
+// When multiple apps are reviewed, runs the aggregator LLM to consolidate duplicate findings.
+func (ce *CheckEvent) buildAIReviewComment(ctx context.Context) (string, pkg.CommitState, []vcs.ReviewSuggestion) {
+	ce.aiReviewResultsLock.Lock()
+	defer ce.aiReviewResultsLock.Unlock()
+
+	header := fmt.Sprintf("## Kubechecks %s Report — AI Review\n\n", ce.ctr.Config.Identifier)
+
+	if len(ce.aiReviewResults) == 0 {
+		return fmt.Sprintf("## Kubechecks %s Report — AI Review\nNo review results.", ce.ctr.Config.Identifier), pkg.StateNone, nil
+	}
+
+	// Collect worst state and deduplicated suggestions
+	worstState := pkg.StateNone
+	var allSuggestions []vcs.ReviewSuggestion
+	seen := make(map[string]bool)
+	appReviews := make(map[string]string)
+	for _, r := range ce.aiReviewResults {
+		appReviews[r.AppName] = r.Result.Details
+		worstState = pkg.WorstState(worstState, r.Result.State)
+		for _, s := range r.Suggestions {
+			key := fmt.Sprintf("%s:%d:%d:%s", s.Path, s.StartLine, s.EndLine, s.Suggestion)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			allSuggestions = append(allSuggestions, s)
+		}
+	}
+
+	// If multiple apps, run aggregator to consolidate findings
+	var reviewBody string
+	if len(appReviews) > 1 && ce.ctr.Config.EnableAIReview && ce.aiReviewChecker != nil {
+		consolidated, err := ce.aiReviewChecker.AggregateReviews(ctx, appReviews)
+		if err != nil {
+			ce.logger.Warn().Caller().Err(err).Msg("aggregation failed, using raw reviews")
+			reviewBody = buildRawReviewBody(appReviews)
+		} else {
+			reviewBody = consolidated
+		}
+	} else {
+		reviewBody = buildRawReviewBody(appReviews)
+	}
+
+	// Append cap notice if any apps were skipped
+	skipped := int(atomic.LoadInt32(&ce.aiReviewSkipped))
+	if skipped > 0 {
+		totalApps := len(ce.affectedItems.Applications)
+		reviewed := len(ce.aiReviewResults)
+		effectiveMax := ce.effectiveAIReviewMax()
+		capType := "configured limit"
+		if effectiveMax == AIReviewHardMaxApps && ce.ctr.Config.AIReviewMaxApps > AIReviewHardMaxApps {
+			capType = "hard limit"
+		}
+		reviewBody += fmt.Sprintf(
+			"\n---\n:warning: **AI review cap reached** — reviewed %d of %d affected apps (%s: %d). %d apps were skipped.\n",
+			reviewed, totalApps, capType, effectiveMax, skipped,
+		)
+	}
+
+	return header + reviewBody, worstState, allSuggestions
+}
+
+// buildRawReviewBody concatenates per-app reviews without aggregation, wrapped in <details> tags.
+// App names are sorted for stable output across runs.
+func buildRawReviewBody(appReviews map[string]string) string {
+	names := make([]string, 0, len(appReviews))
+	for name := range appReviews {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var sb strings.Builder
+	for _, appName := range names {
+		fmt.Fprintf(&sb, "<details>\n<summary><code>%s</code></summary>\n\n%s\n\n</details>\n\n", appName, appReviews[appName])
+	}
+	return sb.String()
 }
