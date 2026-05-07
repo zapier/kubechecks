@@ -10,13 +10,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.31.3
 	github.com/aws/aws-sdk-go-v2/service/eks v1.66.2
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.0
-	github.com/aws/smithy-go v1.22.5
+	github.com/aws/smithy-go v1.24.2
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/chainguard-dev/git-urls v1.0.2
 	github.com/creasty/defaults v1.8.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-git/go-git/v5 v5.16.5
+	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/zerologr v1.2.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/go-github/v74 v74.0.0
@@ -106,7 +107,7 @@ require (
 	github.com/argoproj/pkg/v2 v2.0.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go v1.55.7 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.0 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.7 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.4 // indirect
@@ -180,7 +181,6 @@ require (
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.2 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.1 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
