@@ -489,6 +489,13 @@ func packageApp(
 				continue
 			}
 
+			if containsGlob(valueFile) {
+				if err := copyGlobValueFiles(srcAppPath, destAppDir, source, valueFile); err != nil {
+					return "", err
+				}
+				continue
+			}
+
 			relPath, err := filepath.Rel(source.Path, valueFile)
 			if err != nil {
 				return "", errors.Wrap(err, "failed to calculate relative path")

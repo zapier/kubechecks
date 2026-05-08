@@ -390,6 +390,61 @@ resources:
 			},
 		},
 
+		"wildcard-value-files-are-expanded": {
+			pullRequest: vcs.PullRequest{
+				CloneURL: "git@github.com:testuser/testrepo.git",
+				BaseRef:  "main",
+				HeadRef:  "update-code",
+			},
+			app: v1alpha1.Application{
+				Spec: v1alpha1.ApplicationSpec{
+					Sources: []v1alpha1.ApplicationSource{
+						{
+							RepoURL:        "git@github.com:testuser/testrepo.git",
+							Path:           "app1/",
+							TargetRevision: "main",
+							Helm: &v1alpha1.ApplicationSourceHelm{
+								IgnoreMissingValueFiles: true,
+								ValueFiles: []string{
+									"./values.yaml",
+									"./values-*.yaml",
+									"../shared/values-*.yaml",
+									"./no-match-*.yaml",
+								},
+							},
+						},
+					},
+				},
+			},
+			filesByRepo: map[repoTarget]set[string]{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: newSet[string](
+					"app1/values.yaml",
+					"app1/values-clusterA.yaml",
+					"app1/values-clusterB.yaml",
+					"app1/unrelated.yaml",
+					"shared/values-shared-1.yaml",
+					"shared/values-shared-2.yaml",
+					"shared/other.yaml",
+				),
+			},
+			filesByRepoWithContent: map[repoTarget]map[string]string{
+				repoTarget{"git@github.com:testuser/testrepo.git", "main"}: {
+					"app1/Chart.yaml": `apiVersion: v2
+name: test-chart
+version: 1.0.0`,
+				},
+			},
+			expectedFiles: map[string]repoTargetPath{
+				"app1/Chart.yaml":            {"git@github.com:testuser/testrepo.git", "main", "app1/Chart.yaml"},
+				"app1/values.yaml":           {"git@github.com:testuser/testrepo.git", "main", "app1/values.yaml"},
+				"app1/values-clusterA.yaml":  {"git@github.com:testuser/testrepo.git", "main", "app1/values-clusterA.yaml"},
+				"app1/values-clusterB.yaml":  {"git@github.com:testuser/testrepo.git", "main", "app1/values-clusterB.yaml"},
+				"app1/unrelated.yaml":        {"git@github.com:testuser/testrepo.git", "main", "app1/unrelated.yaml"},
+				"shared/values-shared-1.yaml": {"git@github.com:testuser/testrepo.git", "main", "shared/values-shared-1.yaml"},
+				"shared/values-shared-2.yaml": {"git@github.com:testuser/testrepo.git", "main", "shared/values-shared-2.yaml"},
+			},
+		},
+
 		"helm-dependencies-are-copied": {
 			pullRequest: vcs.PullRequest{
 				CloneURL: "git@github.com:testuser/testrepo.git",
