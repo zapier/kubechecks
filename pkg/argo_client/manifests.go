@@ -490,7 +490,7 @@ func packageApp(
 			}
 
 			if containsGlob(valueFile) {
-				if err := copyGlobValueFiles(srcAppPath, destAppDir, source, valueFile); err != nil {
+				if err := copyGlobValueFiles(repo.Directory, destDir, srcAppPath, destAppDir, source, valueFile); err != nil {
 					return "", err
 				}
 				continue
