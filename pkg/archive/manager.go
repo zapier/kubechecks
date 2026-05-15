@@ -246,7 +246,17 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 		message = "⚠️ Kubechecks could not parse the archive URL returned by the VCS.\n\n" +
 			"This is likely a configuration or VCS compatibility issue — check the kubechecks logs."
 
+	case hasHTTP && httpErr.StatusCode >= 400 && httpErr.StatusCode < 500:
+		// Any remaining 4xx not handled above (400, 405, 410, 422, etc.) is a permanent
+		// client error — retrying via replan won't change the outcome.
+		message = fmt.Sprintf(
+			"⚠️ Failed to download the repository archive (HTTP %d %s).\n\n"+
+				"This is a permanent error. Check the kubechecks logs for details.",
+			httpErr.StatusCode, http.StatusText(httpErr.StatusCode),
+		)
+
 	case hasHTTP:
+		// Unexpected non-4xx, non-5xx response (e.g. 3xx not followed as redirect).
 		message = fmt.Sprintf(
 			"⚠️ Failed to download the repository archive (HTTP %d %s).\n\n"+
 				"Comment `%s` to retry.",

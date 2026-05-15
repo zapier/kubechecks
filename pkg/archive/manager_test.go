@@ -128,6 +128,14 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			wantMsgExcludes: []string{"kubechecks replan"},
 		},
 		{
+			// 400/422/405/410 are permanent — no replan suggestion
+			name:            "HTTP 422 unprocessable — permanent 4xx, no retry",
+			ctx:             func() context.Context { return context.Background() },
+			cloneErr:        &HTTPError{StatusCode: http.StatusUnprocessableEntity},
+			wantMsgContains: []string{"422", "permanent error", "kubechecks logs"},
+			wantMsgExcludes: []string{"kubechecks replan"},
+		},
+		{
 			name:            "wrapped HTTP 502",
 			ctx:             func() context.Context { return context.Background() },
 			cloneErr:        errors.Wrap(&HTTPError{StatusCode: http.StatusBadGateway}, "failed to download"),
