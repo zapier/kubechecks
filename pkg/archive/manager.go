@@ -16,6 +16,13 @@ import (
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
+// urlParseError wraps failures from extractSHAFromArchiveURL. These are permanent —
+// the archive URL format is unrecognized and retrying won't help.
+type urlParseError struct{ err error }
+
+func (e *urlParseError) Error() string { return e.err.Error() }
+func (e *urlParseError) Unwrap() error { return e.err }
+
 // Manager manages archive-based repository access
 // It provides a similar interface to git.RepoManager but uses VCS archives instead
 type Manager struct {
@@ -60,7 +67,7 @@ func (m *Manager) Clone(ctx context.Context, cloneURL, branchName string, pr vcs
 	// Otherwise, cache returns stale archives when new commits are pushed to existing PR
 	mergeCommitSHA, err := extractSHAFromArchiveURL(archiveURL)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to extract merge commit SHA from archive URL")
+		return nil, &urlParseError{err: errors.Wrap(err, "failed to extract merge commit SHA from archive URL")}
 	}
 
 	log.Debug().
@@ -178,6 +185,7 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 
 	// Classify by the error itself first; ctx.Err() is a fallback for cases where the
 	// context was cancelled for an unrelated reason after Clone returned.
+	var urlErr *urlParseError
 	var httpErr *HTTPError
 	hasHTTP := errors.As(cloneErr, &httpErr)
 
@@ -218,13 +226,20 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 			httpErr.StatusCode, http.StatusText(httpErr.StatusCode), replan,
 		)
 
-	case hasHTTP && (httpErr.StatusCode == http.StatusUnauthorized || httpErr.StatusCode == http.StatusForbidden):
-		// Permanent auth failure — retrying won't help; direct the user to fix credentials instead.
-		message = fmt.Sprintf(
-			"⚠️ Authorization error downloading the repository archive (HTTP %d %s).\n\n"+
-				"Check that kubechecks has the correct VCS credentials configured.",
-			httpErr.StatusCode, http.StatusText(httpErr.StatusCode),
-		)
+	case hasHTTP && httpErr.StatusCode == http.StatusUnauthorized:
+		// 401 = authentication failure (missing or invalid token)
+		message = "⚠️ Authentication failed downloading the repository archive (HTTP 401 Unauthorized).\n\n" +
+			"Check that kubechecks has a valid VCS token configured."
+
+	case hasHTTP && httpErr.StatusCode == http.StatusForbidden:
+		// 403 = authorization failure (token valid but lacks required scope/permissions)
+		message = "⚠️ Access denied downloading the repository archive (HTTP 403 Forbidden).\n\n" +
+			"Check that the kubechecks VCS token has sufficient repository permissions."
+
+	case errors.As(cloneErr, &urlErr):
+		// Unrecognized archive URL format — this is a bug, not something the user can retry
+		message = "⚠️ Kubechecks could not parse the archive URL returned by the VCS.\n\n" +
+			"This is likely a configuration or VCS compatibility issue — check the kubechecks logs."
 
 	case hasHTTP:
 		message = fmt.Sprintf(

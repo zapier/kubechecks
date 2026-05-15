@@ -104,18 +104,27 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			wantMsgContains: []string{"503", "Service Unavailable", "kubechecks replan"},
 		},
 		{
-			// Auth errors must not suggest retrying — the credentials need fixing, not a retry
-			name:            "HTTP 401 unauthorized — no retry suggestion",
+			// 401 = bad/missing token — say "authentication", not "authorization"
+			name:            "HTTP 401 unauthorized — authentication message, no retry",
 			ctx:             func() context.Context { return context.Background() },
 			cloneErr:        &HTTPError{StatusCode: http.StatusUnauthorized},
-			wantMsgContains: []string{"401", "credentials"},
-			wantMsgExcludes: []string{"kubechecks replan"},
+			wantMsgContains: []string{"401", "Authentication", "token"},
+			wantMsgExcludes: []string{"kubechecks replan", "Authorization", "permissions"},
 		},
 		{
-			name:            "HTTP 403 forbidden — no retry suggestion",
+			// 403 = insufficient scope — say "authorization"/"permissions", not "authentication"
+			name:            "HTTP 403 forbidden — authorization message, no retry",
 			ctx:             func() context.Context { return context.Background() },
 			cloneErr:        &HTTPError{StatusCode: http.StatusForbidden},
-			wantMsgContains: []string{"403", "credentials"},
+			wantMsgContains: []string{"403", "permissions"},
+			wantMsgExcludes: []string{"kubechecks replan", "Authentication"},
+		},
+		{
+			// URL parse failure is a bug — no replan suggestion
+			name:            "urlParseError — no retry suggestion",
+			ctx:             func() context.Context { return context.Background() },
+			cloneErr:        &urlParseError{err: fmt.Errorf("unrecognized archive URL format: https://example.com/unknown")},
+			wantMsgContains: []string{"parse", "kubechecks logs"},
 			wantMsgExcludes: []string{"kubechecks replan"},
 		},
 		{
