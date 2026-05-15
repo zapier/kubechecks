@@ -189,21 +189,26 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 	var httpErr *HTTPError
 	hasHTTP := errors.As(cloneErr, &httpErr)
 
+	// Shared message strings — used in both the cloneErr branch and the ctx.Err() fallback
+	// so that wording stays consistent if either is ever updated.
+	timedOutMsg := fmt.Sprintf(
+		"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
+			"The VCS may still be computing the merge result. Comment `%s` to retry.",
+		replan,
+	)
+	interruptedMsg := fmt.Sprintf(
+		"⚠️ The archive download was interrupted before completing.\n\n"+
+			"This is usually caused by a shutdown or restart. Comment `%s` to retry.",
+		replan,
+	)
+
 	var message string
 	switch {
 	case errors.Is(cloneErr, context.DeadlineExceeded):
-		message = fmt.Sprintf(
-			"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
-				"The VCS may still be computing the merge result. Comment `%s` to retry.",
-			replan,
-		)
+		message = timedOutMsg
 
 	case errors.Is(cloneErr, context.Canceled):
-		message = fmt.Sprintf(
-			"⚠️ The archive download was interrupted before completing.\n\n"+
-				"This is usually caused by a shutdown or restart. Comment `%s` to retry.",
-			replan,
-		)
+		message = interruptedMsg
 
 	case hasHTTP && httpErr.StatusCode == http.StatusNotFound:
 		message = fmt.Sprintf(
@@ -249,18 +254,10 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 		)
 
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		message = fmt.Sprintf(
-			"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
-				"The VCS may still be computing the merge result. Comment `%s` to retry.",
-			replan,
-		)
+		message = timedOutMsg
 
 	case ctx.Err() != nil:
-		message = fmt.Sprintf(
-			"⚠️ The archive download was interrupted before completing.\n\n"+
-				"This is usually caused by a shutdown or restart. Comment `%s` to retry.",
-			replan,
-		)
+		message = interruptedMsg
 
 	default:
 		message = fmt.Sprintf(
