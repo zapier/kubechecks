@@ -175,42 +175,61 @@ func (m *Manager) PostConflictMessage(ctx context.Context, pr vcs.PullRequest) e
 func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullRequest, cloneErr error) error {
 	replan := m.cfg.ReplanCommentMessage
 
-	var message string
+	// Classify by the error itself first; ctx.Err() is a fallback for cases where the
+	// context was cancelled for an unrelated reason after Clone returned.
 	var httpErr *HTTPError
+	hasHTTP := errors.As(cloneErr, &httpErr)
+
+	var message string
 	switch {
-	case ctx.Err() != nil:
+	case errors.Is(cloneErr, context.DeadlineExceeded) || errors.Is(cloneErr, context.Canceled):
 		message = fmt.Sprintf(
 			"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
 				"The VCS may still be computing the merge result. Comment `%s` to retry.",
 			replan,
 		)
 
-	case errors.As(cloneErr, &httpErr) && httpErr.StatusCode == http.StatusNotFound:
+	case hasHTTP && httpErr.StatusCode == http.StatusNotFound:
 		message = fmt.Sprintf(
 			"⚠️ Repository archive not found (HTTP 404).\n\n"+
 				"The VCS may still be preparing the merged archive. Comment `%s` to retry.",
 			replan,
 		)
 
-	case errors.As(cloneErr, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests:
+	case hasHTTP && httpErr.StatusCode == http.StatusTooManyRequests:
 		message = fmt.Sprintf(
 			"⚠️ Rate limited while downloading the repository archive (HTTP 429).\n\n"+
 				"Comment `%s` to retry.",
 			replan,
 		)
 
-	case errors.As(cloneErr, &httpErr) && httpErr.StatusCode >= http.StatusInternalServerError:
+	case hasHTTP && httpErr.StatusCode >= http.StatusInternalServerError:
 		message = fmt.Sprintf(
 			"⚠️ VCS server error while downloading the repository archive (HTTP %d %s).\n\n"+
 				"The VCS may be experiencing issues. Comment `%s` to retry.",
 			httpErr.StatusCode, http.StatusText(httpErr.StatusCode), replan,
 		)
 
-	case errors.As(cloneErr, &httpErr):
+	case hasHTTP && (httpErr.StatusCode == http.StatusUnauthorized || httpErr.StatusCode == http.StatusForbidden):
+		// Permanent auth failure — retrying won't help; direct the user to fix credentials instead.
+		message = fmt.Sprintf(
+			"⚠️ Authorization error downloading the repository archive (HTTP %d %s).\n\n"+
+				"Check that kubechecks has the correct VCS credentials configured.",
+			httpErr.StatusCode, http.StatusText(httpErr.StatusCode),
+		)
+
+	case hasHTTP:
 		message = fmt.Sprintf(
 			"⚠️ Failed to download the repository archive (HTTP %d %s).\n\n"+
 				"Comment `%s` to retry.",
 			httpErr.StatusCode, http.StatusText(httpErr.StatusCode), replan,
+		)
+
+	case ctx.Err() != nil:
+		message = fmt.Sprintf(
+			"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
+				"The VCS may still be computing the merge result. Comment `%s` to retry.",
+			replan,
 		)
 
 	default:

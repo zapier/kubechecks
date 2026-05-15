@@ -117,7 +117,7 @@ func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA st
 		const (
 			maxDownloadAttempts  = 3
 			downloadInitialDelay = 10 * time.Second
-			downloadMaxDelay     = 30 * time.Second
+			downloadMaxDelay     = 20 * time.Second // caps the 2nd+ sleep: 10s → 20s → 20s …
 		)
 		retryDelay := downloadInitialDelay
 		var lastErr error
@@ -190,6 +190,11 @@ func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA st
 				Int("attempt", attempt+1).
 				Int("max_attempts", maxDownloadAttempts).
 				Msg("transient archive download failure")
+		}
+
+		// Clean up any partial extraction left by the final failed attempt.
+		if removeErr := os.RemoveAll(targetDir); removeErr != nil {
+			log.Warn().Err(removeErr).Str("dir", targetDir).Msg("failed to clean up archive directory after failed download")
 		}
 
 		return nil, errors.Wrap(lastErr, "failed to download and extract archive")

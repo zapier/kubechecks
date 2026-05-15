@@ -14,7 +14,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
-func newTestManager(_ *testing.T, mockClient *vcsmocks.MockClient) *Manager {
+func newTestManager(mockClient *vcsmocks.MockClient) *Manager {
 	return &Manager{
 		vcsClient: mockClient,
 		cfg:       config.ServerConfig{ReplanCommentMessage: "kubechecks replan"},
@@ -29,15 +29,41 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 		ctx             func() context.Context
 		cloneErr        error
 		wantMsgContains []string
+		wantMsgExcludes []string
 	}{
 		{
-			name: "context timeout",
+			name:            "context.DeadlineExceeded in clone error",
+			ctx:             func() context.Context { return context.Background() },
+			cloneErr:        context.DeadlineExceeded,
+			wantMsgContains: []string{"timed out", "kubechecks replan"},
+		},
+		{
+			name:            "context.Canceled in clone error",
+			ctx:             func() context.Context { return context.Background() },
+			cloneErr:        context.Canceled,
+			wantMsgContains: []string{"timed out", "kubechecks replan"},
+		},
+		{
+			// HTTP error in cloneErr takes priority even when ctx is also cancelled
+			name: "HTTP 503 with cancelled ctx — HTTP wins",
 			ctx: func() context.Context {
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 				return ctx
 			},
-			cloneErr:        fmt.Errorf("deadline exceeded"),
+			cloneErr:        &HTTPError{StatusCode: http.StatusServiceUnavailable},
+			wantMsgContains: []string{"503", "kubechecks replan"},
+			wantMsgExcludes: []string{"timed out"},
+		},
+		{
+			// ctx cancelled, no typed error — falls through to ctx.Err() branch
+			name: "cancelled ctx with generic error — ctx fallback",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			cloneErr:        fmt.Errorf("some generic failure"),
 			wantMsgContains: []string{"timed out", "kubechecks replan"},
 		},
 		{
@@ -59,10 +85,19 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			wantMsgContains: []string{"503", "Service Unavailable", "kubechecks replan"},
 		},
 		{
-			name:            "HTTP 403 other 4xx",
+			// Auth errors should not suggest retrying — retrying won't fix bad credentials
+			name:            "HTTP 401 unauthorized — no retry suggestion",
+			ctx:             func() context.Context { return context.Background() },
+			cloneErr:        &HTTPError{StatusCode: http.StatusUnauthorized},
+			wantMsgContains: []string{"401", "credentials"},
+			wantMsgExcludes: []string{"kubechecks replan"},
+		},
+		{
+			name:            "HTTP 403 forbidden — no retry suggestion",
 			ctx:             func() context.Context { return context.Background() },
 			cloneErr:        &HTTPError{StatusCode: http.StatusForbidden},
-			wantMsgContains: []string{"403", "Forbidden", "kubechecks replan"},
+			wantMsgContains: []string{"403", "credentials"},
+			wantMsgExcludes: []string{"kubechecks replan"},
 		},
 		{
 			name:            "wrapped HTTP 502",
@@ -84,18 +119,20 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			mockClient.On("PostMessage", mock.Anything, pr, mock.AnythingOfType("string")).
 				Return(nil, nil)
 
-			m := newTestManager(t, mockClient)
+			m := newTestManager(mockClient)
 			ctx := tt.ctx()
 
 			err := m.PostArchiveErrorMessage(ctx, pr, tt.cloneErr)
 			assert.NoError(t, err)
 
-			// Capture the posted message and assert it contains expected substrings
 			calls := mockClient.Calls
 			assert.Len(t, calls, 1, "expected exactly one PostMessage call")
 			postedMsg := calls[0].Arguments.String(2)
 			for _, want := range tt.wantMsgContains {
 				assert.Contains(t, postedMsg, want)
+			}
+			for _, excluded := range tt.wantMsgExcludes {
+				assert.NotContains(t, postedMsg, excluded)
 			}
 		})
 	}
@@ -105,7 +142,7 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 		mockClient.On("PostMessage", mock.Anything, pr, mock.AnythingOfType("string")).
 			Return(nil, fmt.Errorf("vcs unavailable"))
 
-		m := newTestManager(t, mockClient)
+		m := newTestManager(mockClient)
 		err := m.PostArchiveErrorMessage(context.Background(), pr, fmt.Errorf("network error"))
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "vcs unavailable")

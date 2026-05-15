@@ -57,7 +57,9 @@ func (d *Downloader) DownloadAndExtract(ctx context.Context, archiveURL, targetD
 		return "", errors.Wrap(err, "failed to download archive")
 	}
 
-	// Extract archive
+	// Extract archive.
+	// Note: extract() does not take a context — cancellation during extraction (a local
+	// disk operation) is not supported and will run to completion regardless of ctx state.
 	extractedPath, err := d.extract(zipData, targetDir)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to extract archive")
