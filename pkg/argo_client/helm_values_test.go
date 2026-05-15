@@ -15,16 +15,21 @@ func TestContainsGlob(t *testing.T) {
 		path     string
 		expected bool
 	}{
-		"plain":            {"values.yaml", false},
-		"relative-plain":   {"./values.yaml", false},
-		"parent-plain":     {"../values.yaml", false},
-		"star":             {"./values-*.yaml", true},
-		"parent-star":      {"../values-*.yaml", true},
-		"question":         {"values-?.yaml", true},
-		"char-class":       {"values-[ab].yaml", true},
-		"empty":            {"", false},
-		"directory-glob":   {"envs/*/values.yaml", true},
-		"trailing-star":    {"values.yaml*", true},
+		"plain":              {"values.yaml", false},
+		"relative-plain":     {"./values.yaml", false},
+		"parent-plain":       {"../values.yaml", false},
+		"star":               {"./values-*.yaml", true},
+		"parent-star":        {"../values-*.yaml", true},
+		"question":           {"values-?.yaml", true},
+		"char-class":         {"values-[ab].yaml", true},
+		"empty":              {"", false},
+		"directory-glob":     {"envs/*/values.yaml", true},
+		"trailing-star":      {"values.yaml*", true},
+		"multi-wildcard":     {"./env-*/values-*.yaml", true},
+		"numeric-char-class": {"values-[0-9].yaml", true},
+		// Unclosed '[' is conservatively treated as a glob; filepath.Glob will
+		// return ErrBadPattern if expansion is attempted.
+		"unclosed-bracket": {"values-[ab.yaml", true},
 	}
 
 	for name, tc := range testcases {
