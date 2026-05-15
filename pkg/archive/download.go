@@ -15,6 +15,19 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// HTTPError is returned when the archive server responds with a non-200 status code.
+// It carries the status code so callers can make retry decisions without string parsing.
+type HTTPError struct {
+	StatusCode int
+	URL        string
+	Body       string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("HTTP %d %s - URL: %s - Response: %s",
+		e.StatusCode, http.StatusText(e.StatusCode), e.URL, e.Body)
+}
+
 // Downloader handles downloading and extracting archives
 type Downloader struct {
 	httpClient *http.Client
@@ -119,13 +132,11 @@ func (d *Downloader) download(ctx context.Context, archiveURL string, authHeader
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
 		archiveDownloadFailed.Inc()
-		// Include response body snippet in error for debugging (first 500 chars)
 		bodySnippet := string(data)
 		if len(bodySnippet) > 500 {
 			bodySnippet = bodySnippet[:500] + "..."
 		}
-		return nil, fmt.Errorf("HTTP %d %s - URL: %s - Response: %s",
-			resp.StatusCode, http.StatusText(resp.StatusCode), archiveURL, bodySnippet)
+		return nil, &HTTPError{StatusCode: resp.StatusCode, URL: archiveURL, Body: bodySnippet}
 	}
 
 	archiveDownloadSuccess.Inc()
@@ -227,6 +238,24 @@ func (d *Downloader) extract(zipData []byte, targetDir string) (string, error) {
 		return filepath.Join(targetDir, topLevelDir), nil
 	}
 	return targetDir, nil
+}
+
+// isRetriableDownloadError returns true if the error is transient and the download should be retried.
+// Returns false for context cancellation, permanent HTTP errors (4xx except 404/429), or nil.
+func isRetriableDownloadError(ctx context.Context, err error) bool {
+	if err == nil || ctx.Err() != nil {
+		return false
+	}
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		sc := httpErr.StatusCode
+		// 404: archive may not be ready on CDN yet; 429: rate limited; 5xx: transient server errors
+		return sc == http.StatusNotFound ||
+			sc == http.StatusTooManyRequests ||
+			sc >= http.StatusInternalServerError
+	}
+	// Non-HTTP errors are network-level failures (connection refused, timeouts) — transient
+	return true
 }
 
 // extractFile extracts a single file from zip archive

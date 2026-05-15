@@ -3,6 +3,7 @@ package archive
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -164,6 +165,77 @@ func (m *Manager) PostConflictMessage(ctx context.Context, pr vcs.PullRequest) e
 		Str("repo", pr.FullName).
 		Int("pr_number", pr.CheckID).
 		Msg("posted conflict resolution message")
+
+	return nil
+}
+
+// PostArchiveErrorMessage posts a specific error message to the PR based on the type of download failure.
+// If the original context is already cancelled (e.g. timeout), a background context is used so the
+// message can still be delivered.
+func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullRequest, cloneErr error) error {
+	replan := m.cfg.ReplanCommentMessage
+
+	var message string
+	var httpErr *HTTPError
+	switch {
+	case ctx.Err() != nil:
+		message = fmt.Sprintf(
+			"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
+				"The VCS may still be computing the merge result. Comment `%s` to retry.",
+			replan,
+		)
+
+	case errors.As(cloneErr, &httpErr) && httpErr.StatusCode == http.StatusNotFound:
+		message = fmt.Sprintf(
+			"⚠️ Repository archive not found (HTTP 404).\n\n"+
+				"The VCS may still be preparing the merged archive. Comment `%s` to retry.",
+			replan,
+		)
+
+	case errors.As(cloneErr, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests:
+		message = fmt.Sprintf(
+			"⚠️ Rate limited while downloading the repository archive (HTTP 429).\n\n"+
+				"Comment `%s` to retry.",
+			replan,
+		)
+
+	case errors.As(cloneErr, &httpErr) && httpErr.StatusCode >= http.StatusInternalServerError:
+		message = fmt.Sprintf(
+			"⚠️ VCS server error while downloading the repository archive (HTTP %d %s).\n\n"+
+				"The VCS may be experiencing issues. Comment `%s` to retry.",
+			httpErr.StatusCode, http.StatusText(httpErr.StatusCode), replan,
+		)
+
+	case errors.As(cloneErr, &httpErr):
+		message = fmt.Sprintf(
+			"⚠️ Failed to download the repository archive (HTTP %d %s).\n\n"+
+				"Comment `%s` to retry.",
+			httpErr.StatusCode, http.StatusText(httpErr.StatusCode), replan,
+		)
+
+	default:
+		message = fmt.Sprintf(
+			"⚠️ Failed to download the repository archive due to a transient error.\n\n"+
+				"Comment `%s` to retry.",
+			replan,
+		)
+	}
+
+	// Use a fresh context if the original was cancelled so the message is still delivered.
+	postCtx := ctx
+	if ctx.Err() != nil {
+		postCtx = context.Background()
+	}
+
+	_, err := m.vcsClient.PostMessage(postCtx, pr, message)
+	if err != nil {
+		return errors.Wrap(err, "failed to post archive error message")
+	}
+
+	log.Info().
+		Str("repo", pr.FullName).
+		Int("pr_number", pr.CheckID).
+		Msg("posted archive download error message")
 
 	return nil
 }

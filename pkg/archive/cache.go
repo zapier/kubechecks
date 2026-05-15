@@ -111,31 +111,88 @@ func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA st
 		// Using merge_commit_sha directly as it's globally unique
 		targetDir := filepath.Join(c.baseDir, mergeCommitSHA)
 
-		// Download and extract
-		extractedPath, err := c.downloader.DownloadAndExtract(ctx, archiveURL, targetDir, authHeaders)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to download and extract archive")
+		// Download with retry for transient failures (network hiccups, CDN lag, 5xx).
+		// Retry runs inside the singleflight so all concurrent callers for the same SHA
+		// share one retry chain instead of each making independent requests.
+		const (
+			maxDownloadAttempts  = 3
+			downloadInitialDelay = 10 * time.Second
+			downloadMaxDelay     = 30 * time.Second
+		)
+		retryDelay := downloadInitialDelay
+		var lastErr error
+
+		for attempt := 0; attempt < maxDownloadAttempts; attempt++ {
+			if attempt > 0 {
+				// Remove any partial extraction before retrying
+				if removeErr := os.RemoveAll(targetDir); removeErr != nil {
+					log.Warn().Err(removeErr).Str("dir", targetDir).Msg("failed to clean up partial archive directory before retry")
+				}
+
+				log.Info().
+					Caller().
+					Str("archive_url", archiveURL).
+					Str("merge_commit_sha", mergeCommitSHA).
+					Int("attempt", attempt+1).
+					Int("max_attempts", maxDownloadAttempts).
+					Dur("backoff", retryDelay).
+					Err(lastErr).
+					Msg("retrying archive download after transient failure")
+
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(retryDelay):
+					retryDelay *= 2
+					if retryDelay > downloadMaxDelay {
+						retryDelay = downloadMaxDelay
+					}
+				}
+			}
+
+			var extractedPath string
+			extractedPath, lastErr = c.downloader.DownloadAndExtract(ctx, archiveURL, targetDir, authHeaders)
+			if lastErr == nil {
+				// Create cache entry
+				entry = &CacheEntry{
+					extractedPath: extractedPath,
+					lastUsed:      time.Now(),
+					refCount:      1,
+				}
+
+				// Add to cache
+				c.lock.Lock()
+				c.entries[mergeCommitSHA] = entry
+				c.lock.Unlock()
+
+				log.Info().
+					Str("archive_url", archiveURL).
+					Str("merge_commit_sha", mergeCommitSHA).
+					Str("path", extractedPath).
+					Msg("archive downloaded and cached")
+
+				return extractedPath, nil
+			}
+
+			if !isRetriableDownloadError(ctx, lastErr) {
+				log.Debug().
+					Caller().
+					Err(lastErr).
+					Str("archive_url", archiveURL).
+					Msg("archive download error is not retriable")
+				break
+			}
+
+			log.Warn().
+				Caller().
+				Err(lastErr).
+				Str("archive_url", archiveURL).
+				Int("attempt", attempt+1).
+				Int("max_attempts", maxDownloadAttempts).
+				Msg("transient archive download failure")
 		}
 
-		// Create cache entry
-		entry = &CacheEntry{
-			extractedPath: extractedPath,
-			lastUsed:      time.Now(),
-			refCount:      1,
-		}
-
-		// Add to cache
-		c.lock.Lock()
-		c.entries[mergeCommitSHA] = entry
-		c.lock.Unlock()
-
-		log.Info().
-			Str("archive_url", archiveURL).
-			Str("merge_commit_sha", mergeCommitSHA).
-			Str("path", extractedPath).
-			Msg("archive downloaded and cached")
-
-		return extractedPath, nil
+		return nil, errors.Wrap(lastErr, "failed to download and extract archive")
 	})
 
 	if err != nil {
