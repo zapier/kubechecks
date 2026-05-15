@@ -65,7 +65,7 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			name: "cancelled ctx (deadline) with generic error — timeout fallback",
 			ctx: func() context.Context {
 				ctx, cancel := context.WithTimeout(context.Background(), 0)
-				defer cancel()
+				cancel()
 				return ctx
 			},
 			cloneErr:                fmt.Errorf("some generic failure"),

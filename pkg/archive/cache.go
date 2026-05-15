@@ -140,7 +140,7 @@ func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA st
 
 				select {
 				case <-ctx.Done():
-					return nil, ctx.Err()
+					return nil, errors.Wrapf(ctx.Err(), "archive download retry interrupted after transient failure: %v", lastErr)
 				case <-time.After(retryDelay):
 					retryDelay *= 2
 				}
