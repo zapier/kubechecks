@@ -117,7 +117,6 @@ func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA st
 		const (
 			maxDownloadAttempts  = 3
 			downloadInitialDelay = 10 * time.Second
-			downloadMaxDelay     = 20 * time.Second // caps the 2nd+ sleep: 10s → 20s → 20s …
 		)
 		retryDelay := downloadInitialDelay
 		var lastErr error
@@ -144,9 +143,6 @@ func (c *Cache) GetOrDownload(ctx context.Context, archiveURL, mergeCommitSHA st
 					return nil, ctx.Err()
 				case <-time.After(retryDelay):
 					retryDelay *= 2
-					if retryDelay > downloadMaxDelay {
-						retryDelay = downloadMaxDelay
-					}
 				}
 			}
 

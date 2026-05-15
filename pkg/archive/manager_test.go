@@ -25,11 +25,12 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 	pr := vcs.PullRequest{FullName: "org/repo", CheckID: 42, BaseRef: "main"}
 
 	tests := []struct {
-		name            string
-		ctx             func() context.Context
-		cloneErr        error
-		wantMsgContains []string
-		wantMsgExcludes []string
+		name                    string
+		ctx                     func() context.Context
+		cloneErr                error
+		wantMsgContains         []string
+		wantMsgExcludes         []string
+		wantNonCancelledPostCtx bool // assert PostMessage receives a non-cancelled context
 	}{
 		{
 			name:            "context.DeadlineExceeded in clone error",
@@ -38,33 +39,51 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			wantMsgContains: []string{"timed out", "kubechecks replan"},
 		},
 		{
+			// Canceled ≠ timeout — should say "interrupted", not "timed out"
 			name:            "context.Canceled in clone error",
 			ctx:             func() context.Context { return context.Background() },
 			cloneErr:        context.Canceled,
-			wantMsgContains: []string{"timed out", "kubechecks replan"},
-		},
-		{
-			// HTTP error in cloneErr takes priority even when ctx is also cancelled
-			name: "HTTP 503 with cancelled ctx — HTTP wins",
-			ctx: func() context.Context {
-				ctx, cancel := context.WithCancel(context.Background())
-				cancel()
-				return ctx
-			},
-			cloneErr:        &HTTPError{StatusCode: http.StatusServiceUnavailable},
-			wantMsgContains: []string{"503", "kubechecks replan"},
+			wantMsgContains: []string{"interrupted", "kubechecks replan"},
 			wantMsgExcludes: []string{"timed out"},
 		},
 		{
-			// ctx cancelled, no typed error — falls through to ctx.Err() branch
-			name: "cancelled ctx with generic error — ctx fallback",
+			// HTTP error in cloneErr takes priority even when ctx is also cancelled;
+			// PostMessage must receive a fresh (non-cancelled) context.
+			name: "HTTP 503 with cancelled ctx — HTTP wins, fresh postCtx",
 			ctx: func() context.Context {
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 				return ctx
 			},
-			cloneErr:        fmt.Errorf("some generic failure"),
-			wantMsgContains: []string{"timed out", "kubechecks replan"},
+			cloneErr:                &HTTPError{StatusCode: http.StatusServiceUnavailable},
+			wantMsgContains:         []string{"503", "kubechecks replan"},
+			wantMsgExcludes:         []string{"timed out", "interrupted"},
+			wantNonCancelledPostCtx: true,
+		},
+		{
+			// ctx cancelled with DeadlineExceeded, no typed error — ctx.Err() fallback (timeout)
+			name: "cancelled ctx (deadline) with generic error — timeout fallback",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithTimeout(context.Background(), 0)
+				defer cancel()
+				return ctx
+			},
+			cloneErr:                fmt.Errorf("some generic failure"),
+			wantMsgContains:         []string{"timed out", "kubechecks replan"},
+			wantNonCancelledPostCtx: true,
+		},
+		{
+			// ctx cancelled (not deadline), no typed error — ctx.Err() fallback (interrupted)
+			name: "cancelled ctx (cancel) with generic error — interrupted fallback",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			cloneErr:                fmt.Errorf("some generic failure"),
+			wantMsgContains:         []string{"interrupted", "kubechecks replan"},
+			wantMsgExcludes:         []string{"timed out"},
+			wantNonCancelledPostCtx: true,
 		},
 		{
 			name:            "HTTP 404 not found",
@@ -85,7 +104,7 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			wantMsgContains: []string{"503", "Service Unavailable", "kubechecks replan"},
 		},
 		{
-			// Auth errors should not suggest retrying — retrying won't fix bad credentials
+			// Auth errors must not suggest retrying — the credentials need fixing, not a retry
 			name:            "HTTP 401 unauthorized — no retry suggestion",
 			ctx:             func() context.Context { return context.Background() },
 			cloneErr:        &HTTPError{StatusCode: http.StatusUnauthorized},
@@ -116,7 +135,14 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockClient := vcsmocks.NewMockClient(t)
+
+			// postCtxErr is captured inside Run so we observe Err() before
+			// the deferred cancel() in PostArchiveErrorMessage fires on return.
+			var postCtxErr error
 			mockClient.On("PostMessage", mock.Anything, pr, mock.AnythingOfType("string")).
+				Run(func(args mock.Arguments) {
+					postCtxErr = args.Get(0).(context.Context).Err()
+				}).
 				Return(nil, nil)
 
 			m := newTestManager(mockClient)
@@ -133,6 +159,9 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			}
 			for _, excluded := range tt.wantMsgExcludes {
 				assert.NotContains(t, postedMsg, excluded)
+			}
+			if tt.wantNonCancelledPostCtx {
+				assert.NoError(t, postCtxErr, "PostMessage should receive a non-cancelled context when original ctx is done")
 			}
 		})
 	}

@@ -17,6 +17,8 @@ import (
 
 // HTTPError is returned when the archive server responds with a non-200 status code.
 // It carries the status code so callers can make retry decisions without string parsing.
+// Note: Body contains the raw response snippet and may include sensitive server data —
+// it is intentionally kept out of user-facing PR comments and used only in internal logs.
 type HTTPError struct {
 	StatusCode int
 	URL        string
@@ -27,6 +29,14 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("HTTP %d %s - URL: %s - Response: %s",
 		e.StatusCode, http.StatusText(e.StatusCode), e.URL, e.Body)
 }
+
+// extractError wraps failures that occur during local zip extraction.
+// These are never retriable — retrying the download won't fix zip corruption,
+// path traversal violations, permission errors, or out-of-disk-space conditions.
+type extractError struct{ err error }
+
+func (e *extractError) Error() string { return e.err.Error() }
+func (e *extractError) Unwrap() error { return e.err }
 
 // Downloader handles downloading and extracting archives
 type Downloader struct {
@@ -60,9 +70,11 @@ func (d *Downloader) DownloadAndExtract(ctx context.Context, archiveURL, targetD
 	// Extract archive.
 	// Note: extract() does not take a context — cancellation during extraction (a local
 	// disk operation) is not supported and will run to completion regardless of ctx state.
+	// Extraction failures are wrapped in extractError so isRetriableDownloadError can
+	// distinguish them from transient download failures and skip retries.
 	extractedPath, err := d.extract(zipData, targetDir)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to extract archive")
+		return "", &extractError{err: errors.Wrap(err, "failed to extract archive")}
 	}
 
 	log.Info().
@@ -246,6 +258,12 @@ func (d *Downloader) extract(zipData []byte, targetDir string) (string, error) {
 // Returns false for context cancellation, permanent HTTP errors (4xx except 404/429), or nil.
 func isRetriableDownloadError(ctx context.Context, err error) bool {
 	if err == nil || ctx.Err() != nil {
+		return false
+	}
+	// Local extraction failures (zip corruption, path traversal, disk full, permissions) are
+	// never transient — the same archive would produce the same failure on retry.
+	var extErr *extractError
+	if errors.As(err, &extErr) {
 		return false
 	}
 	var httpErr *HTTPError

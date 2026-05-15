@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -182,10 +183,17 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 
 	var message string
 	switch {
-	case errors.Is(cloneErr, context.DeadlineExceeded) || errors.Is(cloneErr, context.Canceled):
+	case errors.Is(cloneErr, context.DeadlineExceeded):
 		message = fmt.Sprintf(
 			"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
 				"The VCS may still be computing the merge result. Comment `%s` to retry.",
+			replan,
+		)
+
+	case errors.Is(cloneErr, context.Canceled):
+		message = fmt.Sprintf(
+			"⚠️ The archive download was interrupted before completing.\n\n"+
+				"This is usually caused by a shutdown or restart. Comment `%s` to retry.",
 			replan,
 		)
 
@@ -225,10 +233,17 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 			httpErr.StatusCode, http.StatusText(httpErr.StatusCode), replan,
 		)
 
-	case ctx.Err() != nil:
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		message = fmt.Sprintf(
 			"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
 				"The VCS may still be computing the merge result. Comment `%s` to retry.",
+			replan,
+		)
+
+	case ctx.Err() != nil:
+		message = fmt.Sprintf(
+			"⚠️ The archive download was interrupted before completing.\n\n"+
+				"This is usually caused by a shutdown or restart. Comment `%s` to retry.",
 			replan,
 		)
 
@@ -241,9 +256,12 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 	}
 
 	// Use a fresh context if the original was cancelled so the message is still delivered.
+	// A 30s timeout bounds the fallback — a hung VCS should not leak this goroutine indefinitely.
 	postCtx := ctx
 	if ctx.Err() != nil {
-		postCtx = context.Background()
+		var cancel context.CancelFunc
+		postCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 	}
 
 	_, err := m.vcsClient.PostMessage(postCtx, pr, message)

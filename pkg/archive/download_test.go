@@ -114,6 +114,19 @@ func TestIsRetriableDownloadError(t *testing.T) {
 			err:  fmt.Errorf("unexpected EOF"),
 			want: true,
 		},
+		// extractError is always permanent — zip corruption/path traversal/disk full won't be fixed by retry
+		{
+			name: "extract error",
+			ctx:  context.Background(),
+			err:  &extractError{err: fmt.Errorf("invalid file path (path traversal detected): ../../etc/passwd")},
+			want: false,
+		},
+		{
+			name: "wrapped extract error",
+			ctx:  context.Background(),
+			err:  errors.Wrap(&extractError{err: fmt.Errorf("no space left on device")}, "failed to extract archive"),
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
