@@ -300,6 +300,13 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	// Download and extract archive (contains merged state)
 	repo, err = ce.ctr.ArchiveManager.Clone(ctx, ce.pullRequest.CloneURL, ce.pullRequest.BaseRef, ce.pullRequest)
 	if err != nil {
+		// Note: PostArchiveErrorMessage is also called for pre-download failures
+		// (e.g. DownloadArchive timeout, unrecognized URL format). Those fall through
+		// to the generic "transient error" message, which is acceptable for the timeout
+		// case (user can retry) but misleading for permanent URL parse failures (rare).
+		if postErr := ce.ctr.ArchiveManager.PostArchiveErrorMessage(ctx, ce.pullRequest, err); postErr != nil {
+			ce.logger.Error().Caller().Err(postErr).Msg("failed to post archive error message")
+		}
 		return errors.Wrap(err, "failed to download archive")
 	}
 

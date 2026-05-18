@@ -3,8 +3,10 @@ package archive
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -13,6 +15,13 @@ import (
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
+
+// urlParseError wraps failures from extractSHAFromArchiveURL. These are permanent —
+// the archive URL format is unrecognized and retrying won't help.
+type urlParseError struct{ err error }
+
+func (e *urlParseError) Error() string { return e.err.Error() }
+func (e *urlParseError) Unwrap() error { return e.err }
 
 // Manager manages archive-based repository access
 // It provides a similar interface to git.RepoManager but uses VCS archives instead
@@ -58,7 +67,7 @@ func (m *Manager) Clone(ctx context.Context, cloneURL, branchName string, pr vcs
 	// Otherwise, cache returns stale archives when new commits are pushed to existing PR
 	mergeCommitSHA, err := extractSHAFromArchiveURL(archiveURL)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to extract merge commit SHA from archive URL")
+		return nil, &urlParseError{err: errors.Wrap(err, "failed to extract merge commit SHA from archive URL")}
 	}
 
 	log.Debug().
@@ -164,6 +173,128 @@ func (m *Manager) PostConflictMessage(ctx context.Context, pr vcs.PullRequest) e
 		Str("repo", pr.FullName).
 		Int("pr_number", pr.CheckID).
 		Msg("posted conflict resolution message")
+
+	return nil
+}
+
+// PostArchiveErrorMessage posts a specific error message to the PR based on the type of download failure.
+// If the original context is already cancelled (e.g. timeout), a background context is used so the
+// message can still be delivered.
+func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullRequest, cloneErr error) error {
+	replan := m.cfg.ReplanCommentMessage
+
+	// Classify by the error itself first; ctx.Err() is a fallback for cases where the
+	// context was cancelled for an unrelated reason after Clone returned.
+	var urlErr *urlParseError
+	var httpErr *HTTPError
+	hasHTTP := errors.As(cloneErr, &httpErr)
+
+	// Shared message strings — used in both the cloneErr branch and the ctx.Err() fallback
+	// so that wording stays consistent if either is ever updated.
+	timedOutMsg := fmt.Sprintf(
+		"⚠️ Kubechecks timed out waiting for the repository archive to be ready.\n\n"+
+			"The VCS may still be computing the merge result. Comment `%s` to retry.",
+		replan,
+	)
+	interruptedMsg := fmt.Sprintf(
+		"⚠️ The archive download was interrupted before completing.\n\n"+
+			"This is usually caused by a shutdown or restart. Comment `%s` to retry.",
+		replan,
+	)
+
+	var message string
+	switch {
+	case errors.Is(cloneErr, context.DeadlineExceeded):
+		message = timedOutMsg
+
+	case errors.Is(cloneErr, context.Canceled):
+		message = interruptedMsg
+
+	case hasHTTP && httpErr.StatusCode == http.StatusNotFound:
+		message = fmt.Sprintf(
+			"⚠️ Repository archive not found (HTTP 404).\n\n"+
+				"The VCS may still be preparing the merged archive. Comment `%s` to retry.",
+			replan,
+		)
+
+	case hasHTTP && httpErr.StatusCode == http.StatusTooManyRequests:
+		message = fmt.Sprintf(
+			"⚠️ Rate limited while downloading the repository archive (HTTP 429).\n\n"+
+				"Comment `%s` to retry.",
+			replan,
+		)
+
+	case hasHTTP && httpErr.StatusCode >= http.StatusInternalServerError:
+		message = fmt.Sprintf(
+			"⚠️ VCS server error while downloading the repository archive (HTTP %d %s).\n\n"+
+				"The VCS may be experiencing issues. Comment `%s` to retry.",
+			httpErr.StatusCode, http.StatusText(httpErr.StatusCode), replan,
+		)
+
+	case hasHTTP && httpErr.StatusCode == http.StatusUnauthorized:
+		// 401 = authentication failure (missing or invalid token)
+		message = "⚠️ Authentication failed downloading the repository archive (HTTP 401 Unauthorized).\n\n" +
+			"Check that kubechecks has a valid VCS token configured."
+
+	case hasHTTP && httpErr.StatusCode == http.StatusForbidden:
+		// 403 = authorization failure (token valid but lacks required scope/permissions)
+		message = "⚠️ Access denied downloading the repository archive (HTTP 403 Forbidden).\n\n" +
+			"Check that the kubechecks VCS token has sufficient repository permissions."
+
+	case errors.As(cloneErr, &urlErr):
+		// Unrecognized archive URL format — this is a bug, not something the user can retry
+		message = "⚠️ Kubechecks could not parse the archive URL returned by the VCS.\n\n" +
+			"This is likely a configuration or VCS compatibility issue — check the kubechecks logs."
+
+	case hasHTTP && httpErr.StatusCode >= 400 && httpErr.StatusCode < 500:
+		// Any remaining 4xx not handled above (400, 405, 410, 422, etc.) is a permanent
+		// client error — retrying via replan won't change the outcome.
+		message = fmt.Sprintf(
+			"⚠️ Failed to download the repository archive (HTTP %d %s).\n\n"+
+				"This is a permanent error. Check the kubechecks logs for details.",
+			httpErr.StatusCode, http.StatusText(httpErr.StatusCode),
+		)
+
+	case hasHTTP:
+		// Unexpected non-4xx, non-5xx response (e.g. 3xx not followed as redirect).
+		message = fmt.Sprintf(
+			"⚠️ Failed to download the repository archive (HTTP %d %s).\n\n"+
+				"Comment `%s` to retry.",
+			httpErr.StatusCode, http.StatusText(httpErr.StatusCode), replan,
+		)
+
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		message = timedOutMsg
+
+	case ctx.Err() != nil:
+		message = interruptedMsg
+
+	default:
+		message = fmt.Sprintf(
+			"⚠️ Failed to download the repository archive due to a transient error.\n\n"+
+				"Comment `%s` to retry.",
+			replan,
+		)
+	}
+
+	// Use a fresh context if the original was cancelled so the message is still delivered.
+	// A 30s timeout bounds the fallback — a hung VCS should not leak this goroutine indefinitely.
+	postCtx := ctx
+	if ctx.Err() != nil {
+		var cancel context.CancelFunc
+		postCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+	}
+
+	_, err := m.vcsClient.PostMessage(postCtx, pr, message)
+	if err != nil {
+		return errors.Wrap(err, "failed to post archive error message")
+	}
+
+	log.Info().
+		Str("repo", pr.FullName).
+		Int("pr_number", pr.CheckID).
+		Msg("posted archive download error message")
 
 	return nil
 }
