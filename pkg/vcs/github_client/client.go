@@ -21,10 +21,23 @@ import (
 
 var tracer = otel.Tracer("pkg/vcs/github_client")
 
+// installationTokenSource fetches a fresh installation token. Implemented by
+// *ghinstallation.Transport in production; stubbed in tests to exercise the App auth
+// branch of GetAuthHeaders without spinning up a real JWT signer.
+type installationTokenSource interface {
+	Token(ctx context.Context) (string, error)
+}
+
 type Client struct {
 	shurcoolClient *githubv4.Client
 	googleClient   *GClient
 	cfg            config.ServerConfig
+
+	// appTokenSource is set when the client is authenticated as a GitHub App. It is used
+	// by GetAuthHeaders to fetch a fresh installation token for archive downloads, since
+	// the archive downloader uses a separate http.Client and must attach the auth header
+	// itself rather than going through the SDK's authenticated transport.
+	appTokenSource installationTokenSource
 
 	// archiveRetry overrides retry parameters for DownloadArchive. Zero value uses defaults.
 	archiveRetry retryConfig
@@ -50,7 +63,7 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		shurcoolClient *githubv4.Client
 	)
 
-	githubClient, err := createHttpClient(ctx, cfg)
+	githubClient, appTransport, err := createHttpClient(ctx, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create github http client")
 	}
@@ -81,6 +94,9 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		username:       cfg.VcsUsername,
 		email:          cfg.VcsEmail,
 	}
+	if appTransport != nil {
+		client.appTokenSource = appTransport
+	}
 
 	if client.username == "" || client.email == "" {
 		user, _, err := googleClient.Users.Get(ctx, "")
@@ -105,17 +121,21 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 	return client, nil
 }
 
-func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, error) {
+// createHttpClient returns the authenticated http.Client used by the go-github SDK.
+// For GitHub App auth it also returns the underlying ghinstallation.Transport so callers
+// can fetch installation tokens directly (used by GetAuthHeaders for archive downloads).
+// For PAT auth the second return value is nil.
+func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, *ghinstallation.Transport, error) {
 	// Initialize the GitHub client with app key if provided
 	if cfg.IsGithubApp() {
 		appTransport, err := ghinstallation.New(
 			http.DefaultTransport, cfg.GithubAppID, cfg.GithubInstallationID, []byte(cfg.GithubPrivateKey),
 		)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to create github app transport")
+			return nil, nil, errors.Wrap(err, "failed to create github app transport")
 		}
 
-		return &http.Client{Transport: appTransport}, nil
+		return &http.Client{Transport: appTransport}, appTransport, nil
 	}
 
 	// Initialize the GitHub client with access token if app key is not provided
@@ -125,10 +145,10 @@ func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Clien
 		ts := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: vcsToken},
 		)
-		return oauth2.NewClient(ctx, ts), nil
+		return oauth2.NewClient(ctx, ts), nil, nil
 	}
 
-	return nil, errors.New("Either GitHub token or GitHub App credentials (App ID, Installation ID, Private Key) must be set")
+	return nil, nil, errors.New("Either GitHub token or GitHub App credentials (App ID, Installation ID, Private Key) must be set")
 }
 
 func (c *Client) Username() string { return c.username }
@@ -145,13 +165,25 @@ func (c *Client) CloneUsername() string {
 	}
 }
 
-// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
-func (c *Client) GetAuthHeaders() map[string]string {
-	// GitHub accepts: Authorization: Bearer <token> or Authorization: token <token>
-	// Using Bearer format as it's the modern standard
-	return map[string]string{
-		"Authorization": fmt.Sprintf("Bearer %s", c.cfg.VcsToken),
+// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads.
+// For GitHub App auth it fetches a fresh installation token from the underlying transport;
+// for PAT auth it returns the configured token. GitHub accepts both `Bearer <token>` and
+// `token <token>`; Bearer is the modern form.
+func (c *Client) GetAuthHeaders(ctx context.Context) (map[string]string, error) {
+	token := c.cfg.VcsToken
+	if c.appTokenSource != nil {
+		t, err := c.appTokenSource.Token(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to fetch GitHub App installation token")
+		}
+		token = t
 	}
+	if token == "" {
+		return nil, errors.New("no GitHub credentials configured for archive download")
+	}
+	return map[string]string{
+		"Authorization": fmt.Sprintf("Bearer %s", token),
+	}, nil
 }
 
 var nilPr vcs.PullRequest

@@ -123,18 +123,27 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 
 	mergeCommitSHA := *ghPR.MergeCommitSHA
 
-	// Construct archive URL
-	// Format: https://github.com/{owner}/{repo}/archive/{sha}.zip
-	// Or for enterprise: https://{base_url}/{owner}/{repo}/archive/{sha}.zip
+	// Use the REST API zipball endpoint rather than the public web /archive/{sha}.zip URL.
+	// The web URL on github.com does not honor `Authorization: Bearer` for fine-grained
+	// PATs or App installation tokens on private repos and returns 404. The API endpoint
+	// honors all token types and 302s to a signed codeload URL on a different host;
+	// Go's http.Client strips the Authorization header on that cross-host redirect by
+	// default, so the signed URL (already authenticated via query string) is fetched
+	// without leaking the token. See issue #525.
+	//
+	// Enterprise detection mirrors createHttpClient: GHE requires both VcsBaseUrl and
+	// VcsUploadUrl to be set. VcsBaseUrl alone isn't a reliable signal because config
+	// defaults it to "https://github.com" when unset, so checking it would route
+	// cloud users into the enterprise branch and build a bogus
+	// `https://github.com/repos/...` URL that 404s.
 	var archiveURL string
-	if c.cfg.VcsBaseUrl != "" {
-		// GitHub Enterprise
-		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/api/v3")
-		baseURL = strings.TrimSuffix(baseURL, "/")
-		archiveURL = fmt.Sprintf("%s/%s/%s/archive/%s.zip", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
+	if c.cfg.VcsUploadUrl != "" && c.cfg.VcsBaseUrl != "" {
+		// GitHub Enterprise: VcsBaseUrl is the API base (typically includes /api/v3).
+		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
+		archiveURL = fmt.Sprintf("%s/repos/%s/%s/zipball/%s", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
 	} else {
 		// GitHub.com
-		archiveURL = fmt.Sprintf("https://github.com/%s/%s/archive/%s.zip", pr.Owner, pr.Name, mergeCommitSHA)
+		archiveURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/zipball/%s", pr.Owner, pr.Name, mergeCommitSHA)
 	}
 
 	log.Debug().

@@ -43,8 +43,10 @@ type Client interface {
 	// DownloadArchive downloads a repository archive for a specific commit SHA
 	// Returns the archive URL that can be used to download the zip file
 	DownloadArchive(ctx context.Context, pr PullRequest) (string, error)
-	// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
-	GetAuthHeaders() map[string]string
+	// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads.
+	// For GitHub App auth, this fetches a fresh installation token, so the call may
+	// perform a network request and must be passed a context.
+	GetAuthHeaders(ctx context.Context) (map[string]string, error)
 
 	// PostReviewSuggestions posts a PR review with inline code suggestions.
 	// Each suggestion targets a specific file+line in the PR diff.

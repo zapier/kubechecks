@@ -204,14 +204,16 @@ The manager gets VCS-specific auth headers:
 
 **GitHub**:
 ```go
-// Returns: {"Authorization": "Bearer ghp_xxxxx"}
-authHeaders := githubClient.GetAuthHeaders()
+// Returns: {"Authorization": "Bearer <token>"}
+// For GitHub App auth, the token is fetched fresh from the installation transport,
+// so the call may make a network request and must be passed a context.
+authHeaders, err := githubClient.GetAuthHeaders(ctx)
 ```
 
 **GitLab**:
 ```go
 // Returns: {"PRIVATE-TOKEN": "glpat_xxxxx"}
-authHeaders := gitlabClient.GetAuthHeaders()
+authHeaders, err := gitlabClient.GetAuthHeaders(ctx)
 ```
 
 ### 4. Cache Lookup
@@ -291,8 +293,18 @@ https://api.github.com/repos/{owner}/{repo}/zipball/{merge_commit_sha}
 
 **Authentication**:
 ```
-Authorization: Bearer ghp_xxxxxxxxxxxxx
+Authorization: Bearer <token>
 ```
+
+Supported token sources:
+- Classic PAT (`ghp_*`) or fine-grained PAT (`github_pat_*`) via `KUBECHECKS_VCS_TOKEN`.
+- GitHub App installation token (`ghs_*`) — fetched fresh from the installation transport
+  on each archive download; no static token is needed in config.
+- OAuth user tokens (`gho_*`) are also accepted when set via `KUBECHECKS_VCS_TOKEN`.
+
+The REST API zipball endpoint 302s to a signed codeload URL on a different host;
+Go's `http.Client` strips the `Authorization` header on that cross-host redirect by
+default, so the bearer token is not leaked to the signed URL.
 
 **Merge Commit SHA**:
 - GitHub provides `merge_commit_sha` in PR API response
@@ -308,10 +320,24 @@ Authorization: Bearer ghp_xxxxxxxxxxxxx
 ```go
 // pkg/vcs/github_client/client.go
 
-func (c *Client) GetAuthHeaders() map[string]string {
-    return map[string]string{
-        "Authorization": fmt.Sprintf("Bearer %s", c.cfg.VcsToken),
+func (c *Client) GetAuthHeaders(ctx context.Context) (map[string]string, error) {
+    token := c.cfg.VcsToken
+    if c.appTokenSource != nil {
+        // GitHub App: fetch a fresh installation token.
+        t, err := c.appTokenSource.Token(ctx)
+        if err != nil {
+            return nil, errors.Wrap(err, "failed to fetch GitHub App installation token")
+        }
+        token = t
     }
+    if token == "" {
+        // Surfaces as a typed authError to PostArchiveErrorMessage so the PR comment
+        // explains it's a config problem, not a transient one to retry.
+        return nil, errors.New("no GitHub credentials configured for archive download")
+    }
+    return map[string]string{
+        "Authorization": fmt.Sprintf("Bearer %s", token),
+    }, nil
 }
 
 func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
@@ -375,10 +401,10 @@ PRIVATE-TOKEN: glpat_xxxxxxxxxxxxx
 ```go
 // pkg/vcs/gitlab_client/client.go
 
-func (c *Client) GetAuthHeaders() map[string]string {
+func (c *Client) GetAuthHeaders(_ context.Context) (map[string]string, error) {
     return map[string]string{
         "PRIVATE-TOKEN": c.cfg.VcsToken,
-    }
+    }, nil
 }
 
 func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
@@ -716,10 +742,16 @@ Kubechecks will immediately fall back to git mode.
 
 ### Authentication
 
-- **GitHub**: Uses Bearer token (PAT or App token)
+- **GitHub**: Uses Bearer token. Sources:
+  - Classic PAT, fine-grained PAT, or OAuth user token from `KUBECHECKS_VCS_TOKEN`.
+  - GitHub App installation token — fetched fresh from the installation transport at
+    download time, so rotation is handled automatically and no static token is required.
 - **GitLab**: Uses Private token
 - **Storage**: Tokens are stored in memory, never written to disk
 - **Headers**: Auth headers are added per-request, not globally
+- **Cross-host redirects**: The GitHub REST zipball endpoint 302s to a signed codeload
+  URL. Go's `http.Client` strips `Authorization` on cross-host redirects by default, so
+  the bearer token is not leaked to the codeload host.
 
 ### Archive Integrity
 
