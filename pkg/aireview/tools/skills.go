@@ -44,10 +44,13 @@ func A2ASkillTool(client a2askills.Client, skill a2a.AgentSkill, timeout time.Du
 // hint listing the skill's tags as suggested param keys. The LLM is free to
 // pass any fields — the agent handles unknown params gracefully.
 func genericParamsSchema(tags []string) json.RawMessage {
-	tagsJSON, _ := json.Marshal(tags)
-	return json.RawMessage(fmt.Sprintf(`{
-		"type": "object",
-		"description": "Parameters for this skill. Pass any relevant key-value pairs. Tag hints: %s",
-		"additionalProperties": true
-	}`, string(tagsJSON)))
+	schema, err := json.Marshal(map[string]any{
+		"type":                 "object",
+		"description":          fmt.Sprintf("Parameters for this skill. Pass any relevant key-value pairs. Tag hints: %v", tags),
+		"additionalProperties": true,
+	})
+	if err != nil {
+		return json.RawMessage(`{"type":"object","additionalProperties":true}`)
+	}
+	return json.RawMessage(schema)
 }
