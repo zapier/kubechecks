@@ -9,14 +9,17 @@ package a2askills
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
 	"github.com/a2aproject/a2a-go/v2/a2agrpc/v0"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -44,14 +47,23 @@ type AgentClient struct {
 var _ Client = (*AgentClient)(nil)
 
 // NewAgentClient dials the A2A agent at serverAddr.
+// TLS is used automatically when the address ends in :443 or :8443;
+// plain gRPC is used for all other ports (local / in-cluster).
 func NewAgentClient(serverAddr string) (*AgentClient, error) {
-	conn, err := grpc.NewClient(serverAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	creds := insecure.NewCredentials()
+	if isTLSAddr(serverAddr) {
+		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	}
+	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		return nil, fmt.Errorf("a2a dial %s: %w", serverAddr, err)
 	}
 	return &AgentClient{transport: a2agrpc.NewGRPCTransport(conn)}, nil
+}
+
+// isTLSAddr returns true when the address uses a standard TLS port.
+func isTLSAddr(addr string) bool {
+	return strings.HasSuffix(addr, ":443") || strings.HasSuffix(addr, ":8443")
 }
 
 // Discover fetches the extended AgentCard and returns the declared skills.
