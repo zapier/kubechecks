@@ -177,6 +177,13 @@ func init() {
 		newStringOpts().
 			withDefault("warning"))
 
+	// A2A skill agents — one or more gRPC addresses to connect to at startup.
+	// Presence of any address enables the feature; no separate enabled flag needed.
+	// Each agent's skills are discovered via AgentCard and registered as AI review tools.
+	stringSliceFlag(flags, "skill-agent-addrs", "gRPC addresses of A2A skill agents to connect at startup, e.g. knowledge-engine-server.knowledge-engine:50051. Repeatable.")
+	durationFlag(flags, "skill-agent-timeout", "Per-call timeout for A2A skill agent queries.",
+		newDurationOpts().withDefault(3*time.Second))
+
 	panicIfError(viper.BindPFlags(flags))
 	setupLogOutput()
 }

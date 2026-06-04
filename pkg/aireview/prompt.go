@@ -3,6 +3,8 @@ package aireview
 import (
 	"fmt"
 	"strings"
+
+	"github.com/a2aproject/a2a-go/v2/a2a"
 )
 
 // MaxDescriptionLength is the cap applied to MR/PR description text before it is
@@ -87,10 +89,21 @@ Use the submit_recommendation tool for EACH distinct finding during your review.
 You MUST call submit_recommendation at least once before completing your review.
 When a recommendation is WARN or FLAG and the fix is known, you MUST also call post_suggestion with the corrected code.`
 
-// BuildSystemPrompt creates the system prompt for a review.
-// The environment context (app name, namespace, etc.) is always prepended.
-// If customPrompt is non-empty, it replaces the default review instructions.
-func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt, extraInstructions string) string {
+// BuildSystemPrompt constructs the system prompt for the AI review agent.
+//
+//   - appName:           ArgoCD application name being reviewed.
+//   - namespace:         destination Kubernetes namespace; defaults to "default" if empty.
+//   - cluster:           destination cluster name or server URL; defaults to "in-cluster" if empty.
+//   - k8sVersion:        Kubernetes version of the destination cluster; defaults to "unknown" if empty.
+//   - customPrompt:      when non-empty, replaces the default review instructions entirely.
+//   - extraInstructions: appended as an "Additional Instructions" section; use for org-wide
+//     policies or per-repo overrides.
+//   - agentSkills:       flat list of all A2A skills registered for this review, collected
+//     from each connected agent's published AgentCard. When non-empty, an
+//     "Agent Skills" section is generated listing each skill's name, ID,
+//     and description so the LLM knows what tools are available and when
+//     to call them. Empty list omits the section entirely.
+func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt, extraInstructions string, agentSkills []a2a.AgentSkill) string {
 	if namespace == "" {
 		namespace = "default"
 	}
@@ -112,6 +125,17 @@ func BuildSystemPrompt(appName, namespace, cluster, k8sVersion, customPrompt, ex
 
 	if extraInstructions != "" {
 		result += "\n\n## Additional Instructions\n\n" + extraInstructions
+	}
+
+	if len(agentSkills) > 0 {
+		result += "\n\n## Agent Skills\n\n" +
+			"You have access to the following agent skills as tools. " +
+			"Call them proactively before making recommendations — do not assume there is no prior art:\n\n"
+		for _, skill := range agentSkills {
+			result += fmt.Sprintf("- **%s** (`%s`): %s\n", skill.Name, skill.ID, skill.Description)
+		}
+		result += "\nResults are semantically matched — apply your own judgment about relevance. " +
+			"Cite `source_ref` when you rely on a retrieved entry."
 	}
 
 	return result

@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
+	"github.com/zapier/kubechecks/pkg/a2askills"
 	"github.com/zapier/kubechecks/pkg/aiproviders"
 	"github.com/zapier/kubechecks/pkg/aiproviders/anthropic"
 	"github.com/zapier/kubechecks/pkg/aiproviders/openai"
@@ -103,6 +105,31 @@ func getAIReviewChecker(ctr container.Container) queue.AIReviewChecker {
 			checkerOpts = append(checkerOpts, aireviewcheck.WithChartCache(chartCache))
 		}
 	}
+	for _, addr := range ctr.Config.SkillAgentAddrs {
+		kc, err := a2askills.NewAgentClient(addr)
+		if err != nil {
+			log.Warn().Err(err).Str("addr", addr).Msg("skill agent dial failed, skipping")
+			continue
+		}
+		discoverCtx, cancel := context.WithTimeout(context.Background(), ctr.Config.SkillAgentTimeout)
+		skills, err := kc.Discover(discoverCtx)
+		cancel()
+		if err != nil {
+			log.Warn().Err(err).Str("addr", addr).Msg("skill agent discovery failed, skipping")
+			continue
+		}
+		if len(skills) == 0 {
+			log.Warn().Str("addr", addr).Msg("skill agent returned no skills, skipping")
+			continue
+		}
+		names := make([]string, len(skills))
+		for i, s := range skills {
+			names[i] = s.ID
+		}
+		log.Info().Strs("skills", names).Str("addr", addr).Msg("skill agent connected")
+		checkerOpts = append(checkerOpts, aireviewcheck.WithSkillAgent(kc, skills, ctr.Config.SkillAgentTimeout))
+	}
+
 	log.Info().
 		Str("provider", ctr.Config.AIReviewProvider).
 		Str("model", ctr.Config.AIReviewModel).
