@@ -113,13 +113,28 @@ func convertMessages(msgs []aiproviders.Message) []anthropic.MessageParam {
 func convertTools(tools []aiproviders.ToolDef) []anthropic.ToolUnionParam {
 	out := make([]anthropic.ToolUnionParam, len(tools))
 	for i, t := range tools {
-		// Parse the JSON Schema to extract properties and required fields
 		var schema struct {
-			Properties any      `json:"properties"`
-			Required   []string `json:"required"`
+			Properties           any      `json:"properties"`
+			Required             []string `json:"required"`
+			AdditionalProperties any      `json:"additionalProperties"`
 		}
 		if err := json.Unmarshal(t.Parameters, &schema); err != nil {
 			log.Warn().Err(err).Str("tool", t.Name).Msg("failed to unmarshal tool parameter schema")
+		}
+
+		// Anthropic requires input_schema to be present; ToolInputSchemaParam is
+		// omitted from the JSON when all its fields are zero. Ensure Properties is
+		// always non-nil so the field serialises as {"type":"object","properties":{}}.
+		props := schema.Properties
+		if props == nil {
+			props = map[string]any{}
+		}
+
+		// Pass additionalProperties through ExtraFields when present (e.g. for
+		// free-form skill schemas that accept any key-value pairs).
+		var extra map[string]any
+		if schema.AdditionalProperties != nil {
+			extra = map[string]any{"additionalProperties": schema.AdditionalProperties}
 		}
 
 		out[i] = anthropic.ToolUnionParam{
@@ -127,8 +142,9 @@ func convertTools(tools []aiproviders.ToolDef) []anthropic.ToolUnionParam {
 				Name:        t.Name,
 				Description: anthropic.String(t.Description),
 				InputSchema: anthropic.ToolInputSchemaParam{
-					Properties: schema.Properties,
-					Required:   schema.Required,
+					Properties:  props,
+					Required:    schema.Required,
+					ExtraFields: extra,
 				},
 			},
 		}
