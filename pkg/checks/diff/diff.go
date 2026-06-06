@@ -242,6 +242,7 @@ func getResources(ctx context.Context, request checks.Request) ([]*argoappv1.Res
 
 	resources, err := appClient.ManagedResources(ctx, &application.ResourcesQuery{
 		ApplicationName: &request.App.Name,
+		AppNamespace:    &request.App.Namespace,
 	})
 	if err != nil {
 		if isAppMissingErr(err) {
