@@ -128,6 +128,15 @@ func TestPostArchiveErrorMessage(t *testing.T) {
 			wantMsgExcludes: []string{"kubechecks replan"},
 		},
 		{
+			// Auth header construction failed before HTTP call — config problem,
+			// replan won't help until credentials are fixed.
+			name:            "authError — config problem, no useful retry",
+			ctx:             func() context.Context { return context.Background() },
+			cloneErr:        &authError{err: fmt.Errorf("failed to fetch GitHub App installation token")},
+			wantMsgContains: []string{"credentials", "configuration", "GitHub App"},
+			wantMsgExcludes: []string{"transient error"},
+		},
+		{
 			// 400/422/405/410 are permanent — no replan suggestion
 			name:            "HTTP 422 unprocessable — permanent 4xx, no retry",
 			ctx:             func() context.Context { return context.Background() },
