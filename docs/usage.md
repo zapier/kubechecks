@@ -92,6 +92,8 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_REPO_REFRESH_INTERVAL`|Interval between static repo refreshes (for schemas and policies).|`5m`|
 |`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.|`[]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
+|`KUBECHECKS_SKILL_AGENT_ADDRS`|gRPC addresses of A2A skill agents to connect at startup, e.g. knowledge-engine-server.knowledge-engine:50051. Repeatable.|`[]`|
+|`KUBECHECKS_SKILL_AGENT_TIMEOUT`|Per-call timeout for A2A skill agent queries.|`3s`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||
 |`KUBECHECKS_VCS_EMAIL`|VCS Email.||

@@ -17,3 +17,6 @@ packages:
   github.com/zapier/kubechecks/pkg/vcs/gitlab_client:
     interfaces:
       ProjectsServices: {}
+  github.com/zapier/kubechecks/pkg/a2askills:
+    interfaces:
+      Client: {}

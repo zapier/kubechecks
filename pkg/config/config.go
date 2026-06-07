@@ -73,19 +73,24 @@ type ServerConfig struct {
 	KubepugGeneratedStore string          `mapstructure:"kubepug-generated-store"`
 
 	// ai
-	EnableAIDiffSummary       bool            `mapstructure:"enable-ai-diff-summary"`
-	EnableAIReview            bool            `mapstructure:"enable-ai-review"`
-	AIReviewPostSuggestions   bool            `mapstructure:"ai-review-post-suggestions"`
-	AIReviewProvider          string          `mapstructure:"ai-review-provider"`
-	AIReviewModel             string          `mapstructure:"ai-review-model"`
-	AIReviewMaxApps           int             `mapstructure:"ai-review-max-apps"`
-	AIReviewMaxTurns          int             `mapstructure:"ai-review-max-turns"`
-	AIReviewTimeout           time.Duration   `mapstructure:"ai-review-timeout"`
-	AIReviewSystemPrompt      string          `mapstructure:"ai-review-system-prompt"`
-	AIReviewExtraInstructions string          `mapstructure:"ai-review-extra-instructions"`
-	AnthropicAPIKey           string          `mapstructure:"anthropic-api-key"`
-	ChartCacheDir             string          `mapstructure:"chart-cache-dir"`
-	WorstAIReviewState        pkg.CommitState `mapstructure:"worst-ai-review-state"`
+	EnableAIDiffSummary       bool          `mapstructure:"enable-ai-diff-summary"`
+	EnableAIReview            bool          `mapstructure:"enable-ai-review"`
+	AIReviewPostSuggestions   bool          `mapstructure:"ai-review-post-suggestions"`
+	AIReviewProvider          string        `mapstructure:"ai-review-provider"`
+	AIReviewModel             string        `mapstructure:"ai-review-model"`
+	AIReviewMaxApps           int           `mapstructure:"ai-review-max-apps"`
+	AIReviewMaxTurns          int           `mapstructure:"ai-review-max-turns"`
+	AIReviewTimeout           time.Duration `mapstructure:"ai-review-timeout"`
+	AIReviewSystemPrompt      string        `mapstructure:"ai-review-system-prompt"`
+	AIReviewExtraInstructions string        `mapstructure:"ai-review-extra-instructions"`
+	AnthropicAPIKey           string        `mapstructure:"anthropic-api-key"`
+	ChartCacheDir             string        `mapstructure:"chart-cache-dir"`
+
+	// A2A skill agents (optional). Each address is dialed at startup; presence of
+	// any address enables the feature — no separate enabled flag needed.
+	SkillAgentAddrs    []string        `mapstructure:"skill-agent-addrs"`
+	SkillAgentTimeout  time.Duration   `mapstructure:"skill-agent-timeout"`
+	WorstAIReviewState pkg.CommitState `mapstructure:"worst-ai-review-state"`
 
 	// misc
 	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`

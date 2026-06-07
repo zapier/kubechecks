@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/a2askills"
 	"github.com/zapier/kubechecks/pkg/aiproviders"
 	"github.com/zapier/kubechecks/pkg/aireview"
 	"github.com/zapier/kubechecks/pkg/aireview/tools"
@@ -66,6 +68,22 @@ func WithExtraInstructions(instructions string) NewCheckerOption {
 	return func(c *Checker) { c.extraInstructions = instructions }
 }
 
+// skillAgent holds a discovered A2A agent and its published skills.
+type skillAgent struct {
+	client  a2askills.Client
+	skills  []a2a.AgentSkill
+	timeout time.Duration
+}
+
+// WithSkillAgent registers an A2A agent and its discovered skills with the reviewer.
+// Can be called multiple times to attach skills from multiple agents.
+// Each skill is registered as an aireview.Tool; the LLM decides which to call.
+func WithSkillAgent(client a2askills.Client, skills []a2a.AgentSkill, timeout time.Duration) NewCheckerOption {
+	return func(c *Checker) {
+		c.skillAgents = append(c.skillAgents, skillAgent{client: client, skills: skills, timeout: timeout})
+	}
+}
+
 // Checker holds the AI review agent and its configuration.
 type Checker struct {
 	provider          aiproviders.Provider
@@ -75,6 +93,7 @@ type Checker struct {
 	systemPrompt      string
 	extraInstructions string
 	chartCache        *helmchart.Cache
+	skillAgents       []skillAgent
 }
 
 // New creates a Checker with the given config and options.
@@ -188,8 +207,22 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (retResult 
 	recommendationCollector := aireview.NewRecommendationCollector()
 	reviewTools = append(reviewTools, tools.SubmitRecommendationTool(recommendationCollector))
 
+	// Register skills from all discovered A2A agents. The LLM calls them as needed,
+	// guided by each skill's description from the agent card.
+	for _, agent := range c.skillAgents {
+		for _, skill := range agent.skills {
+			reviewTools = append(reviewTools, tools.A2ASkillTool(agent.client, skill, agent.timeout))
+		}
+	}
+
 	// Build prompts
 	log.Debug().Caller().Str("app", request.AppName).Msg("AI review: building prompts")
+	// Collect all registered skills for the system prompt — derived from agent cards,
+	// not hardcoded. The prompt lists each skill's name and description from the card.
+	var allSkills []a2a.AgentSkill
+	for _, agent := range c.skillAgents {
+		allSkills = append(allSkills, agent.skills...)
+	}
 	systemPrompt := aireview.BuildSystemPrompt(
 		request.AppName,
 		namespace,
@@ -197,6 +230,7 @@ func (c *Checker) Check(ctx context.Context, request checks.Request) (retResult 
 		request.KubernetesVersion,
 		c.systemPrompt,
 		c.extraInstructions,
+		allSkills,
 	)
 
 	toolNames := make([]string, len(reviewTools))
