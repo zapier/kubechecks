@@ -103,11 +103,43 @@ func (r *Repo) Clone(ctx context.Context) error {
 		cloneOpts.ReferenceName = plumbing.NewBranchReferenceName(r.BranchName)
 	}
 
-	// Clone the repository
+	// Clone the repository, falling back to tag or commit-SHA references when
+	// the initial branch-based clone fails with "reference not found".
 	repo, err := gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
 	if err != nil {
-		log.Error().Err(err).Msg("unable to clone repository with go-git")
-		return errors.Wrap(err, "failed to clone repository")
+		if r.BranchName != "HEAD" && r.BranchName != "" && isRefNotFound(err) {
+			log.Info().Str("branch", r.BranchName).Msg("branch reference not found, retrying as tag")
+
+			// Retry as a tag reference
+			cloneOpts.ReferenceName = plumbing.NewTagReferenceName(r.BranchName)
+			repo, err = gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
+
+			if err != nil && isRefNotFound(err) && isHexString(r.BranchName) {
+				// Looks like a commit SHA — clone the default branch then checkout the SHA
+				log.Info().Str("sha", r.BranchName).Msg("tag reference not found, retrying as commit SHA")
+				cloneOpts.ReferenceName = ""
+				repo, err = gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
+				if err == nil {
+					worktree, wtErr := repo.Worktree()
+					if wtErr != nil {
+						err = errors.Wrap(wtErr, "failed to get worktree for SHA checkout")
+					} else {
+						checkoutErr := worktree.Checkout(&gogit.CheckoutOptions{
+							Hash:  plumbing.NewHash(r.BranchName),
+							Force: true,
+						})
+						if checkoutErr != nil {
+							err = errors.Wrapf(checkoutErr, "failed to checkout commit SHA %s", r.BranchName)
+						}
+					}
+				}
+			}
+		}
+
+		if err != nil {
+			log.Error().Err(err).Msg("unable to clone repository with go-git")
+			return errors.Wrap(err, "failed to clone repository")
+		}
 	}
 
 	// Set up refs/remotes/origin/HEAD symbolic reference
@@ -563,6 +595,34 @@ func (r *Repo) CleanupTempBranch(ctx context.Context, tempBranch, baseBranch str
 		Msg("temporary branch cleaned up successfully")
 
 	return nil
+}
+
+// isRefNotFound returns true when the error indicates a git reference was not
+// found on the remote (either NoMatchingRefSpecError or plumbing.ErrReferenceNotFound).
+func isRefNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return true
+	}
+	// go-git wraps the error in places; also check string match as last resort
+	return strings.Contains(err.Error(), "reference not found") ||
+		strings.Contains(err.Error(), "couldn't find remote ref")
+}
+
+// isHexString returns true when s looks like a git commit SHA (hex characters,
+// typically 40 chars for full SHA or at least 7 for abbreviated SHA).
+func isHexString(s string) bool {
+	if len(s) < 7 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // sanitizeBranchName removes characters that are invalid in git branch names
