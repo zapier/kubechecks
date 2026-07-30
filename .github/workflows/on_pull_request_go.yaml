@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Parse tool versions
-        uses: wistia/parse-tool-versions@v1.0
+        uses: wistia/parse-tool-versions@v2.1.1
 
       - name: Cache Go modules + build cache
         uses: actions/cache@v4
@@ -32,7 +32,7 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.6
+          version: ${{ env.GOLANGCI_LINT }}
 
       - name: Run tests
         run: make test
