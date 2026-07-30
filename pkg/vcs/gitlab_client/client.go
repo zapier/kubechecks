@@ -101,11 +101,16 @@ func (c *Client) CloneUsername() string { return c.username }
 func (c *Client) GetName() string       { return "gitlab" }
 
 // GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
-func (c *Client) GetAuthHeaders() map[string]string {
+func (c *Client) GetAuthHeaders(ctx context.Context) (map[string]string, error) {
 	// GitLab uses PRIVATE-TOKEN header for authentication
 	return map[string]string{
 		"PRIVATE-TOKEN": c.cfg.VcsToken,
-	}
+	}, nil
+}
+
+// GitCredentials returns HTTP basic-auth credentials for git-over-HTTPS operations.
+func (c *Client) GitCredentials(ctx context.Context) (string, string, error) {
+	return c.username, c.cfg.VcsToken, nil
 }
 
 // VerifyHook returns an err if the webhook isn't valid

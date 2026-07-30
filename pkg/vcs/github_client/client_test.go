@@ -505,8 +505,13 @@ func TestClient_GetAuthHeaders(t *testing.T) {
 		},
 	}
 
-	headers := c.GetAuthHeaders()
+	headers, err := c.GetAuthHeaders(context.Background())
+	assert.NoError(t, err)
 	assert.Equal(t, "Bearer ghp_test_token_12345", headers["Authorization"])
+
+	_, password, err := c.GitCredentials(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "ghp_test_token_12345", password)
 }
 
 func TestClient_VerifyHook(t *testing.T) {

@@ -26,6 +26,11 @@ type Client struct {
 	googleClient   *GClient
 	cfg            config.ServerConfig
 
+	// appTransport is set when authenticating as a GitHub App. It mints and caches
+	// short-lived installation tokens, which are reused for git clones and archive
+	// downloads. It is nil when authenticating with a static VcsToken.
+	appTransport *ghinstallation.Transport
+
 	// archiveRetry overrides retry parameters for DownloadArchive. Zero value uses defaults.
 	archiveRetry retryConfig
 
@@ -50,7 +55,7 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 		shurcoolClient *githubv4.Client
 	)
 
-	githubClient, err := createHttpClient(ctx, cfg)
+	githubClient, appTransport, err := createHttpClient(ctx, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create github http client")
 	}
@@ -78,6 +83,7 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 			Issues:       IssuesService{googleClient.Issues},
 		},
 		shurcoolClient: shurcoolClient,
+		appTransport:   appTransport,
 		username:       cfg.VcsUsername,
 		email:          cfg.VcsEmail,
 	}
@@ -105,17 +111,21 @@ func CreateGithubClient(ctx context.Context, cfg config.ServerConfig) (*Client, 
 	return client, nil
 }
 
-func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, error) {
+// createHttpClient builds the HTTP client used by the GitHub API clients. When
+// authenticating as a GitHub App it also returns the underlying installation transport
+// so the same short-lived installation tokens can be reused for git clones and archive
+// downloads. The returned transport is nil when authenticating with a static VcsToken.
+func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Client, *ghinstallation.Transport, error) {
 	// Initialize the GitHub client with app key if provided
 	if cfg.IsGithubApp() {
 		appTransport, err := ghinstallation.New(
 			http.DefaultTransport, cfg.GithubAppID, cfg.GithubInstallationID, []byte(cfg.GithubPrivateKey),
 		)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to create github app transport")
+			return nil, nil, errors.Wrap(err, "failed to create github app transport")
 		}
 
-		return &http.Client{Transport: appTransport}, nil
+		return &http.Client{Transport: appTransport}, appTransport, nil
 	}
 
 	// Initialize the GitHub client with access token if app key is not provided
@@ -125,10 +135,37 @@ func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Clien
 		ts := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: vcsToken},
 		)
-		return oauth2.NewClient(ctx, ts), nil
+		return oauth2.NewClient(ctx, ts), nil, nil
 	}
 
-	return nil, errors.New("Either GitHub token or GitHub App credentials (App ID, Installation ID, Private Key) must be set")
+	return nil, nil, errors.New("Either GitHub token or GitHub App credentials (App ID, Installation ID, Private Key) must be set")
+}
+
+// gitToken returns the secret used to authenticate git-over-HTTPS operations and
+// archive downloads. In GitHub App mode it returns a fresh installation token (the
+// ghinstallation transport caches and refreshes it); otherwise it returns the static
+// VcsToken. Unlike the REST API client, these paths do not run through the App
+// transport, so the token must be resolved explicitly here.
+func (c *Client) gitToken(ctx context.Context) (string, error) {
+	if c.appTransport != nil {
+		token, err := c.appTransport.Token(ctx)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to mint github app installation token")
+		}
+		return token, nil
+	}
+	return c.cfg.VcsToken, nil
+}
+
+// GitCredentials returns HTTP basic-auth credentials for git-over-HTTPS operations.
+// In GitHub App mode the username must be "x-access-token" and the password is a
+// short-lived installation token.
+func (c *Client) GitCredentials(ctx context.Context) (string, string, error) {
+	token, err := c.gitToken(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	return c.CloneUsername(), token, nil
 }
 
 func (c *Client) Username() string { return c.username }
@@ -145,13 +182,18 @@ func (c *Client) CloneUsername() string {
 	}
 }
 
-// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads
-func (c *Client) GetAuthHeaders() map[string]string {
+// GetAuthHeaders returns HTTP headers needed for authenticated archive downloads.
+// The token is resolved per call so GitHub App installation tokens stay fresh.
+func (c *Client) GetAuthHeaders(ctx context.Context) (map[string]string, error) {
+	token, err := c.gitToken(ctx)
+	if err != nil {
+		return nil, err
+	}
 	// GitHub accepts: Authorization: Bearer <token> or Authorization: token <token>
 	// Using Bearer format as it's the modern standard
 	return map[string]string{
-		"Authorization": fmt.Sprintf("Bearer %s", c.cfg.VcsToken),
-	}
+		"Authorization": fmt.Sprintf("Bearer %s", token),
+	}, nil
 }
 
 var nilPr vcs.PullRequest

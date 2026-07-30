@@ -123,18 +123,24 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 
 	mergeCommitSHA := *ghPR.MergeCommitSHA
 
-	// Construct archive URL
-	// Format: https://github.com/{owner}/{repo}/archive/{sha}.zip
-	// Or for enterprise: https://{base_url}/{owner}/{repo}/archive/{sha}.zip
+	// Construct archive URL using the REST API zipball endpoint.
+	// Format: https://api.github.com/repos/{owner}/{repo}/zipball/{sha}
+	// Or for enterprise: {api_base}/repos/{owner}/{repo}/zipball/{sha}
+	//
+	// We deliberately use the REST endpoint rather than the codeload web endpoint
+	// (github.com/{owner}/{repo}/archive/{sha}.zip). The web endpoint only accepts
+	// classic PATs and OAuth tokens — it returns 404 for GitHub App installation tokens
+	// and fine-grained PATs on private repositories. The REST zipball endpoint accepts
+	// all of them; it responds with a 302 to a pre-signed codeload URL, which the
+	// downloader follows (the redirect target needs no Authorization header).
 	var archiveURL string
 	if c.cfg.VcsBaseUrl != "" {
-		// GitHub Enterprise
-		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/api/v3")
-		baseURL = strings.TrimSuffix(baseURL, "/")
-		archiveURL = fmt.Sprintf("%s/%s/%s/archive/%s.zip", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
+		// GitHub Enterprise — VcsBaseUrl is the REST API base (e.g. https://host/api/v3)
+		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
+		archiveURL = fmt.Sprintf("%s/repos/%s/%s/zipball/%s", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
 	} else {
 		// GitHub.com
-		archiveURL = fmt.Sprintf("https://github.com/%s/%s/archive/%s.zip", pr.Owner, pr.Name, mergeCommitSHA)
+		archiveURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/zipball/%s", pr.Owner, pr.Name, mergeCommitSHA)
 	}
 
 	log.Debug().

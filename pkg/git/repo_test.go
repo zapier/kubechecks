@@ -21,7 +21,7 @@ func TestRepoGetRemoteHead(t *testing.T) {
 
 	t.Cleanup(repo.Wipe)
 
-	branch, err := repo.GetRemoteHead()
+	branch, err := repo.GetRemoteHead(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "main", branch)
 	currentBranch, err := repo.GetCurrentBranch()
