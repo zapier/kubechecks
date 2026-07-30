@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Build arguments for versions (read from .tool-versions)
-ARG GOLANG_VERSION=1.25.5
+ARG GOLANG_VERSION=1.26.4
 ARG ALPINE_VERSION=3.21
 
 # ============================================================================
