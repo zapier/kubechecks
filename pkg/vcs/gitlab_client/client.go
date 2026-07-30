@@ -108,6 +108,11 @@ func (c *Client) GetAuthHeaders(_ context.Context) (map[string]string, error) {
 	}, nil
 }
 
+// GitCredentials returns HTTP basic-auth credentials for git-over-HTTPS operations.
+func (c *Client) GitCredentials(_ context.Context) (string, string, error) {
+	return c.username, c.cfg.VcsToken, nil
+}
+
 // VerifyHook returns an err if the webhook isn't valid
 func (c *Client) VerifyHook(r *http.Request, secret string) ([]byte, error) {
 	// If we have a secret, and the secret doesn't match, return an error

@@ -47,8 +47,7 @@ func New(ctx context.Context, cfg config.ServerConfig) (Container, error) {
 	var err error
 
 	var ctr = Container{
-		Config:      cfg,
-		RepoManager: git.NewRepoManager(cfg),
+		Config: cfg,
 	}
 
 	// create vcs client
@@ -63,6 +62,13 @@ func New(ctx context.Context, cfg config.ServerConfig) (Container, error) {
 	if err != nil {
 		return ctr, errors.Wrap(err, "failed to create vcs client")
 	}
+
+	// Route git-over-HTTPS credentials (used to clone policy and schema repositories)
+	// through the VCS client so GitHub App installation tokens work for clones, not just
+	// the REST API. The repo manager is created afterwards so it picks this up.
+	cfg.GitCreds = ctr.VcsClient.GitCredentials
+	ctr.Config = cfg
+	ctr.RepoManager = git.NewRepoManager(cfg)
 
 	// Initialize archive manager for VCS archive downloads
 	log.Info().Msg("initializing archive manager for VCS archive downloads")
