@@ -505,8 +505,55 @@ func TestClient_GetAuthHeaders(t *testing.T) {
 		},
 	}
 
-	headers := c.GetAuthHeaders()
+	headers, err := c.GetAuthHeaders(context.Background())
+	require.NoError(t, err)
 	assert.Equal(t, "Bearer ghp_test_token_12345", headers["Authorization"])
+}
+
+func TestClient_GetAuthHeaders_NoCredentials(t *testing.T) {
+	// Neither PAT nor App transport configured — should error rather than emit
+	// an empty `Bearer ` header that the VCS will reject.
+	c := &Client{cfg: config.ServerConfig{}}
+
+	_, err := c.GetAuthHeaders(context.Background())
+	require.Error(t, err)
+}
+
+// stubTokenSource is a testing installationTokenSource that returns a fixed token
+// (or error) without needing a real ghinstallation.Transport / JWT signer.
+type stubTokenSource struct {
+	token string
+	err   error
+}
+
+func (s stubTokenSource) Token(_ context.Context) (string, error) {
+	return s.token, s.err
+}
+
+func TestClient_GetAuthHeaders_GitHubApp(t *testing.T) {
+	// In App mode VcsToken is empty; the Bearer token must come from the installation
+	// token source, not the empty config field.
+	c := &Client{
+		cfg:            config.ServerConfig{},
+		appTokenSource: stubTokenSource{token: "ghs_installation_token_xyz"},
+	}
+
+	headers, err := c.GetAuthHeaders(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer ghs_installation_token_xyz", headers["Authorization"])
+}
+
+func TestClient_GetAuthHeaders_GitHubApp_TokenFetchError(t *testing.T) {
+	// Token() failure (e.g. expired private key, network failure during JWT exchange)
+	// must surface as an error rather than emit an empty Bearer header.
+	c := &Client{
+		cfg:            config.ServerConfig{},
+		appTokenSource: stubTokenSource{err: fmt.Errorf("upstream JWT exchange failed")},
+	}
+
+	_, err := c.GetAuthHeaders(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "installation token")
 }
 
 func TestClient_VerifyHook(t *testing.T) {
@@ -913,7 +960,7 @@ func TestClient_DownloadArchive_HappyPath(t *testing.T) {
 
 	url, err := c.DownloadArchive(context.Background(), pr)
 	require.NoError(t, err)
-	assert.Equal(t, "https://github.com/owner/repo/archive/merge-abc123.zip", url)
+	assert.Equal(t, "https://api.github.com/repos/owner/repo/zipball/merge-abc123", url)
 	mockPR.AssertExpectations(t)
 }
 
@@ -952,7 +999,7 @@ func TestClient_DownloadArchive_StaleMergeCommitThenReady(t *testing.T) {
 	url, err := c.DownloadArchive(context.Background(), pr)
 	require.NoError(t, err)
 	// Must use the fresh merge SHA, not the stale one
-	assert.Equal(t, "https://github.com/owner/repo/archive/fresh-new-merge.zip", url)
+	assert.Equal(t, "https://api.github.com/repos/owner/repo/zipball/fresh-new-merge", url)
 	assert.NotContains(t, url, "stale-old-merge")
 	mockPR.AssertExpectations(t)
 }
@@ -1036,7 +1083,10 @@ func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
-		cfg:          config.ServerConfig{VcsBaseUrl: "https://github.example.com/api/v3"},
+		cfg: config.ServerConfig{
+			VcsBaseUrl:   "https://github.example.com/api/v3",
+			VcsUploadUrl: "https://github.example.com/api/uploads",
+		},
 		archiveRetry: fastRetry,
 	}
 
@@ -1050,7 +1100,40 @@ func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
 
 	url, err := c.DownloadArchive(context.Background(), pr)
 	require.NoError(t, err)
-	assert.Equal(t, "https://github.example.com/myorg/myrepo/archive/merge-sha.zip", url)
+	assert.Equal(t, "https://github.example.com/api/v3/repos/myorg/myrepo/zipball/merge-sha", url)
+	mockPR.AssertExpectations(t)
+}
+
+func TestClient_DownloadArchive_DefaultedVcsBaseUrl(t *testing.T) {
+	// pkg/config defaults VcsBaseUrl to "https://github.com" when unset, so a cloud
+	// configuration arrives at DownloadArchive with a non-empty VcsBaseUrl. The cloud
+	// branch must still fire (api.github.com), not the enterprise branch which would
+	// build a bogus `https://github.com/repos/...` URL. See issue #525 review.
+	mockPR := NewMockPullRequestsServicesWithGet(t,
+		prResponse{
+			headSHA:        "sha1",
+			mergeCommitSHA: "merge-sha",
+			mergeable:      github.Ptr(true),
+		},
+	)
+
+	c := &Client{
+		googleClient: &GClient{PullRequests: mockPR},
+		cfg:          config.ServerConfig{VcsBaseUrl: "https://github.com"}, // no VcsUploadUrl
+		archiveRetry: fastRetry,
+	}
+
+	pr := vcs.PullRequest{
+		Owner:    "owner",
+		Name:     "repo",
+		FullName: "owner/repo",
+		CheckID:  1,
+		SHA:      "sha1",
+	}
+
+	url, err := c.DownloadArchive(context.Background(), pr)
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.github.com/repos/owner/repo/zipball/merge-sha", url)
 	mockPR.AssertExpectations(t)
 }
 

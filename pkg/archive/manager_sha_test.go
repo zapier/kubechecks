@@ -16,17 +16,39 @@ func TestExtractSHAFromArchiveURL(t *testing.T) {
 	}{
 		// GitHub formats
 		{
-			name:    "GitHub zip",
+			name:    "GitHub REST API zipball",
+			url:     "https://api.github.com/repos/zapier/kubechecks/zipball/abc123def456",
+			wantSHA: "abc123def456",
+		},
+		{
+			name:    "GitHub Enterprise REST API zipball",
+			url:     "https://github.example.com/api/v3/repos/zapier/kubechecks/zipball/abc123def456",
+			wantSHA: "abc123def456",
+		},
+		{
+			name:    "GitHub REST API tarball",
+			url:     "https://api.github.com/repos/zapier/kubechecks/tarball/deadbeef",
+			wantSHA: "deadbeef",
+		},
+		{
+			name:    "GitHub REST API zipball full SHA",
+			url:     "https://api.github.com/repos/owner/repo/zipball/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+			wantSHA: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+		},
+		{
+			// Legacy /archive/{sha}.zip format kept for backward compat with any cached or
+			// in-flight URLs that predate the switch to /zipball/.
+			name:    "GitHub zip legacy",
 			url:     "https://github.com/zapier/kubechecks/archive/abc123def456.zip",
 			wantSHA: "abc123def456",
 		},
 		{
-			name:    "GitHub Enterprise",
+			name:    "GitHub Enterprise legacy archive",
 			url:     "https://github.example.com/zapier/kubechecks/archive/abc123def456.zip",
 			wantSHA: "abc123def456",
 		},
 		{
-			name:    "GitHub full SHA",
+			name:    "GitHub legacy full SHA",
 			url:     "https://github.com/owner/repo/archive/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.zip",
 			wantSHA: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
 		},
@@ -67,6 +89,11 @@ func TestExtractSHAFromArchiveURL(t *testing.T) {
 		{
 			name:    "GitHub archive URL with no filename after slash",
 			url:     "https://github.com/owner/repo/archive/",
+			wantErr: true,
+		},
+		{
+			name:    "GitHub zipball URL with empty SHA",
+			url:     "https://api.github.com/repos/owner/repo/zipball/",
 			wantErr: true,
 		},
 		{

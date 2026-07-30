@@ -23,6 +23,16 @@ type urlParseError struct{ err error }
 func (e *urlParseError) Error() string { return e.err.Error() }
 func (e *urlParseError) Unwrap() error { return e.err }
 
+// authError wraps failures from vcs.Client.GetAuthHeaders. These are config/permission
+// issues (missing credentials, bad App private key, JWT exchange failure) rather than
+// transient network blips — retrying via replan won't make the credentials valid.
+// Without this typing, such failures would fall through PostArchiveErrorMessage's
+// catch-all and show a misleading "transient error, comment to retry" message.
+type authError struct{ err error }
+
+func (e *authError) Error() string { return e.err.Error() }
+func (e *authError) Unwrap() error { return e.err }
+
 // Manager manages archive-based repository access
 // It provides a similar interface to git.RepoManager but uses VCS archives instead
 type Manager struct {
@@ -61,10 +71,12 @@ func (m *Manager) Clone(ctx context.Context, cloneURL, branchName string, pr vcs
 		return nil, errors.Wrap(err, "failed to get archive URL from VCS")
 	}
 
-	// Extract merge commit SHA from archive URL for cache key
-	// Archive URLs contain the SHA: https://github.com/owner/repo/archive/{sha}.zip
+	// Extract merge commit SHA from archive URL for cache key.
+	// Archive URLs contain the SHA, e.g.:
+	//   GitHub: https://api.github.com/repos/owner/repo/zipball/{sha}
+	//   GitLab: https://gitlab.com/api/v4/projects/{id}/repository/archive.zip?sha={ref}
 	// IMPORTANT: Must use merge commit SHA, not HEAD SHA, as cache key!
-	// Otherwise, cache returns stale archives when new commits are pushed to existing PR
+	// Otherwise, cache returns stale archives when new commits are pushed to existing PR.
 	mergeCommitSHA, err := extractSHAFromArchiveURL(archiveURL)
 	if err != nil {
 		return nil, &urlParseError{err: errors.Wrap(err, "failed to extract merge commit SHA from archive URL")}
@@ -77,8 +89,12 @@ func (m *Manager) Clone(ctx context.Context, cloneURL, branchName string, pr vcs
 		Str("head_sha", pr.SHA).
 		Msg("extracted merge commit SHA from archive URL")
 
-	// Get authentication headers for archive download
-	authHeaders := m.vcsClient.GetAuthHeaders()
+	// Get authentication headers for archive download. For GitHub App auth this fetches
+	// a fresh installation token, so the call needs the request context.
+	authHeaders, err := m.vcsClient.GetAuthHeaders(ctx)
+	if err != nil {
+		return nil, &authError{err: errors.Wrap(err, "failed to get archive auth headers")}
+	}
 
 	// Download and extract archive (or get from cache)
 	extractedPath, err := m.cache.GetOrDownload(ctx, archiveURL, mergeCommitSHA, authHeaders)
@@ -186,6 +202,7 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 	// Classify by the error itself first; ctx.Err() is a fallback for cases where the
 	// context was cancelled for an unrelated reason after Clone returned.
 	var urlErr *urlParseError
+	var authErr *authError
 	var httpErr *HTTPError
 	hasHTTP := errors.As(cloneErr, &httpErr)
 
@@ -240,6 +257,15 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 		// 403 = authorization failure (token valid but lacks required scope/permissions)
 		message = "⚠️ Access denied downloading the repository archive (HTTP 403 Forbidden).\n\n" +
 			"Check that the kubechecks VCS token has sufficient repository permissions."
+
+	case errors.As(cloneErr, &authErr):
+		// Auth header construction failed before any HTTP call (e.g. no credentials
+		// configured, GitHub App installation token fetch failed, malformed PEM).
+		// Permanent — retrying via replan won't fix the configuration.
+		message = "⚠️ Kubechecks could not obtain credentials to download the repository archive.\n\n" +
+			"This is a configuration problem — check that the kubechecks VCS token or " +
+			"GitHub App credentials are valid. Comment `" + replan + "` will not help until " +
+			"the configuration is fixed."
 
 	case errors.As(cloneErr, &urlErr):
 		// Unrecognized archive URL format — this is a bug, not something the user can retry
@@ -301,10 +327,25 @@ func (m *Manager) PostArchiveErrorMessage(ctx context.Context, pr vcs.PullReques
 
 // extractSHAFromArchiveURL extracts the commit SHA from an archive URL
 // Supports GitHub and GitLab archive URL formats:
-// - GitHub: https://github.com/owner/repo/archive/{sha}.zip
+// - GitHub REST API zipball: https://api.github.com/repos/owner/repo/zipball/{sha}
+// - GitHub web archive (legacy): https://github.com/owner/repo/archive/{sha}.zip
 // - GitLab: https://gitlab.com/api/v4/projects/{encoded}/repository/archive.zip?sha={ref}
 func extractSHAFromArchiveURL(archiveURL string) (string, error) {
-	// Try GitHub format first: /archive/{sha}.zip or /archive/{sha}.tar.gz
+	// GitHub REST API zipball/tarball: /zipball/{sha} or /tarball/{sha} (no extension)
+	for _, marker := range []string{"/zipball/", "/tarball/"} {
+		if !strings.Contains(archiveURL, marker) {
+			continue
+		}
+		parts := strings.Split(archiveURL, marker)
+		// Strip any query string that may follow the SHA.
+		sha := strings.SplitN(parts[len(parts)-1], "?", 2)[0]
+		if sha == "" {
+			return "", fmt.Errorf("empty SHA extracted from archive URL: %s", archiveURL)
+		}
+		return sha, nil
+	}
+
+	// GitHub web archive (legacy): /archive/{sha}.zip or /archive/{sha}.tar.gz
 	if strings.Contains(archiveURL, "/archive/") {
 		// Extract filename from URL path
 		parts := strings.Split(archiveURL, "/archive/")

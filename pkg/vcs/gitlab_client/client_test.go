@@ -253,7 +253,8 @@ func TestClient_GetAuthHeaders(t *testing.T) {
 		},
 	}
 
-	headers := c.GetAuthHeaders()
+	headers, err := c.GetAuthHeaders(context.Background())
+	require.NoError(t, err)
 	assert.Equal(t, "test-token-12345", headers["PRIVATE-TOKEN"])
 }
 
