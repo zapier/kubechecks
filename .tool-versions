@@ -1,5 +1,5 @@
-golang 1.25.5
-golangci-lint 2.7.2
+golang 1.26.5
+golangci-lint 2.12.2
 helm 3.16.3
 helm-cr 1.6.1
 helm-ct 3.11.0

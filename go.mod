@@ -56,9 +56,9 @@ require (
 	google.golang.org/grpc v1.82.1
 	gopkg.in/dealancer/validate.v2 v2.1.0
 	gopkg.in/yaml.v3 v3.0.1
-	helm.sh/helm/v3 v3.21.3
+	helm.sh/helm/v3 v3.19.5
 	k8s.io/apiextensions-apiserver v0.36.2
-	k8s.io/apimachinery v0.36.2
+	k8s.io/apimachinery v0.34.2
 	k8s.io/client-go v0.36.2
 	sigs.k8s.io/controller-runtime v0.22.4
 	sigs.k8s.io/kustomize/api v0.21.1
@@ -139,9 +139,13 @@ require (
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
+	github.com/containerd/containerd v1.7.29 // indirect
+	github.com/containerd/errdefs v1.0.0 // indirect
+	github.com/containerd/log v0.1.0 // indirect
+	github.com/containerd/platforms v1.0.0-rc.2 // indirect
 	github.com/containerd/typeurl/v2 v2.2.3 // indirect
 	github.com/coreos/go-oidc/v3 v3.14.1 // indirect
-	github.com/cyphar/filepath-securejoin v0.7.0 // indirect
+	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
@@ -380,6 +384,9 @@ require (
 )
 
 replace (
+	// argo-cd v3.2.11 uses the deprecated root securejoin.MkdirAll, removed in
+	// v0.6.0; go-git/helm only need securejoin.SecureJoin, present in v0.5.x.
+	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.5.1
 	k8s.io/api => k8s.io/api v0.34.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.34.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.34.2
