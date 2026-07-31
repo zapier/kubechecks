@@ -62,7 +62,9 @@ func (r *Repo) getAuth(ctx context.Context) (*gogithttp.BasicAuth, error) {
 	if r.Config.GitCreds != nil {
 		username, password, err := r.Config.GitCreds(ctx)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to get git credentials")
+			// Return the provider error unwrapped; every caller wraps it with
+			// "failed to get git credentials", so wrapping here too would duplicate that context.
+			return nil, err
 		}
 		if password == "" {
 			return nil, nil
