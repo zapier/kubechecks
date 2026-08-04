@@ -78,14 +78,14 @@ func TestIsHexString(t *testing.T) {
 		input    string
 		expected bool
 	}{
-		"full-sha":        {"a3f1c2d4e5b6a7f8c9d0e1f2a3b4c5d6e7f8a9b0", true},
-		"short-sha":       {"a3f1c2d", true},
-		"too-short":       {"a3f1c", false},
-		"branch-name":     {"main", false},
-		"tag-name":        {"v1.2.3", false},
-		"mixed-case-hex":  {"A3F1C2D4E5B6A7F8", true},
-		"non-hex-chars":   {"a3f1g2d4", false},
-		"empty":           {"", false},
+		"full-sha":       {"a3f1c2d4e5b6a7f8c9d0e1f2a3b4c5d6e7f8a9b0", true},
+		"short-sha":      {"a3f1c2d", true},
+		"too-short":      {"a3f1c", false},
+		"branch-name":    {"main", false},
+		"tag-name":       {"v1.2.3", false},
+		"mixed-case-hex": {"A3F1C2D4E5B6A7F8", true},
+		"non-hex-chars":  {"a3f1g2d4", false},
+		"empty":          {"", false},
 	}
 
 	for name, tc := range testcases {
@@ -101,9 +101,9 @@ func TestIsRefNotFound(t *testing.T) {
 		err      error
 		expected bool
 	}{
-		"nil":                        {nil, false},
-		"plumbing-err-ref-not-found": {plumbing.ErrReferenceNotFound, true},
-		"generic-error":              {errors.New("some other error"), false},
+		"nil":                              {nil, false},
+		"plumbing-err-ref-not-found":       {plumbing.ErrReferenceNotFound, true},
+		"generic-error":                    {errors.New("some other error"), false},
 		"string-match-reference-not-found": {errors.New("reference not found"), true},
 		"string-match-remote-ref":          {errors.New("couldn't find remote ref refs/heads/nonexistent"), true},
 	}
