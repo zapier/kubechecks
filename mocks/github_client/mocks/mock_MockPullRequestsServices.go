@@ -38,6 +38,180 @@ func (_m *MockPullRequestsServices) EXPECT() *MockPullRequestsServices_Expecter 
 	return &MockPullRequestsServices_Expecter{mock: &_m.Mock}
 }
 
+// CreateReview provides a mock function for the type MockPullRequestsServices
+func (_mock *MockPullRequestsServices) CreateReview(ctx context.Context, owner string, repo string, number int, review *github.PullRequestReviewRequest) (*github.PullRequestReview, *github.Response, error) {
+	ret := _mock.Called(ctx, owner, repo, number, review)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateReview")
+	}
+
+	var r0 *github.PullRequestReview
+	var r1 *github.Response
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, *github.PullRequestReviewRequest) (*github.PullRequestReview, *github.Response, error)); ok {
+		return returnFunc(ctx, owner, repo, number, review)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, *github.PullRequestReviewRequest) *github.PullRequestReview); ok {
+		r0 = returnFunc(ctx, owner, repo, number, review)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*github.PullRequestReview)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int, *github.PullRequestReviewRequest) *github.Response); ok {
+		r1 = returnFunc(ctx, owner, repo, number, review)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*github.Response)
+		}
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, int, *github.PullRequestReviewRequest) error); ok {
+		r2 = returnFunc(ctx, owner, repo, number, review)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// MockPullRequestsServices_CreateReview_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateReview'
+type MockPullRequestsServices_CreateReview_Call struct {
+	*mock.Call
+}
+
+// CreateReview is a helper method to define mock.On call
+//   - ctx context.Context
+//   - owner string
+//   - repo string
+//   - number int
+//   - review *github.PullRequestReviewRequest
+func (_e *MockPullRequestsServices_Expecter) CreateReview(ctx interface{}, owner interface{}, repo interface{}, number interface{}, review interface{}) *MockPullRequestsServices_CreateReview_Call {
+	return &MockPullRequestsServices_CreateReview_Call{Call: _e.mock.On("CreateReview", ctx, owner, repo, number, review)}
+}
+
+func (_c *MockPullRequestsServices_CreateReview_Call) Run(run func(ctx context.Context, owner string, repo string, number int, review *github.PullRequestReviewRequest)) *MockPullRequestsServices_CreateReview_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 *github.PullRequestReviewRequest
+		if args[4] != nil {
+			arg4 = args[4].(*github.PullRequestReviewRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestsServices_CreateReview_Call) Return(pullRequestReview *github.PullRequestReview, response *github.Response, err error) *MockPullRequestsServices_CreateReview_Call {
+	_c.Call.Return(pullRequestReview, response, err)
+	return _c
+}
+
+func (_c *MockPullRequestsServices_CreateReview_Call) RunAndReturn(run func(ctx context.Context, owner string, repo string, number int, review *github.PullRequestReviewRequest) (*github.PullRequestReview, *github.Response, error)) *MockPullRequestsServices_CreateReview_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteComment provides a mock function for the type MockPullRequestsServices
+func (_mock *MockPullRequestsServices) DeleteComment(ctx context.Context, owner string, repo string, commentID int64) (*github.Response, error) {
+	ret := _mock.Called(ctx, owner, repo, commentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteComment")
+	}
+
+	var r0 *github.Response
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int64) (*github.Response, error)); ok {
+		return returnFunc(ctx, owner, repo, commentID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int64) *github.Response); ok {
+		r0 = returnFunc(ctx, owner, repo, commentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*github.Response)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int64) error); ok {
+		r1 = returnFunc(ctx, owner, repo, commentID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPullRequestsServices_DeleteComment_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteComment'
+type MockPullRequestsServices_DeleteComment_Call struct {
+	*mock.Call
+}
+
+// DeleteComment is a helper method to define mock.On call
+//   - ctx context.Context
+//   - owner string
+//   - repo string
+//   - commentID int64
+func (_e *MockPullRequestsServices_Expecter) DeleteComment(ctx interface{}, owner interface{}, repo interface{}, commentID interface{}) *MockPullRequestsServices_DeleteComment_Call {
+	return &MockPullRequestsServices_DeleteComment_Call{Call: _e.mock.On("DeleteComment", ctx, owner, repo, commentID)}
+}
+
+func (_c *MockPullRequestsServices_DeleteComment_Call) Run(run func(ctx context.Context, owner string, repo string, commentID int64)) *MockPullRequestsServices_DeleteComment_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int64
+		if args[3] != nil {
+			arg3 = args[3].(int64)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestsServices_DeleteComment_Call) Return(response *github.Response, err error) *MockPullRequestsServices_DeleteComment_Call {
+	_c.Call.Return(response, err)
+	return _c
+}
+
+func (_c *MockPullRequestsServices_DeleteComment_Call) RunAndReturn(run func(ctx context.Context, owner string, repo string, commentID int64) (*github.Response, error)) *MockPullRequestsServices_DeleteComment_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Get provides a mock function for the type MockPullRequestsServices
 func (_mock *MockPullRequestsServices) Get(ctx context.Context, owner string, repo string, number int) (*github.PullRequest, *github.Response, error) {
 	ret := _mock.Called(ctx, owner, repo, number)
@@ -302,6 +476,100 @@ func (_c *MockPullRequestsServices_List_Call) Return(pullRequests []*github.Pull
 }
 
 func (_c *MockPullRequestsServices_List_Call) RunAndReturn(run func(ctx context.Context, owner string, repo string, opts *github.PullRequestListOptions) ([]*github.PullRequest, *github.Response, error)) *MockPullRequestsServices_List_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListComments provides a mock function for the type MockPullRequestsServices
+func (_mock *MockPullRequestsServices) ListComments(ctx context.Context, owner string, repo string, number int, opts *github.PullRequestListCommentsOptions) ([]*github.PullRequestComment, *github.Response, error) {
+	ret := _mock.Called(ctx, owner, repo, number, opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListComments")
+	}
+
+	var r0 []*github.PullRequestComment
+	var r1 *github.Response
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, *github.PullRequestListCommentsOptions) ([]*github.PullRequestComment, *github.Response, error)); ok {
+		return returnFunc(ctx, owner, repo, number, opts)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, *github.PullRequestListCommentsOptions) []*github.PullRequestComment); ok {
+		r0 = returnFunc(ctx, owner, repo, number, opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*github.PullRequestComment)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int, *github.PullRequestListCommentsOptions) *github.Response); ok {
+		r1 = returnFunc(ctx, owner, repo, number, opts)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*github.Response)
+		}
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, int, *github.PullRequestListCommentsOptions) error); ok {
+		r2 = returnFunc(ctx, owner, repo, number, opts)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// MockPullRequestsServices_ListComments_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListComments'
+type MockPullRequestsServices_ListComments_Call struct {
+	*mock.Call
+}
+
+// ListComments is a helper method to define mock.On call
+//   - ctx context.Context
+//   - owner string
+//   - repo string
+//   - number int
+//   - opts *github.PullRequestListCommentsOptions
+func (_e *MockPullRequestsServices_Expecter) ListComments(ctx interface{}, owner interface{}, repo interface{}, number interface{}, opts interface{}) *MockPullRequestsServices_ListComments_Call {
+	return &MockPullRequestsServices_ListComments_Call{Call: _e.mock.On("ListComments", ctx, owner, repo, number, opts)}
+}
+
+func (_c *MockPullRequestsServices_ListComments_Call) Run(run func(ctx context.Context, owner string, repo string, number int, opts *github.PullRequestListCommentsOptions)) *MockPullRequestsServices_ListComments_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 *github.PullRequestListCommentsOptions
+		if args[4] != nil {
+			arg4 = args[4].(*github.PullRequestListCommentsOptions)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestsServices_ListComments_Call) Return(pullRequestComments []*github.PullRequestComment, response *github.Response, err error) *MockPullRequestsServices_ListComments_Call {
+	_c.Call.Return(pullRequestComments, response, err)
+	return _c
+}
+
+func (_c *MockPullRequestsServices_ListComments_Call) RunAndReturn(run func(ctx context.Context, owner string, repo string, number int, opts *github.PullRequestListCommentsOptions) ([]*github.PullRequestComment, *github.Response, error)) *MockPullRequestsServices_ListComments_Call {
 	_c.Call.Return(run)
 	return _c
 }

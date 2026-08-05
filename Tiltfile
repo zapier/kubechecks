@@ -8,11 +8,57 @@ load('ext://local_output', 'local_output')
 load('./.tilt/terraform/Tiltfile', 'local_terraform_resource')
 load('./.tilt/utils/Tiltfile', 'check_env_set')
 
-# Check if the .secret file exists
-if not os.path.exists('.secret'):
-    fail('The .secret file is missing. Please copy .secret file from .secret.example and setup before running Tilt.')
+# /////////////////////////////////////////////////////////////////////////////
+# S E C R E T S
+# /////////////////////////////////////////////////////////////////////////////
+# Secrets are loaded from the OS keychain (macOS Keychain / Linux pass).
+# Fallback to .secret file for backwards compatibility.
+#
+# Setup (one-time):
+#   macOS:  security add-generic-password -a "$USER" -s "kubechecks/<KEY_NAME>" -w "<value>"
+#   Linux:  pass insert kubechecks/<KEY_NAME>
+#
+# See docs/contributing.md for full setup instructions.
+_os_name = str(local('uname -s', quiet=True)).strip()
 
-dotenv(fn='.secret')
+def _get_secret(key_name, required=False):
+    """Retrieve a secret from OS keychain, falling back to environment variable."""
+    val = ''
+    if _os_name == 'Darwin':
+        val = str(local(
+            'security find-generic-password -a "$USER" -s "kubechecks/%s" -w 2>/dev/null || echo ""' % key_name,
+            quiet=True,
+        )).strip()
+    else:
+        # Linux: use pass (password-store)
+        val = str(local(
+            'pass kubechecks/%s 2>/dev/null || echo ""' % key_name,
+            quiet=True,
+        )).strip()
+
+    if val == '' and os.getenv(key_name):
+        val = os.getenv(key_name)
+    if val == '' and required:
+        fail('Secret "%s" not found in keychain or environment. See docs/contributing.md for setup instructions.' % key_name)
+    return val
+
+# Load .secret file if it exists (backwards compatible)
+if os.path.exists('.secret'):
+    dotenv(fn='.secret')
+
+# Load secrets from keychain (overrides .secret file values)
+_gitlab_token = _get_secret('GITLAB_TOKEN')
+_github_token = _get_secret('GITHUB_TOKEN')
+_webhook_secret = _get_secret('KUBECHECKS_WEBHOOK_SECRET')
+_openai_token = _get_secret('OPENAI_API_TOKEN')
+_anthropic_key = _get_secret('ANTHROPIC_API_KEY')
+
+# Make secrets available as env vars for Tilt resources
+if _gitlab_token: os.putenv('GITLAB_TOKEN', _gitlab_token)
+if _github_token: os.putenv('GITHUB_TOKEN', _github_token)
+if _webhook_secret: os.putenv('KUBECHECKS_WEBHOOK_SECRET', _webhook_secret)
+if _openai_token: os.putenv('OPENAI_API_TOKEN', _openai_token)
+if _anthropic_key: os.putenv('ANTHROPIC_API_KEY', _anthropic_key)
 
 config.define_bool("enable_repo", True, 'create a new project for testing this app')
 config.define_string("vcs-type")
@@ -81,10 +127,9 @@ if cfg.get('enable_repo', True):
       'tf-vcs',
       dir='./localdev/terraform/gitlab',
       env={
-        'GITLAB_TOKEN': os.getenv('GITLAB_TOKEN'),
+        'GITLAB_TOKEN': _gitlab_token,
         'TF_VAR_ngrok_url': get_ngrok_url(cfg),
-        'TF_VAR_kubechecks_gitlab_hook_secret_key': os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else "",
-
+        'TF_VAR_kubechecks_gitlab_hook_secret_key': _webhook_secret,
       },
       deps=[
         './localdev/terraform/*.tf',
@@ -106,9 +151,9 @@ if cfg.get('enable_repo', True):
       'tf-vcs',
       dir='./localdev/terraform/github',
       env={
-        'GITHUB_TOKEN': os.getenv('GITHUB_TOKEN'),
+        'GITHUB_TOKEN': _github_token,
         'TF_VAR_ngrok_url': get_ngrok_url(cfg),
-        'TF_VAR_kubechecks_github_hook_secret_key': os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else "",
+        'TF_VAR_kubechecks_github_hook_secret_key': _webhook_secret,
       },
       deps=[
         './localdev/terraform/*.tf',
@@ -175,7 +220,9 @@ tool_versions = parse_tool_versions(".tool-versions")
 git_commit = local_output('git rev-parse --short HEAD')
 git_tag = local_output('git describe --tags --always --dirty 2>/dev/null || echo "dev"')
 
-# Docker Buildx build via Makefile (works around Tilt v0.33.6 docker_build issues)
+# Docker Buildx build via Makefile
+# Note: Docker Desktop must have "Use containerd for pulling and storing images" enabled
+# in Settings > General so that Kubernetes and Docker share the same image store.
 custom_build(
     'kubechecks',
     'make build-debug IMAGE_TAG=$EXPECTED_TAG',
@@ -207,24 +254,51 @@ cmd_button('restart-pod',
 )
 
 
+# Keychain-loaded secrets are applied via k8s_yaml(blob(...)) so their values
+# never appear on a helm CLI arg (visible to `ps`) or on disk. Tilt auto-scrubs
+# values of applied Secrets from its log panes (secret_settings is a builtin).
+secret_settings(disable_scrub=False)
+
+_vcs_token = _gitlab_token if 'gitlab' in cfg.get('vcs-type', 'gitlab') else _github_token
+_local_secret_name = 'kubechecks-local-secrets'
+_local_secret_data = {'KUBECHECKS_VCS_TOKEN': _vcs_token}
+if _webhook_secret: _local_secret_data['KUBECHECKS_WEBHOOK_SECRET'] = _webhook_secret
+if _openai_token:   _local_secret_data['KUBECHECKS_OPENAI_API_TOKEN'] = _openai_token
+if _anthropic_key:  _local_secret_data['KUBECHECKS_ANTHROPIC_API_KEY'] = _anthropic_key
+
+k8s_yaml(encode_yaml({
+    'apiVersion': 'v1',
+    'kind': 'Secret',
+    'metadata': {'name': _local_secret_name, 'namespace': k8s_namespace},
+    'type': 'Opaque',
+    'stringData': _local_secret_data,
+}))
+k8s_resource(
+    objects=[_local_secret_name + ':secret'],
+    new_name=_local_secret_name,
+    resource_deps=['k8s:namespace'],
+    labels=['kubechecks'],
+)
+
+_helm_flags = [
+    '--values=./localdev/kubechecks/values.yaml',
+    '--values=./localdev/kubechecks/secrets-values.yaml',
+    '--set=configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg),
+    '--set=configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
+    '--set=configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
+    '--set=configMap.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
+]
+
 helm_resource(name='kubechecks',
               chart='./charts/kubechecks',
               image_deps=['kubechecks'],
               image_keys=[('deployment.image.name', 'deployment.image.tag')],
               namespace= k8s_namespace,
-              flags=[
-                '--values=./localdev/kubechecks/values.yaml',
-                '--set=configMap.env.KUBECHECKS_WEBHOOK_URL_BASE=' + get_ngrok_url(cfg),
-                '--set=configMap.env.NGROK_URL=' + get_ngrok_url(cfg),
-                '--set=configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
-                '--set=configMap.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
-                '--set=secrets.env.KUBECHECKS_VCS_TOKEN=' + (os.getenv('GITLAB_TOKEN') if 'gitlab' in cfg.get('vcs-type', 'gitlab') else os.getenv('GITHUB_TOKEN')),
-                '--set=secrets.env.KUBECHECKS_WEBHOOK_SECRET=' + (os.getenv('KUBECHECKS_WEBHOOK_SECRET') if os.getenv('KUBECHECKS_WEBHOOK_SECRET') != None else ""),
-                '--set=secrets.env.KUBECHECKS_OPENAI_API_TOKEN=' + (os.getenv('OPENAI_API_TOKEN') if os.getenv('OPENAI_API_TOKEN') != None else ""),
-              ],
+              flags=_helm_flags,
               labels=["kubechecks"],
               resource_deps=[
                 'k8s:namespace',
+                _local_secret_name,
                 'argocd',
                 'argocd-crds',
                 'tf-vcs' if cfg.get('enable_repo', True) else '',

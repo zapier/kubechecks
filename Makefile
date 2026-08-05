@@ -87,9 +87,10 @@ setup-buildx: ## Setup Docker Buildx builder
 # Build Targets
 # ============================================================================
 
-build: ## Build single-platform production image (local architecture)
+build: setup-buildx ## Build single-platform production image (local architecture)
 	@echo "==> Building production image for local platform..."
 	docker buildx build \
+		--builder $(BUILDER_NAME) \
 		--target production \
 		--build-arg GOLANG_VERSION=$(GOLANG_VERSION) \
 		--build-arg ALPINE_VERSION=$(ALPINE_VERSION) \
@@ -104,9 +105,10 @@ build: ## Build single-platform production image (local architecture)
 	@echo "    Image: $(IMAGE_NAME):$(IMAGE_TAG)"
 	@docker images $(IMAGE_NAME):$(IMAGE_TAG) --format "    Size:  {{.Size}}"
 
-build-debug: ## Build debug image with delve for local development
+build-debug: setup-buildx ## Build debug image with delve for local development
 	@echo "==> Building debug image with delve..."
 	docker buildx build \
+		--builder $(BUILDER_NAME) \
 		--target debug \
 		--build-arg GOLANG_VERSION=$(GOLANG_VERSION) \
 		--build-arg ALPINE_VERSION=$(ALPINE_VERSION) \
