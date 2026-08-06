@@ -79,18 +79,15 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstSt
 
 		logger.Info().Msgf("running check")
 		result, err := fn(ctx, r.Request)
-		logger.Info().
-			Err(err).
-			Str("result", result.State.BareString()).
-			Msg("check result")
-
 		if err != nil {
+			logger.Error().Caller().Err(err).Str("result", result.State.BareString()).Msg("check result")
 			telemetry.SetError(span, err, desc)
 			result = msg.Result{State: pkg.StateError, Summary: desc, Details: fmt.Sprintf(errorCommentFormat, desc, err)}
 			addToAppMessage(result)
 			return
 		}
 
+		logger.Info().Str("result", result.State.BareString()).Msg("check result")
 		addToAppMessage(result)
 	}()
 }
