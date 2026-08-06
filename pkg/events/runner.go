@@ -87,7 +87,7 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstSt
 			return
 		}
 
-		logger.Info().Str("result", result.State.BareString()).Msg("check result")
+		logger.Info().Caller().Str("result", result.State.BareString()).Msg("check result")
 		addToAppMessage(result)
 	}()
 }
