@@ -70,7 +70,7 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 	}
 
 	if pipelineStatus != nil {
-		log.Trace().Int("pipeline_id", pipelineStatus.ID).Msg("pipeline status")
+		log.Trace().Int64("pipeline_id", pipelineStatus.ID).Msg("pipeline status")
 		status.PipelineID = &pipelineStatus.ID
 	}
 

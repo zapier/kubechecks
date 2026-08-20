@@ -10,7 +10,6 @@ import (
 	argov1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/zapier/kubechecks/pkg/container"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
-	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -27,7 +26,7 @@ type AppsGenerator interface {
 
 func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha1.ApplicationSet, ctr *container.Container) ([]argov1alpha1.Application, error) {
 
-	appSetGenerators := getGenerators(ctx, *ctr.KubeClientSet.ControllerClient(), ctr.KubeClientSet.ClientSet(), ctr.Config.ArgoCDNamespace)
+	appSetGenerators := getGenerators(*ctr.KubeClientSet.ControllerClient(), ctr.Config.ArgoCDNamespace)
 
 	apps, appsetReason, err := generateApplications(appset, appSetGenerators, *ctr.KubeClientSet.ControllerClient())
 	if err != nil {
@@ -40,11 +39,11 @@ func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha
 // GetGenerators returns the generators that will be used to generate applications for the ApplicationSet
 //
 // only support List and Clusters generators
-func getGenerators(ctx context.Context, c client.Client, k8sClient kubernetes.Interface, namespace string) map[string]argogenerator.Generator {
+func getGenerators(c client.Client, namespace string) map[string]argogenerator.Generator {
 
 	terminalGenerators := map[string]argogenerator.Generator{
 		"List":     argogenerator.NewListGenerator(),
-		"Clusters": argogenerator.NewClusterGenerator(ctx, c, k8sClient, namespace),
+		"Clusters": argogenerator.NewClusterGenerator(c, namespace),
 	}
 
 	nestedGenerators := map[string]argogenerator.Generator{
