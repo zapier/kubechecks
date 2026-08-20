@@ -35,6 +35,15 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v5
 
+    - name: Parse tool versions
+      uses: wistia/parse-tool-versions@v1.0
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: ${{ env.GOLANG_TOOL_VERSION }}
+        cache: false
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
