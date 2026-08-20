@@ -4,8 +4,8 @@ go 1.25.5
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.43.0
-	github.com/argoproj/argo-cd/v3 v3.2.11
-	github.com/argoproj/gitops-engine v0.7.1-0.20251217140045-5baed5604d2d
+	github.com/argoproj/argo-cd/v3 v3.2.12
+	github.com/argoproj/gitops-engine v0.7.1-0.20260512161450-ff8d2f5207dc
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.31.3
 	github.com/aws/aws-sdk-go-v2/service/eks v1.66.2
