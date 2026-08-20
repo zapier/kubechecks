@@ -556,6 +556,47 @@ func TestClient_GetAuthHeaders_GitHubApp_TokenFetchError(t *testing.T) {
 	assert.Contains(t, err.Error(), "installation token")
 }
 
+func TestClient_GitCredentials_GitHubApp(t *testing.T) {
+	// In App mode VcsToken is empty; git-over-HTTPS auth must use the "x-access-token"
+	// username and a fresh installation token as the password.
+	c := &Client{
+		cfg:            config.ServerConfig{GithubAppID: 1, GithubInstallationID: 2, GithubPrivateKey: "stub-key"},
+		appTokenSource: stubTokenSource{token: "ghs_installation_token_xyz"},
+	}
+
+	username, password, err := c.GitCredentials(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "x-access-token", username)
+	assert.Equal(t, "ghs_installation_token_xyz", password)
+}
+
+func TestClient_GitCredentials_GitHubApp_TokenFetchError(t *testing.T) {
+	// Token() failure (e.g. expired private key, network failure during JWT exchange)
+	// must propagate rather than silently return empty credentials.
+	c := &Client{
+		cfg:            config.ServerConfig{GithubAppID: 1, GithubInstallationID: 2},
+		appTokenSource: stubTokenSource{err: fmt.Errorf("upstream JWT exchange failed")},
+	}
+
+	_, _, err := c.GitCredentials(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "installation token")
+}
+
+func TestClient_GitCredentials_PAT(t *testing.T) {
+	// In PAT mode there is no token source; credentials come from the static VcsToken
+	// and the client's configured username.
+	c := &Client{
+		cfg:      config.ServerConfig{VcsToken: "ghp_static_pat"},
+		username: "kubechecks-bot",
+	}
+
+	username, password, err := c.GitCredentials(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "kubechecks-bot", username)
+	assert.Equal(t, "ghp_static_pat", password)
+}
+
 func TestClient_VerifyHook(t *testing.T) {
 	tests := []struct {
 		name     string

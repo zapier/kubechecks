@@ -165,18 +165,30 @@ func (c *Client) CloneUsername() string {
 	}
 }
 
+// gitToken returns the secret used to authenticate git-over-HTTPS operations and archive
+// downloads. For GitHub App auth it fetches a fresh installation token from the underlying
+// transport (ghinstallation caches and refreshes it); for PAT auth it returns the static
+// VcsToken. These paths bypass the SDK's authenticated transport, so the token must be
+// resolved explicitly here.
+func (c *Client) gitToken(ctx context.Context) (string, error) {
+	if c.appTokenSource != nil {
+		t, err := c.appTokenSource.Token(ctx)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to fetch GitHub App installation token")
+		}
+		return t, nil
+	}
+	return c.cfg.VcsToken, nil
+}
+
 // GetAuthHeaders returns HTTP headers needed for authenticated archive downloads.
 // For GitHub App auth it fetches a fresh installation token from the underlying transport;
 // for PAT auth it returns the configured token. GitHub accepts both `Bearer <token>` and
 // `token <token>`; Bearer is the modern form.
 func (c *Client) GetAuthHeaders(ctx context.Context) (map[string]string, error) {
-	token := c.cfg.VcsToken
-	if c.appTokenSource != nil {
-		t, err := c.appTokenSource.Token(ctx)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to fetch GitHub App installation token")
-		}
-		token = t
+	token, err := c.gitToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if token == "" {
 		return nil, errors.New("no GitHub credentials configured for archive download")
@@ -184,6 +196,18 @@ func (c *Client) GetAuthHeaders(ctx context.Context) (map[string]string, error) 
 	return map[string]string{
 		"Authorization": fmt.Sprintf("Bearer %s", token),
 	}, nil
+}
+
+// GitCredentials returns HTTP basic-auth credentials for git-over-HTTPS operations
+// (cloning policy and schema repositories). In GitHub App mode the username must be
+// "x-access-token" and the password is a short-lived installation token, so it is
+// resolved per call.
+func (c *Client) GitCredentials(ctx context.Context) (string, string, error) {
+	token, err := c.gitToken(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	return c.CloneUsername(), token, nil
 }
 
 var nilPr vcs.PullRequest
