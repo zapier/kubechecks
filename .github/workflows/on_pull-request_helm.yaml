@@ -2,7 +2,7 @@ name: helm ci
 on:
   pull_request:
     paths:
-      - '.github/workflows/on_pull_request_helm.yaml'
+      - '.github/workflows/on_pull-request_helm.yaml'
       - 'Makefile'
       - 'charts/**'
 
