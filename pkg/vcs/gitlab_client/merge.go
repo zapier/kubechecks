@@ -36,7 +36,7 @@ func (c *Client) GetMergeChanges(ctx context.Context, projectId int, mergeReqId 
 	}
 
 	for {
-		diffs, resp, err := c.c.MergeRequests.ListMergeRequestDiffs(projectId, mergeReqId, opts)
+		diffs, resp, err := c.c.MergeRequests.ListMergeRequestDiffs(projectId, int64(mergeReqId), opts)
 		if err != nil {
 			telemetry.SetError(span, err, "Get MergeRequest Changes")
 			return changes, err
