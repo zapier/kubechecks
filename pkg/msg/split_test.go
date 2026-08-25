@@ -1,9 +1,11 @@
 package msg
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -238,6 +240,113 @@ func TestBuildAppSections(t *testing.T) {
 		}
 		assert.Contains(t, sections[0], "Part 1 of")
 		assert.Contains(t, sections[1], "Part 2 of")
+	})
+}
+
+// commentLimit is a representative VCS comment cap. BuildComment takes the
+// limit as a parameter and is provider-agnostic, so the exact value is not
+// significant - only that a realistic report outgrows it.
+const commentLimit = 64 * 1024
+
+// manifestDiff returns a fenced diff block resembling a rendered manifest
+// change, sized by the number of lines requested.
+func manifestDiff(appName string, lines int) string {
+	var sb strings.Builder
+	sb.WriteString("```diff\n")
+	for i := range lines {
+		fmt.Fprintf(&sb, "+  %s-key-%03d: registry.example.com/%s/component:v1.2.%d\n",
+			appName, i, appName, i)
+	}
+	sb.WriteString("```\n")
+	return sb.String()
+}
+
+// TestBuildCommentLargeReport exercises the whole report path with a realistic
+// number of apps and a limit large enough that the fixture must span several
+// comments. The per-function tests above use small limits, so they cannot catch
+// a regression that only appears once a report outgrows a single comment.
+func TestBuildCommentLargeReport(t *testing.T) {
+	const appCount = 40
+
+	newReport := func() *Message {
+		m := NewMessage("test/repo", 1, 1, &mockEmoji{})
+		apps := make(map[string]*AppResults, appCount)
+		for i := range appCount {
+			name := fmt.Sprintf("app-%02d", i)
+			results := &AppResults{}
+			results.AddCheckResult(Result{
+				State:   pkg.StateWarning,
+				Summary: "Diff",
+				Details: manifestDiff(name, 60),
+			})
+			apps[name] = results
+		}
+		m.apps = apps
+		return m
+	}
+
+	t.Run("oversized report splits without losing apps", func(t *testing.T) {
+		chunks := newReport().BuildComment(
+			context.Background(), time.Now(), "commit-sha", "", false, "test",
+			commentLimit, 0, appCount, appCount,
+		)
+
+		require.Greater(t, len(chunks), 1, "report should not fit in a single comment")
+
+		for i, chunk := range chunks {
+			assert.LessOrEqual(t, len(chunk), commentLimit,
+				"chunk %d exceeds the GitHub comment limit", i+1)
+		}
+
+		joined := strings.Join(chunks, "")
+		for i := range appCount {
+			appRef := fmt.Sprintf("`app-%02d`", i)
+			assert.Equal(t, 1, strings.Count(joined, appRef),
+				"app %s should appear exactly once across all chunks", appRef)
+		}
+
+		assert.NotContains(t, joined, "Report exceeded the maximum number of comments",
+			"an uncapped report must not be truncated")
+	})
+
+	t.Run("only the last chunk carries the footer", func(t *testing.T) {
+		chunks := newReport().BuildComment(
+			context.Background(), time.Now(), "commit-sha", "", false, "test",
+			commentLimit, 0, appCount, appCount,
+		)
+
+		require.Greater(t, len(chunks), 1)
+
+		for i, chunk := range chunks[:len(chunks)-1] {
+			assert.NotContains(t, chunk, "Done. CommitSHA:",
+				"chunk %d should not carry the footer", i+1)
+			assert.Contains(t, chunk, "Continued in next comment.")
+			assert.Contains(t, chunk, fmt.Sprintf("Part %d of %d", i+1, len(chunks)))
+		}
+
+		last := chunks[len(chunks)-1]
+		assert.Contains(t, last, "Done. CommitSHA: commit-sha")
+		assert.Contains(t, last, "Continued from previous comment.")
+	})
+
+	t.Run("max comments cap truncates and warns", func(t *testing.T) {
+		// Derive the cap from how many chunks the report naturally needs, so
+		// the case still truncates if the fixture size drifts.
+		natural := len(newReport().BuildComment(
+			context.Background(), time.Now(), "commit-sha", "", false, "test",
+			commentLimit, 0, appCount, appCount,
+		))
+		require.Greater(t, natural, 1)
+		maxComments := natural - 1
+
+		chunks := newReport().BuildComment(
+			context.Background(), time.Now(), "commit-sha", "", false, "test",
+			commentLimit, maxComments, appCount, appCount,
+		)
+
+		require.Len(t, chunks, maxComments)
+		assert.Contains(t, chunks[maxComments-1],
+			"Report exceeded the maximum number of comments")
 	})
 }
 
