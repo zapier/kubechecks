@@ -116,22 +116,23 @@ func getSourcePath(app v1alpha1.Application) string {
 }
 
 func shouldInclude(app v1alpha1.Application, targetBranch string) bool {
-	targetRevision := getTargetRevision(app)
-	if targetRevision == "" {
-		return true
-	}
-
-	if targetRevision == targetBranch {
-		return true
-	}
-
-	if targetRevision == "HEAD" {
-		if targetBranch == "main" {
+	// Consider every source: a multi-source Application whose values live in a
+	// git source (targetRevision=<branch>) must be included even when the first
+	// source is a versioned Helm chart (targetRevision=<chart version>).
+	// getTargetRevision(app) only reads app.Spec.GetSource() == Sources[0], so
+	// "chart-first" multi-source apps were incorrectly excluded from PR checks.
+	for _, source := range getSources(app) {
+		targetRevision := source.TargetRevision
+		if targetRevision == "" {
 			return true
 		}
-
-		if targetBranch == "master" {
+		if targetRevision == targetBranch {
 			return true
+		}
+		if targetRevision == "HEAD" {
+			if targetBranch == "main" || targetBranch == "master" {
+				return true
+			}
 		}
 	}
 
