@@ -10,6 +10,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/git"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestAppSetDirectory_ProcessApp(t *testing.T) {
@@ -154,7 +155,7 @@ spec:
 								Project: "default",
 								SyncPolicy: &v1alpha1.SyncPolicy{
 									Automated: &v1alpha1.SyncPolicyAutomated{
-										Prune: true,
+										Prune: ptr.To(true),
 									},
 									SyncOptions: []string{"CreateNamespace=true"},
 								},

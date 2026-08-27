@@ -20,9 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Parse tool versions
+        uses: wistia/parse-tool-versions@v2.1.1
+
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.25.x"
+          go-version: ${{ env.GOLANG }}
           cache: false
 
       - name: Cache Go modules + build cache

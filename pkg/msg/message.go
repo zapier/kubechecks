@@ -1,16 +1,16 @@
 package msg
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
-	"golang.org/x/exp/constraints"
-	"golang.org/x/exp/slices"
 
 	"github.com/zapier/kubechecks/pkg"
 )
@@ -160,7 +160,7 @@ func (m *Message) BuildComment(
 	names := getSortedKeys(m.apps)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# Kubechecks %s Report\n", identifier))
+	fmt.Fprintf(&sb, "# Kubechecks %s Report\n", identifier)
 
 	updateWritten := false
 	for _, appName := range names {
@@ -202,7 +202,7 @@ func (m *Message) BuildComment(
 
 		sb.WriteString("<details>\n")
 		sb.WriteString("<summary>\n\n")
-		sb.WriteString(fmt.Sprintf("## ArgoCD Application Checks: `%s` %s\n", appName, m.vcs.ToEmoji(appState)))
+		fmt.Fprintf(&sb, "## ArgoCD Application Checks: `%s` %s\n", appName, m.vcs.ToEmoji(appState))
 		sb.WriteString("</summary>\n\n")
 		sb.WriteString(strings.Join(checkStrings, "\n\n---\n\n"))
 		sb.WriteString("</details>")
@@ -215,12 +215,12 @@ func (m *Message) BuildComment(
 	}
 
 	footer := m.buildFooter(start, commitSHA, labelFilter, showDebugInfo, appsChecked, totalChecked)
-	sb.WriteString(fmt.Sprintf("\n\n%s", footer))
+	fmt.Fprintf(&sb, "\n\n%s", footer)
 
 	return sb.String()
 }
 
-func getSortedKeys[K constraints.Ordered, V any](m map[K]V) []K {
+func getSortedKeys[K cmp.Ordered, V any](m map[K]V) []K {
 	var keys []K
 	for key := range m {
 		keys = append(keys, key)
