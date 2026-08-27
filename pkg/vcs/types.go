@@ -48,6 +48,11 @@ type Client interface {
 	// For GitHub App auth, this fetches a fresh installation token, so the call may
 	// perform a network request and must be passed a context.
 	GetAuthHeaders(ctx context.Context) (map[string]string, error)
+	// GitCredentials returns HTTP basic-auth credentials (username, password) for
+	// git-over-HTTPS operations such as cloning policy and schema repositories. As with
+	// GetAuthHeaders, the password may be a short-lived token resolved per call, so this
+	// may perform a network request and must be passed a context.
+	GitCredentials(ctx context.Context) (username, password string, err error)
 
 	// PostReviewSuggestions posts a PR review with inline code suggestions.
 	// Each suggestion targets a specific file+line in the PR diff.

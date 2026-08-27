@@ -51,12 +51,30 @@ func New(cfg config.ServerConfig, cloneUrl, branchName string) *Repo {
 	}
 }
 
-// getAuth returns authentication options for go-git operations
-// Returns nil for anonymous/public access when no token is configured
-func (r *Repo) getAuth() *gogithttp.BasicAuth {
+// getAuth returns authentication options for go-git operations.
+// Returns nil for anonymous/public access when no credentials are configured.
+//
+// When a credential provider is configured (config.GitCreds) it is used, which allows
+// GitHub App installation tokens to authenticate clones — the App transport only backs
+// the REST API client, so git-over-HTTPS needs credentials resolved here. It falls back
+// to the static VcsToken when no provider is set.
+func (r *Repo) getAuth(ctx context.Context) (*gogithttp.BasicAuth, error) {
+	if r.Config.GitCreds != nil {
+		username, password, err := r.Config.GitCreds(ctx)
+		if err != nil {
+			// Return the provider error unwrapped; every caller wraps it with
+			// "failed to get git credentials", so wrapping here too would duplicate that context.
+			return nil, err
+		}
+		if password == "" {
+			return nil, nil
+		}
+		return &gogithttp.BasicAuth{Username: username, Password: password}, nil
+	}
+
 	// If no token configured, use anonymous access (for public repos)
 	if r.Config.VcsToken == "" {
-		return nil
+		return nil, nil
 	}
 
 	// Extract username from clone URL if present, otherwise use default
@@ -68,7 +86,7 @@ func (r *Repo) getAuth() *gogithttp.BasicAuth {
 	return &gogithttp.BasicAuth{
 		Username: username,
 		Password: r.Config.VcsToken,
-	}
+	}, nil
 }
 
 func (r *Repo) Clone(ctx context.Context) error {
@@ -90,10 +108,15 @@ func (r *Repo) Clone(ctx context.Context) error {
 	_, span := tracer.Start(ctx, "CloneRepo")
 	defer span.End()
 
+	auth, err := r.getAuth(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to get git credentials")
+	}
+
 	// Prepare clone options
 	cloneOpts := &gogit.CloneOptions{
 		URL:  r.CloneURL,
-		Auth: r.getAuth(),
+		Auth: auth,
 	}
 
 	// If branch is specified and not HEAD, checkout that branch after clone
@@ -103,16 +126,48 @@ func (r *Repo) Clone(ctx context.Context) error {
 		cloneOpts.ReferenceName = plumbing.NewBranchReferenceName(r.BranchName)
 	}
 
-	// Clone the repository
+	// Clone the repository, falling back to tag or commit-SHA references when
+	// the initial branch-based clone fails with "reference not found".
 	repo, err := gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
 	if err != nil {
-		log.Error().Err(err).Msg("unable to clone repository with go-git")
-		return errors.Wrap(err, "failed to clone repository")
+		if r.BranchName != "HEAD" && r.BranchName != "" && isRefNotFound(err) {
+			log.Info().Str("branch", r.BranchName).Msg("branch reference not found, retrying as tag")
+
+			// Retry as a tag reference
+			cloneOpts.ReferenceName = plumbing.NewTagReferenceName(r.BranchName)
+			repo, err = gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
+
+			if err != nil && isRefNotFound(err) && isHexString(r.BranchName) {
+				// Looks like a commit SHA — clone the default branch then checkout the SHA
+				log.Info().Str("sha", r.BranchName).Msg("tag reference not found, retrying as commit SHA")
+				cloneOpts.ReferenceName = ""
+				repo, err = gogit.PlainCloneContext(ctx, r.Directory, false, cloneOpts)
+				if err == nil {
+					worktree, wtErr := repo.Worktree()
+					if wtErr != nil {
+						err = errors.Wrap(wtErr, "failed to get worktree for SHA checkout")
+					} else {
+						checkoutErr := worktree.Checkout(&gogit.CheckoutOptions{
+							Hash:  plumbing.NewHash(r.BranchName),
+							Force: true,
+						})
+						if checkoutErr != nil {
+							err = errors.Wrapf(checkoutErr, "failed to checkout commit SHA %s", r.BranchName)
+						}
+					}
+				}
+			}
+		}
+
+		if err != nil {
+			log.Error().Err(err).Msg("unable to clone repository with go-git")
+			return errors.Wrap(err, "failed to clone repository")
+		}
 	}
 
 	// Set up refs/remotes/origin/HEAD symbolic reference
 	// This is needed by GetRemoteHead() and mirrors what git binary does automatically
-	if err := r.setupRemoteHead(repo); err != nil {
+	if err := r.setupRemoteHead(ctx, repo); err != nil {
 		log.Warn().Err(err).Msg("failed to set up refs/remotes/origin/HEAD, continuing anyway")
 		// Don't fail the clone operation, GetRemoteHead() has fallback logic
 	}
@@ -129,15 +184,20 @@ func (r *Repo) Clone(ctx context.Context) error {
 
 // setupRemoteHead creates the refs/remotes/origin/HEAD symbolic reference
 // that points to the default branch. This mirrors what git binary does automatically.
-func (r *Repo) setupRemoteHead(repo *gogit.Repository) error {
+func (r *Repo) setupRemoteHead(ctx context.Context, repo *gogit.Repository) error {
 	// Query the remote to find the default branch
 	remote, err := repo.Remote("origin")
 	if err != nil {
 		return errors.Wrap(err, "failed to get origin remote")
 	}
 
+	auth, err := r.getAuth(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to get git credentials")
+	}
+
 	refs, err := remote.List(&gogit.ListOptions{
-		Auth: r.getAuth(),
+		Auth: auth,
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to list remote refs")
@@ -184,7 +244,7 @@ func printFile(s string, d fs.DirEntry, err error) error {
 	return nil
 }
 
-func (r *Repo) GetRemoteHead() (string, error) {
+func (r *Repo) GetRemoteHead(ctx context.Context) (string, error) {
 	repo, err := gogit.PlainOpen(r.Directory)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to open repository")
@@ -206,9 +266,14 @@ func (r *Repo) GetRemoteHead() (string, error) {
 		return "", errors.Wrap(err, "failed to get remote 'origin'")
 	}
 
+	auth, err := r.getAuth(ctx)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get git credentials")
+	}
+
 	// List remote refs to find HEAD
 	refs, err := remote.List(&gogit.ListOptions{
-		Auth: r.getAuth(),
+		Auth: auth,
 	})
 	if err != nil {
 		return "", errors.Wrap(err, "failed to list remote refs")
@@ -295,10 +360,16 @@ func (r *Repo) Update(ctx context.Context) error {
 		return errors.Wrap(err, "failed to open repository")
 	}
 
+	auth, err := r.getAuth(ctx)
+	if err != nil {
+		repoFetchFailed.Inc()
+		return errors.Wrap(err, "failed to get git credentials")
+	}
+
 	// Fetch latest changes from remote
 	fetchOpts := &gogit.FetchOptions{
 		RemoteName: "origin",
-		Auth:       r.getAuth(),
+		Auth:       auth,
 	}
 
 	// If branch is specified, fetch only that branch
@@ -563,6 +634,34 @@ func (r *Repo) CleanupTempBranch(ctx context.Context, tempBranch, baseBranch str
 		Msg("temporary branch cleaned up successfully")
 
 	return nil
+}
+
+// isRefNotFound returns true when the error indicates a git reference was not
+// found on the remote (either NoMatchingRefSpecError or plumbing.ErrReferenceNotFound).
+func isRefNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return true
+	}
+	// go-git wraps the error in places; also check string match as last resort
+	return strings.Contains(err.Error(), "reference not found") ||
+		strings.Contains(err.Error(), "couldn't find remote ref")
+}
+
+// isHexString returns true when s looks like a git commit SHA (hex characters,
+// typically 40 chars for full SHA or at least 7 for abbreviated SHA).
+func isHexString(s string) bool {
+	if len(s) < 7 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 // sanitizeBranchName removes characters that are invalid in git branch names

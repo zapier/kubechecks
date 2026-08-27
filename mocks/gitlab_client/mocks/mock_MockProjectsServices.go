@@ -128,7 +128,7 @@ func (_c *MockProjectsServices_AddProjectHook_Call) RunAndReturn(run func(pid in
 }
 
 // EditProjectHook provides a mock function for the type MockProjectsServices
-func (_mock *MockProjectsServices) EditProjectHook(pid interface{}, hook int, opt *gitlab.EditProjectHookOptions, options ...gitlab.RequestOptionFunc) (*gitlab.ProjectHook, *gitlab.Response, error) {
+func (_mock *MockProjectsServices) EditProjectHook(pid interface{}, hook int64, opt *gitlab.EditProjectHookOptions, options ...gitlab.RequestOptionFunc) (*gitlab.ProjectHook, *gitlab.Response, error) {
 	var tmpRet mock.Arguments
 	if len(options) > 0 {
 		tmpRet = _mock.Called(pid, hook, opt, options)
@@ -144,24 +144,24 @@ func (_mock *MockProjectsServices) EditProjectHook(pid interface{}, hook int, op
 	var r0 *gitlab.ProjectHook
 	var r1 *gitlab.Response
 	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(interface{}, int, *gitlab.EditProjectHookOptions, ...gitlab.RequestOptionFunc) (*gitlab.ProjectHook, *gitlab.Response, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(interface{}, int64, *gitlab.EditProjectHookOptions, ...gitlab.RequestOptionFunc) (*gitlab.ProjectHook, *gitlab.Response, error)); ok {
 		return returnFunc(pid, hook, opt, options...)
 	}
-	if returnFunc, ok := ret.Get(0).(func(interface{}, int, *gitlab.EditProjectHookOptions, ...gitlab.RequestOptionFunc) *gitlab.ProjectHook); ok {
+	if returnFunc, ok := ret.Get(0).(func(interface{}, int64, *gitlab.EditProjectHookOptions, ...gitlab.RequestOptionFunc) *gitlab.ProjectHook); ok {
 		r0 = returnFunc(pid, hook, opt, options...)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*gitlab.ProjectHook)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(interface{}, int, *gitlab.EditProjectHookOptions, ...gitlab.RequestOptionFunc) *gitlab.Response); ok {
+	if returnFunc, ok := ret.Get(1).(func(interface{}, int64, *gitlab.EditProjectHookOptions, ...gitlab.RequestOptionFunc) *gitlab.Response); ok {
 		r1 = returnFunc(pid, hook, opt, options...)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*gitlab.Response)
 		}
 	}
-	if returnFunc, ok := ret.Get(2).(func(interface{}, int, *gitlab.EditProjectHookOptions, ...gitlab.RequestOptionFunc) error); ok {
+	if returnFunc, ok := ret.Get(2).(func(interface{}, int64, *gitlab.EditProjectHookOptions, ...gitlab.RequestOptionFunc) error); ok {
 		r2 = returnFunc(pid, hook, opt, options...)
 	} else {
 		r2 = ret.Error(2)
@@ -176,7 +176,7 @@ type MockProjectsServices_EditProjectHook_Call struct {
 
 // EditProjectHook is a helper method to define mock.On call
 //   - pid interface{}
-//   - hook int
+//   - hook int64
 //   - opt *gitlab.EditProjectHookOptions
 //   - options ...gitlab.RequestOptionFunc
 func (_e *MockProjectsServices_Expecter) EditProjectHook(pid interface{}, hook interface{}, opt interface{}, options ...interface{}) *MockProjectsServices_EditProjectHook_Call {
@@ -184,15 +184,15 @@ func (_e *MockProjectsServices_Expecter) EditProjectHook(pid interface{}, hook i
 		append([]interface{}{pid, hook, opt}, options...)...)}
 }
 
-func (_c *MockProjectsServices_EditProjectHook_Call) Run(run func(pid interface{}, hook int, opt *gitlab.EditProjectHookOptions, options ...gitlab.RequestOptionFunc)) *MockProjectsServices_EditProjectHook_Call {
+func (_c *MockProjectsServices_EditProjectHook_Call) Run(run func(pid interface{}, hook int64, opt *gitlab.EditProjectHookOptions, options ...gitlab.RequestOptionFunc)) *MockProjectsServices_EditProjectHook_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 interface{}
 		if args[0] != nil {
 			arg0 = args[0].(interface{})
 		}
-		var arg1 int
+		var arg1 int64
 		if args[1] != nil {
-			arg1 = args[1].(int)
+			arg1 = args[1].(int64)
 		}
 		var arg2 *gitlab.EditProjectHookOptions
 		if args[2] != nil {
@@ -219,7 +219,7 @@ func (_c *MockProjectsServices_EditProjectHook_Call) Return(projectHook *gitlab.
 	return _c
 }
 
-func (_c *MockProjectsServices_EditProjectHook_Call) RunAndReturn(run func(pid interface{}, hook int, opt *gitlab.EditProjectHookOptions, options ...gitlab.RequestOptionFunc) (*gitlab.ProjectHook, *gitlab.Response, error)) *MockProjectsServices_EditProjectHook_Call {
+func (_c *MockProjectsServices_EditProjectHook_Call) RunAndReturn(run func(pid interface{}, hook int64, opt *gitlab.EditProjectHookOptions, options ...gitlab.RequestOptionFunc) (*gitlab.ProjectHook, *gitlab.Response, error)) *MockProjectsServices_EditProjectHook_Call {
 	_c.Call.Return(run)
 	return _c
 }

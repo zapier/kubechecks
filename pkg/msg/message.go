@@ -1,16 +1,16 @@
 package msg
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
-	"golang.org/x/exp/constraints"
-	"golang.org/x/exp/slices"
 
 	"github.com/zapier/kubechecks/pkg"
 )
@@ -403,7 +403,7 @@ func (m *Message) BuildComment(
 	})
 }
 
-func getSortedKeys[K constraints.Ordered, V any](m map[K]V) []K {
+func getSortedKeys[K cmp.Ordered, V any](m map[K]V) []K {
 	var keys []K
 	for key := range m {
 		keys = append(keys, key)

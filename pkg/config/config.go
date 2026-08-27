@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -13,6 +14,13 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 )
+
+// GitCredsFunc returns HTTP basic-auth credentials for git-over-HTTPS operations
+// (cloning policy and schema repositories). The returned password may be short-lived —
+// for example a GitHub App installation token that is refreshed on demand — so callers
+// must invoke this per operation and must not cache the result. An empty password means
+// anonymous access.
+type GitCredsFunc func(ctx context.Context) (username, password string, err error)
 
 // set default values in /cmd/root.go's init function
 
@@ -49,6 +57,12 @@ type ServerConfig struct {
 	GithubPrivateKey     string `mapstructure:"github-private-key"`
 	GithubAppID          int64  `mapstructure:"github-app-id"`
 	GithubInstallationID int64  `mapstructure:"github-installation-id"`
+
+	// GitCreds supplies credentials for git-over-HTTPS operations (cloning policy and
+	// schema repositories). It is populated at startup from the VCS client rather than
+	// from configuration — a static token for PAT auth, or a refreshing installation
+	// token for GitHub App auth. When nil, git operations fall back to VcsToken.
+	GitCreds GitCredsFunc `mapstructure:"-" json:"-"`
 
 	// webhooks
 	EnsureWebhooks bool   `mapstructure:"ensure-webhooks"`

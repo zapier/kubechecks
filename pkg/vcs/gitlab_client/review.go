@@ -13,8 +13,8 @@ import (
 
 // DiscussionsServices is the interface for GitLab discussions API.
 type DiscussionsServices interface {
-	CreateMergeRequestDiscussion(pid any, mergeRequest int, opt *gitlab.CreateMergeRequestDiscussionOptions, options ...gitlab.RequestOptionFunc) (*gitlab.Discussion, *gitlab.Response, error)
-	ListMergeRequestDiscussions(pid any, mergeRequest int, opt *gitlab.ListMergeRequestDiscussionsOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.Discussion, *gitlab.Response, error)
+	CreateMergeRequestDiscussion(pid any, mergeRequest int64, opt *gitlab.CreateMergeRequestDiscussionOptions, options ...gitlab.RequestOptionFunc) (*gitlab.Discussion, *gitlab.Response, error)
+	ListMergeRequestDiscussions(pid any, mergeRequest int64, opt *gitlab.ListMergeRequestDiscussionsOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.Discussion, *gitlab.Response, error)
 }
 
 // DiscussionsService wraps the GitLab discussions service.
@@ -32,7 +32,7 @@ func (c *Client) PostReviewSuggestions(ctx context.Context, pr vcs.PullRequest, 
 
 	// Get MR diff refs for position fields, DiffRefs arent available with the webhook MR requests payload,
 	// this is the simplest way to find the Refs.
-	mr, _, err := c.c.MergeRequests.GetMergeRequest(pr.FullName, pr.CheckID, nil, gitlab.WithContext(ctx))
+	mr, _, err := c.c.MergeRequests.GetMergeRequest(pr.FullName, int64(pr.CheckID), nil, gitlab.WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to get merge request for diff refs: %w", err)
 	}
@@ -81,11 +81,11 @@ func (c *Client) PostReviewSuggestions(ctx context.Context, pr vcs.PullRequest, 
 				NewPath:      gitlab.Ptr(s.Path),
 				OldPath:      gitlab.Ptr(s.Path),
 				PositionType: gitlab.Ptr("text"),
-				NewLine:      gitlab.Ptr(s.EndLine),
+				NewLine:      gitlab.Ptr(int64(s.EndLine)),
 			},
 		}
 
-		_, _, err := c.c.Discussions.CreateMergeRequestDiscussion(pr.FullName, pr.CheckID, opts, gitlab.WithContext(ctx))
+		_, _, err := c.c.Discussions.CreateMergeRequestDiscussion(pr.FullName, int64(pr.CheckID), opts, gitlab.WithContext(ctx))
 		if err != nil {
 			log.Warn().Caller().Err(err).
 				Str("path", s.Path).
@@ -120,7 +120,7 @@ func (c *Client) listExistingDiscussionSuggestions(ctx context.Context, pr vcs.P
 	opts := &gitlab.ListMergeRequestDiscussionsOptions{}
 
 	for {
-		discussions, resp, err := c.c.Discussions.ListMergeRequestDiscussions(pr.FullName, pr.CheckID, opts, gitlab.WithContext(ctx))
+		discussions, resp, err := c.c.Discussions.ListMergeRequestDiscussions(pr.FullName, int64(pr.CheckID), opts, gitlab.WithContext(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to list discussions: %w", err)
 		}
@@ -136,7 +136,7 @@ func (c *Client) listExistingDiscussionSuggestions(ctx context.Context, pr vcs.P
 				}
 				line := 0
 				if note.Position != nil {
-					line = note.Position.NewLine
+					line = int(note.Position.NewLine)
 				}
 				path := ""
 				if note.Position != nil {

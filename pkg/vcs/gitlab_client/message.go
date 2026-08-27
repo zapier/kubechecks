@@ -30,7 +30,7 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	}
 
 	n, _, err := c.c.Notes.CreateMergeRequestNote(
-		pr.FullName, pr.CheckID,
+		pr.FullName, int64(pr.CheckID),
 		&gitlab.CreateMergeRequestNoteOptions{
 			Body: pkg.Pointer(message),
 		})
@@ -39,7 +39,7 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 		return nil, errors.Wrap(err, "could not post message to MR")
 	}
 
-	return msg.NewMessage(pr.FullName, pr.CheckID, n.ID, c), nil
+	return msg.NewMessage(pr.FullName, pr.CheckID, int(n.ID), c), nil
 }
 
 func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, mergeRequestID int, notes []*gitlab.Note) error {
@@ -76,7 +76,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 
 		log.Debug().Caller().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
 
-		_, _, err := c.c.Notes.UpdateMergeRequestNote(projectName, mergeRequestID, note.ID, &gitlab.UpdateMergeRequestNoteOptions{
+		_, _, err := c.c.Notes.UpdateMergeRequestNote(projectName, int64(mergeRequestID), note.ID, &gitlab.UpdateMergeRequestNoteOptions{
 			Body: &newBody,
 		})
 
@@ -91,7 +91,7 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 
 func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, chunks []string) error {
 	log.Debug().Caller().Msgf("Deleting placeholder note %d for MR %d in %s", m.NoteID, pr.CheckID, pr.FullName)
-	if _, err := c.c.Notes.DeleteMergeRequestNote(pr.FullName, pr.CheckID, m.NoteID); err != nil {
+	if _, err := c.c.Notes.DeleteMergeRequestNote(pr.FullName, int64(pr.CheckID), int64(m.NoteID)); err != nil {
 		log.Error().Err(err).Msg("failed to delete placeholder note")
 		return fmt.Errorf("deleting placeholder note: %w", err)
 	}
@@ -103,7 +103,7 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 			var resp *gitlab.Response
 			var createErr error
 			note, resp, createErr = c.c.Notes.CreateMergeRequestNote(
-				pr.FullName, pr.CheckID,
+				pr.FullName, int64(pr.CheckID),
 				&gitlab.CreateMergeRequestNoteOptions{
 					Body: pkg.Pointer(chunk),
 				},
@@ -115,7 +115,7 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.M
 			log.Error().Err(err).Int("chunk", i+1).Msg("failed to post note chunk after retries")
 			return fmt.Errorf("posting note chunk %d of %d: %w", i+1, len(chunks), err)
 		}
-		m.NoteID = note.ID
+		m.NoteID = int(note.ID)
 	}
 
 	return nil
@@ -130,8 +130,8 @@ func (c *Client) pruneOldComments(ctx context.Context, projectName string, mrID 
 
 	for _, note := range notes {
 		if note.Author.Username == c.username && strings.Contains(note.Body, fmt.Sprintf("Kubechecks %s Report", c.cfg.Identifier)) {
-			log.Debug().Caller().Int("mr", mrID).Int("note", note.ID).Msg("deleting old comment")
-			_, err := c.c.Notes.DeleteMergeRequestNote(projectName, mrID, note.ID)
+			log.Debug().Caller().Int("mr", mrID).Int64("note", note.ID).Msg("deleting old comment")
+			_, err := c.c.Notes.DeleteMergeRequestNote(projectName, int64(mrID), note.ID)
 			if err != nil {
 				telemetry.SetError(span, err, "Prune Old Comments")
 				return fmt.Errorf("could not delete old comment: %w", err)
@@ -148,11 +148,11 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 	log.Debug().Caller().Msg("Tidying outdated comments")
 
 	var allNotes []*gitlab.Note
-	nextPage := 0
+	var nextPage int64
 
 	for {
 		// list merge request notes
-		notes, resp, err := c.c.Notes.ListMergeRequestNotes(pr.FullName, pr.CheckID, &gitlab.ListMergeRequestNotesOptions{
+		notes, resp, err := c.c.Notes.ListMergeRequestNotes(pr.FullName, int64(pr.CheckID), &gitlab.ListMergeRequestNotesOptions{
 			Sort:    pkg.Pointer("asc"),
 			OrderBy: pkg.Pointer("created_at"),
 			ListOptions: gitlab.ListOptions{
@@ -179,10 +179,10 @@ func (c *Client) TidyOutdatedComments(ctx context.Context, pr vcs.PullRequest) e
 }
 
 type NotesServices interface {
-	CreateMergeRequestNote(pid interface{}, mergeRequest int, opt *gitlab.CreateMergeRequestNoteOptions, options ...gitlab.RequestOptionFunc) (*gitlab.Note, *gitlab.Response, error)
-	UpdateMergeRequestNote(pid interface{}, mergeRequest, note int, opt *gitlab.UpdateMergeRequestNoteOptions, options ...gitlab.RequestOptionFunc) (*gitlab.Note, *gitlab.Response, error)
-	DeleteMergeRequestNote(pid interface{}, mergeRequest, note int, options ...gitlab.RequestOptionFunc) (*gitlab.Response, error)
-	ListMergeRequestNotes(pid interface{}, mergeRequest int, opt *gitlab.ListMergeRequestNotesOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.Note, *gitlab.Response, error)
+	CreateMergeRequestNote(pid interface{}, mergeRequest int64, opt *gitlab.CreateMergeRequestNoteOptions, options ...gitlab.RequestOptionFunc) (*gitlab.Note, *gitlab.Response, error)
+	UpdateMergeRequestNote(pid interface{}, mergeRequest, note int64, opt *gitlab.UpdateMergeRequestNoteOptions, options ...gitlab.RequestOptionFunc) (*gitlab.Note, *gitlab.Response, error)
+	DeleteMergeRequestNote(pid interface{}, mergeRequest, note int64, options ...gitlab.RequestOptionFunc) (*gitlab.Response, error)
+	ListMergeRequestNotes(pid interface{}, mergeRequest int64, opt *gitlab.ListMergeRequestNotesOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.Note, *gitlab.Response, error)
 }
 
 type NotesService struct {

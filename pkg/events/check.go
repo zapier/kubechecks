@@ -251,7 +251,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 
 	// if we cloned 'HEAD', figure out its original branch and store a copy of the repo there
 	if branchName == "HEAD" {
-		remoteHeadBranchName, err := repo.GetRemoteHead()
+		remoteHeadBranchName, err := repo.GetRemoteHead(ctx)
 		if err != nil {
 			return repo, errors.Wrap(err, "failed to determine remote head")
 		}
@@ -264,7 +264,7 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	// and if it's the one we just cloned, store a copy of it as 'HEAD' for usage later
 	headKey := generateRepoKey(parsed, "HEAD")
 	if _, ok := ce.clonedRepos[headKey]; !ok {
-		remoteHeadBranchName, err := repo.GetRemoteHead()
+		remoteHeadBranchName, err := repo.GetRemoteHead(ctx)
 		if err != nil {
 			return repo, errors.Wrap(err, "failed to determine remote head")
 		}
