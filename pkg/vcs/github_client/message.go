@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v74/github"
 	"github.com/pkg/errors"
@@ -16,15 +17,17 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-const MaxCommentLength = 64 * 1024
+const maxCommentLength = 64 * 1024
+
+func (c *Client) MaxCommentLength() int { return maxCommentLength }
 
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
 	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
-	if len(message) > MaxCommentLength {
-		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
-		message = message[:MaxCommentLength]
+	if len(message) > maxCommentLength {
+		telemetry.SetError(span, fmt.Errorf("message length %d exceeds limit %d", len(message), maxCommentLength), "PostMessage")
+		return nil, fmt.Errorf("message length %d exceeds GitHub comment limit %d", len(message), maxCommentLength)
 	}
 
 	log.Debug().Caller().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
@@ -44,34 +47,59 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c), nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, msg string) error {
+func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, chunks []string) error {
 	_, span := tracer.Start(ctx, "UpdateMessage")
 	defer span.End()
 
-	if len(msg) > MaxCommentLength {
-		log.Warn().Int("original_length", len(msg)).Msg("trimming the comment size")
-		msg = msg[:MaxCommentLength]
+	log.Debug().Msgf("Deleting placeholder comment %d for PR %d in repo %s", m.NoteID, pr.CheckID, pr.FullName)
+	if _, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, int64(m.NoteID)); err != nil {
+		telemetry.SetError(span, err, "Delete placeholder comment")
+		log.Error().Err(err).Msg("failed to delete placeholder comment")
+		return fmt.Errorf("deleting placeholder comment: %w", err)
 	}
 
-	log.Info().Msgf("Updating message for PR %d in repo %s", m.CheckID, m.Name)
+	log.Info().Int("chunks", len(chunks)).Msgf("Posting %d comment(s) to PR %d in repo %s", len(chunks), pr.CheckID, pr.FullName)
+	rc := retryConfig{}.withDefaults(3, 2*time.Second, 30*time.Second)
 
-	repoNameComponents := strings.Split(m.Name, "/")
-	comment, resp, err := c.googleClient.Issues.EditComment(
-		ctx,
-		repoNameComponents[0],
-		repoNameComponents[1],
-		int64(m.NoteID),
-		&github.IssueComment{Body: &msg},
-	)
+	for i, chunk := range chunks {
+		var cc *github.IssueComment
+		backoff := rc.initialBackoff
 
-	if err != nil {
-		telemetry.SetError(span, err, "Update Pull Request comment")
-		log.Error().Err(err).Msgf("could not update message to PR, msg: %s, response: %+v", msg, resp)
-		return err
+		var lastErr error
+		for attempt := range rc.maxRetries + 1 {
+			cc, _, lastErr = c.googleClient.Issues.CreateComment(
+				ctx, pr.Owner, pr.Name, pr.CheckID,
+				&github.IssueComment{Body: &chunk},
+			)
+			if lastErr == nil {
+				break
+			}
+
+			if attempt == rc.maxRetries {
+				break
+			}
+
+			log.Warn().Err(lastErr).
+				Int("chunk", i+1).Int("attempt", attempt+1).Dur("backoff", backoff).
+				Msg("failed to post comment chunk, retrying")
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+				backoff *= 2
+				if backoff > rc.maxBackoff {
+					backoff = rc.maxBackoff
+				}
+			}
+		}
+		if lastErr != nil {
+			telemetry.SetError(span, lastErr, "Create comment chunk")
+			log.Error().Err(lastErr).Int("chunk", i+1).Msg("failed to post comment chunk after retries")
+			return fmt.Errorf("posting comment chunk %d of %d: %w", i+1, len(chunks), lastErr)
+		}
+		m.NoteID = int(*cc.ID)
 	}
-
-	// update note id just in case it changed
-	m.NoteID = int(*comment.ID)
 
 	return nil
 }

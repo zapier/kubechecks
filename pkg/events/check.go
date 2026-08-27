@@ -414,13 +414,14 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	ce.logger.Info().Msg("Finished")
 
-	comment := ce.vcsNote.BuildComment(
+	chunks := ce.vcsNote.BuildComment(
 		ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter,
 		ce.ctr.Config.ShowDebugInfo, ce.ctr.Config.Identifier,
+		ce.ctr.VcsClient.MaxCommentLength(), ce.ctr.Config.MaxCommentsPerCheck,
 		len(ce.addedAppsSet), int(ce.appsSent),
 	)
 
-	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
+	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.pullRequest, ce.vcsNote, chunks); err != nil {
 		return errors.Wrap(err, "failed to push comment")
 	}
 
@@ -429,7 +430,11 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	// Update the AI review comment with aggregated results
 	if ce.aiNote != nil {
 		aiComment, aiWorstState, suggestions := ce.buildAIReviewComment(ctx)
-		if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.aiNote, aiComment); err != nil {
+		if maxLen := ce.ctr.VcsClient.MaxCommentLength(); len(aiComment) > maxLen {
+			ce.logger.Warn().Int("original_length", len(aiComment)).Msg("trimming AI review comment size")
+			aiComment = aiComment[:maxLen]
+		}
+		if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.pullRequest, ce.aiNote, []string{aiComment}); err != nil {
 			ce.logger.Error().Caller().Err(err).Msg("failed to update AI review comment")
 		}
 		// Post code suggestions as a separate review with inline comments

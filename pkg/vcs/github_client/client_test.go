@@ -16,6 +16,7 @@ import (
 	githubMocks "github.com/zapier/kubechecks/mocks/github_client/mocks"
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/config"
+	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
@@ -1215,4 +1216,68 @@ func NewMockPullRequestsServicesWithGet(t *testing.T, responses ...prResponse) *
 	}
 
 	return mockPR
+}
+
+// stubIssuesServices records the Issues API calls made by UpdateMessage.
+// It is written by hand because mockery cannot currently generate a mock for
+// IssuesServices in this repo; the embedded interface leaves the methods that
+// UpdateMessage does not use unimplemented on purpose.
+type stubIssuesServices struct {
+	IssuesServices
+
+	deletedIDs    []int64
+	createdBodies []string
+	nextID        int64
+}
+
+func (s *stubIssuesServices) DeleteComment(_ context.Context, _, _ string, commentID int64) (*github.Response, error) {
+	s.deletedIDs = append(s.deletedIDs, commentID)
+	return &github.Response{Response: &http.Response{StatusCode: http.StatusNoContent}}, nil
+}
+
+func (s *stubIssuesServices) CreateComment(_ context.Context, _, _ string, _ int, comment *github.IssueComment) (*github.IssueComment, *github.Response, error) {
+	s.createdBodies = append(s.createdBodies, comment.GetBody())
+	s.nextID++
+	id := s.nextID
+	return &github.IssueComment{ID: &id},
+		&github.Response{Response: &http.Response{StatusCode: http.StatusCreated}},
+		nil
+}
+
+func TestClient_UpdateMessage(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks []string
+	}{
+		{
+			name:   "single chunk posts one comment",
+			chunks: []string{"the whole report"},
+		},
+		{
+			name:   "every chunk becomes its own comment",
+			chunks: []string{"part one", "part two", "part three"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const placeholderID = 7
+
+			stub := &stubIssuesServices{}
+			c := &Client{googleClient: &GClient{Issues: stub}}
+
+			pr := vcs.PullRequest{Owner: "owner", Name: "repo", CheckID: 42}
+			m := msg.NewMessage("owner/repo", pr.CheckID, placeholderID, c)
+
+			err := c.UpdateMessage(context.Background(), pr, m, tt.chunks)
+			require.NoError(t, err)
+
+			assert.Equal(t, []int64{placeholderID}, stub.deletedIDs,
+				"the placeholder comment should be deleted exactly once")
+			assert.Equal(t, tt.chunks, stub.createdBodies,
+				"every chunk should be posted, unmodified and in order")
+			assert.Equal(t, len(tt.chunks), m.NoteID,
+				"the note should track the last posted comment")
+		})
+	}
 }
