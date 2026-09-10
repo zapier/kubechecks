@@ -101,6 +101,101 @@ func TestShouldInclude(t *testing.T) {
 	}
 }
 
+func TestDirContainsPath(t *testing.T) {
+	testcases := []struct {
+		name       string
+		dir        string
+		changePath string
+		expected   bool
+	}{
+		{
+			name:       "repo root path '.' matches any change",
+			dir:        ".",
+			changePath: "apps/production/app1.yaml",
+			expected:   true,
+		},
+		{
+			name:       "repo root path '/' matches any change",
+			dir:        "/",
+			changePath: "apps/production/app1.yaml",
+			expected:   true,
+		},
+                {
+                        name:       "repo root path './' matches any change",
+                        dir:        "./",
+                        changePath: "apps/production/app1.yaml",
+                        expected:   true,
+                },
+		{
+			name:       "empty path matches any change",
+			dir:        "",
+			changePath: "apps/production/app1.yaml",
+			expected:   true,
+		},
+		{
+			name:       "nested dir matches file within it",
+			dir:        "charts/appchart",
+			changePath: "charts/appchart/values.yaml",
+			expected:   true,
+		},
+		{
+			name:       "leading slash on dir is ignored",
+			dir:        "/charts/appchart",
+			changePath: "charts/appchart/values.yaml",
+			expected:   true,
+		},
+		{
+			name:       "exact dir match with no trailing file",
+			dir:        "charts/appchart",
+			changePath: "charts/appchart",
+			expected:   true,
+		},
+		{
+			name:       "sibling dir sharing a prefix does not match",
+			dir:        "apps",
+			changePath: "apps-other/foo.yaml",
+			expected:   false,
+		},
+		{
+			name:       "unrelated dir does not match",
+			dir:        "charts/appchart",
+			changePath: "apps/production/app1.yaml",
+			expected:   false,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, dirContainsPath(tc.dir, tc.changePath))
+		})
+	}
+}
+
+// TestFindAppsBasedOnChangeList_RootPath reproduces the root directory
+// bug: an Application whose ArgoCD source path is the repo  root (".") 
+// must be matched by changes anywhere in the repo, not skipped.
+func TestFindAppsBasedOnChangeList_RootPath(t *testing.T) {
+	d := NewAppDirectory()
+	app := v1alpha1.Application{
+		ObjectMeta: metav1.ObjectMeta{Name: "example-application-production"},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{
+				Path: ".",
+			},
+		},
+	}
+	d.AddApp(app)
+
+	changeList := []string{
+		"charts/appchart/templates/_helpers.tpl",
+		"apps/production/app1.yaml",
+	}
+
+	apps := d.FindAppsBasedOnChangeList(changeList, "")
+	assert.Len(t, apps, 1)
+	assert.Equal(t, "example-application-production", apps[0].Name)
+}
+
 // TestRemoveFromSlice performs tests on the removeFromSlice function.
 func TestRemoveFromSlice(t *testing.T) {
 	// Test for integers

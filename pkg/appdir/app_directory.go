@@ -1,6 +1,7 @@
 package appdir
 
 import (
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -66,7 +67,7 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 	for _, changePath := range changeList {
 		log.Debug().Caller().Msgf("change: %s", changePath)
 		for dir, appNames := range d.appDirs {
-			if strings.HasPrefix(changePath, dir) {
+			if dirContainsPath(dir, changePath) {
 				log.Debug().Caller().
 					Str("changePath", changePath).
 					Str("dir", dir).
@@ -105,6 +106,32 @@ func (d *AppDirectory) FindAppsBasedOnChangeList(changeList []string, targetBran
 
 	log.Debug().Caller().Msgf("matched %d files into %d apps", len(changeList), len(appsSet))
 	return appsSlice
+}
+
+// dirContainsPath reports whether changePath (a repo-relative file path, e.g.
+// "charts/foo/values.yaml") falls within dir (an ArgoCD application source
+// path, e.g. "charts/foo", "/charts/foo", ".", "/", or "").
+//
+// ArgoCD treats an empty path, ".", and "/" as all meaning "the repository
+// root", so an app configured with any of those source paths is affected by
+// every change in the repo. Beyond that, matching is done on path segment
+// boundaries (rather than a raw string prefix) so that, for example, dir
+// "apps" does not incorrectly match changePath "apps-other/foo.yaml".
+func dirContainsPath(dir, changePath string) bool {
+	changePath = path.Clean(changePath)
+
+	dir = path.Clean(dir)
+	if dir == "." || dir == "/" {
+		// path.Clean("") == "."
+		return true
+	}
+	dir = strings.TrimPrefix(dir, "/")
+
+	if changePath == dir {
+		return true
+	}
+
+	return strings.HasPrefix(changePath, dir+"/")
 }
 
 func getTargetRevision(app v1alpha1.Application) string {
