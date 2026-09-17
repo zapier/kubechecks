@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
 
@@ -150,85 +151,39 @@ func (m *Message) buildFooter(
 }
 
 const (
-	// HTML wrapper fragments used by renderCheck and wrapAppSection.
-	appWrapOpen  = "<details>\n<summary>\n\n"
-	appWrapClose = "\n</summary>\n\n"
-	appWrapEnd   = "</details>"
-	checkWrapFmt = "<details>\n<summary>%s</summary>\n\n%s\n</details>"
-
-	// Fragments of checkWrapFmt, used by appSectionOverhead to compute
-	// wrapper cost without materialising the rendered string.
-	checkWrapOpen = "<details>\n<summary>"
-	checkWrapMid  = "</summary>\n\n"
-	checkWrapEnd  = "\n</details>"
-
-	// checkSeparator is the horizontal rule placed between checks within a
-	// single app section.
+	appWrapOpen    = "<details>\n<summary>\n\n"
+	appWrapClose   = "\n</summary>\n\n"
+	appWrapEnd     = "</details>"
+	checkWrapFmt   = "<details>\n<summary>%s</summary>\n\n%s\n</details>"
 	checkSeparator = "\n\n---\n\n"
 
-	// codeFenceClose is the closing marker appended when splitting inside a
-	// fenced code block. Its length is reserved when computing available space.
-	codeFenceClose = "```\n"
-
-	// maxPartSuffix is the worst-case length of the " (Part N of M)" suffix
-	// appended to check summaries when a single check is split across multiple
-	// sections. Supports up to 999 parts.
-	maxPartSuffix = len(" (Part 999 of 999)")
+	lineTruncated = "... (line truncated)\n"
 )
 
-// checkBlock holds a single check result before rendering to HTML.
+func partSuffix(part, total int) string {
+	return fmt.Sprintf(" (Part %d of %d)", part, total)
+}
+
 type checkBlock struct {
 	summary string
 	details string
 }
 
-// renderCheck wraps a checkBlock in a <details> element.
 func renderCheck(c checkBlock) string {
 	return fmt.Sprintf(checkWrapFmt, c.summary, c.details)
 }
 
-// wrapAppSection wraps one or more rendered check blocks under an app-level
-// <details> element with a markdown heading as summary.
 func wrapAppSection(appHeader string, checks []string) string {
-	var sb strings.Builder
-	sb.WriteString(appWrapOpen)
-	sb.WriteString(appHeader)
-	sb.WriteString(appWrapClose)
-	sb.WriteString(strings.Join(checks, checkSeparator))
-	sb.WriteString(appWrapEnd)
-	return sb.String()
+	return appWrapOpen + appHeader + appWrapClose + strings.Join(checks, checkSeparator) + appWrapEnd
 }
 
-// appSectionOverhead returns the number of wrapper bytes consumed when a
-// single check is placed inside an app section - i.e. everything except the
-// check's details content.
-func appSectionOverhead(appHeader, checkSummary string) int {
-	app := len(appWrapOpen) + len(appHeader) + len(appWrapClose) + len(appWrapEnd)
-	check := len(checkWrapOpen) + len(checkSummary) + len(checkWrapMid) + len(checkWrapEnd)
-	return app + check
-}
-
-// buildAppSections produces one or more self-contained, renderable markdown
-// sections for a single app. Splitting follows a three-tier strategy:
-//
-//  1. Whole app - if all checks fit within maxSectionLen, return one section.
-//  2. Per-check - otherwise each check becomes its own section, still wrapped
-//     in the app header so the reader knows which app it belongs to.
-//  3. Per-line - if a single check's details still exceed the limit, the
-//     content is split at line boundaries (see [splitDetailsAtLines]) and each
-//     piece is wrapped in its own section with a "(Part N of M)" suffix.
-//
-// Every returned string is valid, self-contained markdown with balanced HTML
-// tags. No post-hoc tag repair is needed.
 func (m *Message) buildAppSections(appName string, results *AppResults, maxSectionLen int) []string {
 	var checks []checkBlock
 	appState := pkg.StateSuccess
-	noChangesDetected := false
 
 	for _, check := range results.results {
 		if check.NoChangesDetected {
-			noChangesDetected = true
-			continue
+			return nil
 		}
 		if check.State == pkg.StateSkip {
 			continue
@@ -244,147 +199,276 @@ func (m *Message) buildAppSections(appName string, results *AppResults, maxSecti
 		appState = pkg.WorstState(appState, check.State)
 	}
 
-	if noChangesDetected || len(checks) == 0 {
-		return nil
-	}
-
 	appHeader := fmt.Sprintf("## ArgoCD Application Checks: `%s` %s", appName, m.vcs.ToEmoji(appState))
+	wrapLen := len(wrapAppSection(appHeader, nil))
 
-	// Estimate total size without materialising the full string.
-	appWrapLen := len(appWrapOpen) + len(appHeader) + len(appWrapClose) + len(appWrapEnd)
-	totalLen := appWrapLen
-	renderedChecks := make([]string, 0, len(checks))
-	for i, c := range checks {
-		r := renderCheck(c)
-		renderedChecks = append(renderedChecks, r)
-		totalLen += len(r)
-		if i > 0 {
-			totalLen += len(checkSeparator)
+	var sections, group []string
+	groupLen := wrapLen
+	flush := func() {
+		sections = append(sections, wrapAppSection(appHeader, group))
+		group, groupLen = nil, wrapLen
+	}
+
+	for _, c := range checks {
+		rendered := renderCheck(c)
+		added := len(rendered)
+		if len(group) > 0 {
+			added += len(checkSeparator)
 		}
-	}
 
-	if totalLen <= maxSectionLen {
-		return []string{wrapAppSection(appHeader, renderedChecks)}
-	}
-
-	var sections []string
-	for i, c := range checks {
-		sectionLen := appWrapLen + len(renderedChecks[i])
-		if sectionLen <= maxSectionLen {
-			sections = append(sections, wrapAppSection(appHeader, []string{renderedChecks[i]}))
+		if groupLen+added <= maxSectionLen {
+			group = append(group, rendered)
+			groupLen += added
+			continue
+		}
+		if len(group) > 0 {
+			flush()
+		}
+		if wrapLen+len(rendered) <= maxSectionLen {
+			group, groupLen = []string{rendered}, wrapLen+len(rendered)
 			continue
 		}
 
-		overhead := appSectionOverhead(appHeader, c.summary) + maxPartSuffix
-		available := maxSectionLen - overhead
-		if available <= 0 {
-			available = 1
+		for _, part := range splitCheck(c, maxSectionLen-wrapLen) {
+			sections = append(sections, wrapAppSection(appHeader, []string{part}))
 		}
-		parts := splitDetailsAtLines(c.details, available)
-		for pi, part := range parts {
-			partSummary := c.summary
-			if len(parts) > 1 {
-				partSummary = fmt.Sprintf("%s (Part %d of %d)", c.summary, pi+1, len(parts))
-			}
-			sections = append(sections, wrapAppSection(appHeader, []string{renderCheck(checkBlock{
-				summary: partSummary,
-				details: part,
-			})}))
-		}
+	}
+
+	if len(group) > 0 || len(sections) == 0 {
+		flush()
 	}
 
 	return sections
 }
 
-// splitDetailsAtLines splits content at line boundaries so each piece fits
-// within maxLen bytes.
+func splitCheck(c checkBlock, maxLen int) []string {
+	wrapLen := len(renderCheck(checkBlock{summary: c.summary}))
+
+	// the suffix eats into the room for details, and its width depends on how
+	// many parts come out, so go again if the guess was too narrow
+	var parts []string
+	for reserve := len(partSuffix(99, 99)); ; {
+		parts = splitDetailsAtLines(c.details, maxLen-wrapLen-reserve)
+		needed := len(partSuffix(len(parts), len(parts)))
+		if needed <= reserve {
+			break
+		}
+		reserve = needed
+	}
+
+	rendered := make([]string, len(parts))
+	for i, part := range parts {
+		summary := c.summary
+		if len(parts) > 1 {
+			summary += partSuffix(i+1, len(parts))
+		}
+		rendered[i] = renderCheck(checkBlock{summary, part})
+	}
+	return rendered
+}
+
+type openDetails struct {
+	summary    string
+	hasSummary bool
+}
+
+// mdState is what is still open at some line of a check's details. Cutting
+// there means closing all of it, and opening it again in the next part.
 //
-// When the split point falls inside a fenced code block, the block is closed
-// with ``` at the end of the current piece and reopened with the original
-// language hint (e.g. ```diff) at the start of the next piece. This ensures
-// every piece is independently renderable markdown.
+// It knows what the checks produce: backtick fences and <details> blocks with
+// a one line <summary>. It is not a markdown parser. Tilde fences, indented
+// code blocks and tags quoted in inline code are taken for plain text. A bare
+// fence line in the context of a diff ends the diff block, as it does on screen.
+type mdState struct {
+	fence, fenceInfo string
+	details          []openDetails
+}
+
+// fenceOf returns the backticks of a code fence line and what follows them.
+// A fence may be indented by up to three spaces. Diff context lines are
+// indented by one, so they count, same as they do for the renderer.
+func fenceOf(line string) (marker, info string) {
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > 3 {
+		return "", ""
+	}
+	rest := strings.TrimLeft(trimmed, "`")
+	if len(trimmed)-len(rest) < 3 {
+		return "", ""
+	}
+	return trimmed[:len(trimmed)-len(rest)], strings.TrimSpace(rest)
+}
+
+func (s mdState) next(line string) mdState {
+	marker, info := fenceOf(line)
+
+	if s.fence != "" {
+		if info == "" && len(marker) >= len(s.fence) {
+			s.fence, s.fenceInfo = "", ""
+		}
+		return s
+	}
+	if marker != "" {
+		s.fence, s.fenceInfo = marker, info
+		return s
+	}
+
+	s.details = slices.Clone(s.details)
+	for i := 0; i < len(line); i++ {
+		switch rest := line[i:]; {
+		case strings.HasPrefix(rest, "<details>"), strings.HasPrefix(rest, "<details "):
+			s.details = append(s.details, openDetails{})
+		case strings.HasPrefix(rest, "</details>") && len(s.details) > 0:
+			s.details = s.details[:len(s.details)-1]
+		}
+	}
+	if n := len(s.details); n > 0 && !s.details[n-1].hasSummary {
+		if _, rest, ok := strings.Cut(line, "<summary>"); ok {
+			if text, _, ok := strings.Cut(rest, "</summary>"); ok {
+				s.details[n-1] = openDetails{summary: cutAtRune(text, maxCarriedSummary), hasSummary: true}
+			}
+		}
+	}
+	return s
+}
+
+const (
+	detailsClose = "\n</details>\n"
+
+	// a summary is repeated in every part its block continues into
+	maxCarriedSummary = 80
+)
+
+// closerLen is len(closer()) without building it, this runs for every line
+func (s mdState) closerLen() int {
+	n := len(s.details) * len(detailsClose)
+	if s.fence != "" {
+		n += len(s.fence) + 1
+	}
+	return n
+}
+
+func (s mdState) closer() string {
+	var sb strings.Builder
+	if s.fence != "" {
+		sb.WriteString(s.fence + "\n")
+	}
+	for range s.details {
+		sb.WriteString(detailsClose)
+	}
+	return sb.String()
+}
+
+func (s mdState) opener() string {
+	var sb strings.Builder
+	for _, d := range s.details {
+		sb.WriteString("<details>\n")
+		if d.hasSummary {
+			fmt.Fprintf(&sb, "<summary>%s (continued)</summary>\n\n", d.summary)
+		}
+	}
+	if s.fence != "" {
+		sb.WriteString(s.fence + s.fenceInfo + "\n")
+	}
+	return sb.String()
+}
+
+func cutAtRune(s string, n int) string {
+	if n >= len(s) {
+		return s
+	}
+	n = max(n, 0)
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// splitDetailsAtLines cuts content between lines into parts of at most maxLen
+// bytes. Code fences and <details> blocks open at a cut are closed and then
+// reopened in the next part, so each part renders on its own.
 func splitDetailsAtLines(content string, maxLen int) []string {
 	if maxLen <= 0 || len(content) <= maxLen {
 		return []string{content}
 	}
 
-	lines := strings.SplitAfter(content, "\n")
 	var parts []string
 	var buf strings.Builder
-	inFence := false
-	fenceLang := ""
+	var state mdState
+	hasContent := false
 
-	for _, line := range lines {
-		closeOverhead := 0
-		if inFence {
-			closeOverhead = len(codeFenceClose)
+	for _, line := range strings.SplitAfter(content, "\n") {
+		// SplitAfter leaves an empty string after the last newline
+		if line == "" {
+			continue
 		}
 
-		if buf.Len()+len(line)+closeOverhead > maxLen && buf.Len() > 0 {
-			if inFence {
-				buf.WriteString(codeFenceClose)
-			}
+		after := state.next(line)
+
+		if hasContent && buf.Len()+len(line)+after.closerLen() > maxLen {
+			buf.WriteString(state.closer())
 			parts = append(parts, buf.String())
 			buf.Reset()
-			if inFence {
-				fmt.Fprintf(&buf, "```%s\n", fenceLang)
-			}
+			buf.WriteString(state.opener())
 		}
 
-		// Guard against a single line exceeding the remaining budget
-		// (e.g. minified JSON in a CRD diff). buf.Len() is non-zero
-		// after a flush when a fence-reopen prefix has been written.
-		if buf.Len()+len(line)+closeOverhead > maxLen {
-			avail := maxLen - buf.Len() - closeOverhead - len("... (line truncated)\n")
-			if avail < 0 {
-				avail = 0
+		// a single line can be bigger than a whole part, e.g. minified JSON.
+		// What is left of it may open or close less than the full line did.
+		for room := maxLen - buf.Len() - after.closerLen(); len(line) > room; room = maxLen - buf.Len() - after.closerLen() {
+			if room < len(lineTruncated) {
+				line = lineTruncated
+				after = state
+				break
 			}
-			line = line[:avail] + "... (line truncated)\n"
+			line = cutAtRune(line, room-len(lineTruncated)) + lineTruncated
+			after = state.next(line)
 		}
 
 		buf.WriteString(line)
-
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") {
-			if inFence {
-				inFence = false
-				fenceLang = ""
-			} else {
-				inFence = true
-				fenceLang = strings.TrimPrefix(trimmed, "```")
-			}
-		}
+		state = after
+		hasContent = true
 	}
 
-	if buf.Len() > 0 {
+	if hasContent {
+		buf.WriteString(state.closer())
 		parts = append(parts, buf.String())
 	}
 
 	return parts
 }
 
-// BuildComment assembles the final VCS comment from all app check results and
-// returns it as one or more chunks, each fitting within maxCommentLength.
-//
-// Splitting is entirely structural - content is divided at app, check, and
-// line boundaries before being wrapped in HTML (see [buildAppSections]). Every
-// chunk contains balanced, renderable markdown with no post-hoc tag repair.
-func (m *Message) BuildComment(
-	ctx context.Context, start time.Time, commitSHA, labelFilter string,
-	showDebugInfo bool, identifier string,
-	maxCommentLength, maxCommentsPerCheck int,
-	appsChecked, totalChecked int,
-) []string {
+type CommentOptions struct {
+	Start         time.Time
+	CommitSHA     string
+	LabelFilter   string
+	ShowDebugInfo bool
+	Identifier    string
+
+	AppsChecked, TotalChecked int
+
+	// MaxLength is the comment size limit of the VCS, in bytes
+	MaxLength int
+	// MaxComments is how many comments the report may take, pkg.MaxCommentsPerCheck at most
+	MaxComments int
+}
+
+// BuildComment iterates the map of all apps in this message, building the final comment from their current state.
+// A report that does not fit in opts.MaxLength comes back as several comments.
+func (m *Message) BuildComment(ctx context.Context, opts CommentOptions) []string {
 	_, span := tracer.Start(ctx, "buildComment")
 	defer span.End()
 
+	if opts.MaxComments <= 0 || opts.MaxComments > pkg.MaxCommentsPerCheck {
+		opts.MaxComments = pkg.MaxCommentsPerCheck
+	}
+
 	names := getSortedKeys(m.apps)
 
-	overhead := maxOverhead(identifier)
-	footer := m.buildFooter(start, commitSHA, labelFilter, showDebugInfo, appsChecked, totalChecked)
-	maxSectionLen := maxCommentLength - overhead - len(footer)
-	if maxSectionLen <= 0 {
-		maxSectionLen = 1
+	cfg := chunkConfig{
+		MaxLength:  opts.MaxLength,
+		MaxChunks:  opts.MaxComments,
+		Identifier: opts.Identifier,
+		Footer:     m.buildFooter(opts.Start, opts.CommitSHA, opts.LabelFilter, opts.ShowDebugInfo, opts.AppsChecked, opts.TotalChecked),
 	}
 
 	var allSections []string
@@ -392,15 +476,11 @@ func (m *Message) BuildComment(
 		if m.isDeleted(appName) {
 			continue
 		}
-		sections := m.buildAppSections(appName, m.apps[appName], maxSectionLen)
+		sections := m.buildAppSections(appName, m.apps[appName], cfg.sectionBudget())
 		allSections = append(allSections, sections...)
 	}
 
-	return SplitIntoChunks(allSections, footer, ChunkConfig{
-		MaxLength:  maxCommentLength,
-		MaxChunks:  maxCommentsPerCheck,
-		Identifier: identifier,
-	})
+	return splitIntoChunks(allSections, cfg)
 }
 
 func getSortedKeys[K cmp.Ordered, V any](m map[K]V) []K {

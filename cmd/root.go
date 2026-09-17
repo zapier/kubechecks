@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,6 +13,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
 // RootCmd represents the base command when called without any subcommands
@@ -143,9 +146,10 @@ func init() {
 	stringFlag(flags, "identifier", "Identifier for the kubechecks instance. Used to differentiate between multiple kubechecks instances.",
 		newStringOpts().
 			withDefault(""))
-	int64Flag(flags, "max-comments-per-check", "Maximum number of comments posted per check run. 0 means unlimited.",
+	int64Flag(flags, "max-comments-per-check",
+		fmt.Sprintf("Maximum number of comments posted per check run, 1 to %d. What does not fit is left out of the report, with a warning.", pkg.MaxCommentsPerCheck),
 		newInt64Opts().
-			withDefault(0))
+			withDefault(pkg.MaxCommentsPerCheck))
 	stringFlag(flags, "kubepug-generated-store", "URL for the kubepug generated store.",
 		newStringOpts().
 			withDefault("https://kubepug.xyz/data/data.json"))

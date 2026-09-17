@@ -166,6 +166,14 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 		cfg.VcsBaseUrl = fmt.Sprintf("https://%s.com", cfg.VcsType)
 	}
 
+	// not set at all, which is the case when there are no flag defaults behind viper
+	if cfg.MaxCommentsPerCheck == 0 {
+		cfg.MaxCommentsPerCheck = pkg.MaxCommentsPerCheck
+	}
+	if cfg.MaxCommentsPerCheck < 1 || cfg.MaxCommentsPerCheck > pkg.MaxCommentsPerCheck {
+		return cfg, fmt.Errorf("max-comments-per-check must be between 1 and %d, got %d", pkg.MaxCommentsPerCheck, cfg.MaxCommentsPerCheck)
+	}
+
 	log.Info().Msg("Server Configuration: ")
 	log.Info().Msgf("Webhook URL Base: %s", cfg.WebhookUrlBase)
 	log.Info().Msgf("Webhook URL Prefix: %s", cfg.UrlPrefix)

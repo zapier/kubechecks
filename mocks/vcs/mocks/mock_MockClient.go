@@ -389,72 +389,6 @@ func (_c *MockClient_GetAuthHeaders_Call) RunAndReturn(run func(ctx context.Cont
 	return _c
 }
 
-// GitCredentials provides a mock function for the type MockClient
-func (_mock *MockClient) GitCredentials(ctx context.Context) (string, string, error) {
-	ret := _mock.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GitCredentials")
-	}
-
-	var r0 string
-	var r1 string
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) (string, string, error)); ok {
-		return returnFunc(ctx)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) string); ok {
-		r0 = returnFunc(ctx)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) string); ok {
-		r1 = returnFunc(ctx)
-	} else {
-		r1 = ret.Get(1).(string)
-	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context) error); ok {
-		r2 = returnFunc(ctx)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
-}
-
-// MockClient_GitCredentials_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GitCredentials'
-type MockClient_GitCredentials_Call struct {
-	*mock.Call
-}
-
-// GitCredentials is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *MockClient_Expecter) GitCredentials(ctx interface{}) *MockClient_GitCredentials_Call {
-	return &MockClient_GitCredentials_Call{Call: _e.mock.On("GitCredentials", ctx)}
-}
-
-func (_c *MockClient_GitCredentials_Call) Run(run func(ctx context.Context)) *MockClient_GitCredentials_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *MockClient_GitCredentials_Call) Return(s string, s1 string, err error) *MockClient_GitCredentials_Call {
-	_c.Call.Return(s, s1, err)
-	return _c
-}
-
-func (_c *MockClient_GitCredentials_Call) RunAndReturn(run func(ctx context.Context) (string, string, error)) *MockClient_GitCredentials_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetHookByUrl provides a mock function for the type MockClient
 func (_mock *MockClient) GetHookByUrl(ctx context.Context, repoName string, webhookUrl string) (*vcs.WebHookConfig, error) {
 	ret := _mock.Called(ctx, repoName, webhookUrl)
@@ -637,6 +571,72 @@ func (_c *MockClient_GetPullRequestFiles_Call) Return(strings []string, err erro
 }
 
 func (_c *MockClient_GetPullRequestFiles_Call) RunAndReturn(run func(ctx context.Context, pr vcs.PullRequest) ([]string, error)) *MockClient_GetPullRequestFiles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GitCredentials provides a mock function for the type MockClient
+func (_mock *MockClient) GitCredentials(ctx context.Context) (string, string, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GitCredentials")
+	}
+
+	var r0 string
+	var r1 string
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (string, string, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) string); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) string); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Get(1).(string)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context) error); ok {
+		r2 = returnFunc(ctx)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// MockClient_GitCredentials_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GitCredentials'
+type MockClient_GitCredentials_Call struct {
+	*mock.Call
+}
+
+// GitCredentials is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockClient_Expecter) GitCredentials(ctx interface{}) *MockClient_GitCredentials_Call {
+	return &MockClient_GitCredentials_Call{Call: _e.mock.On("GitCredentials", ctx)}
+}
+
+func (_c *MockClient_GitCredentials_Call) Run(run func(ctx context.Context)) *MockClient_GitCredentials_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_GitCredentials_Call) Return(username string, password string, err error) *MockClient_GitCredentials_Call {
+	_c.Call.Return(username, password, err)
+	return _c
+}
+
+func (_c *MockClient_GitCredentials_Call) RunAndReturn(run func(ctx context.Context) (string, string, error)) *MockClient_GitCredentials_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1075,16 +1075,16 @@ func (_c *MockClient_ToEmoji_Call) RunAndReturn(run func(commitState pkg.CommitS
 }
 
 // UpdateMessage provides a mock function for the type MockClient
-func (_mock *MockClient) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, chunks []string) error {
-	ret := _mock.Called(ctx, pr, m, chunks)
+func (_mock *MockClient) UpdateMessage(ctx context.Context, pr vcs.PullRequest, noteID int, chunks []string) error {
+	ret := _mock.Called(ctx, pr, noteID, chunks)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateMessage")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest, *msg.Message, []string) error); ok {
-		r0 = returnFunc(ctx, pr, m, chunks)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest, int, []string) error); ok {
+		r0 = returnFunc(ctx, pr, noteID, chunks)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -1099,13 +1099,13 @@ type MockClient_UpdateMessage_Call struct {
 // UpdateMessage is a helper method to define mock.On call
 //   - ctx context.Context
 //   - pr vcs.PullRequest
-//   - m *msg.Message
+//   - noteID int
 //   - chunks []string
-func (_e *MockClient_Expecter) UpdateMessage(ctx interface{}, pr interface{}, m interface{}, chunks interface{}) *MockClient_UpdateMessage_Call {
-	return &MockClient_UpdateMessage_Call{Call: _e.mock.On("UpdateMessage", ctx, pr, m, chunks)}
+func (_e *MockClient_Expecter) UpdateMessage(ctx interface{}, pr interface{}, noteID interface{}, chunks interface{}) *MockClient_UpdateMessage_Call {
+	return &MockClient_UpdateMessage_Call{Call: _e.mock.On("UpdateMessage", ctx, pr, noteID, chunks)}
 }
 
-func (_c *MockClient_UpdateMessage_Call) Run(run func(ctx context.Context, pr vcs.PullRequest, m *msg.Message, chunks []string)) *MockClient_UpdateMessage_Call {
+func (_c *MockClient_UpdateMessage_Call) Run(run func(ctx context.Context, pr vcs.PullRequest, noteID int, chunks []string)) *MockClient_UpdateMessage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1115,9 +1115,9 @@ func (_c *MockClient_UpdateMessage_Call) Run(run func(ctx context.Context, pr vc
 		if args[1] != nil {
 			arg1 = args[1].(vcs.PullRequest)
 		}
-		var arg2 *msg.Message
+		var arg2 int
 		if args[2] != nil {
-			arg2 = args[2].(*msg.Message)
+			arg2 = args[2].(int)
 		}
 		var arg3 []string
 		if args[3] != nil {
@@ -1138,7 +1138,7 @@ func (_c *MockClient_UpdateMessage_Call) Return(err error) *MockClient_UpdateMes
 	return _c
 }
 
-func (_c *MockClient_UpdateMessage_Call) RunAndReturn(run func(ctx context.Context, pr vcs.PullRequest, m *msg.Message, chunks []string) error) *MockClient_UpdateMessage_Call {
+func (_c *MockClient_UpdateMessage_Call) RunAndReturn(run func(ctx context.Context, pr vcs.PullRequest, noteID int, chunks []string) error) *MockClient_UpdateMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }

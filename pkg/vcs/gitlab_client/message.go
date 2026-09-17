@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
@@ -16,17 +17,19 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-const maxCommentLength = 1_000_000
+const MaxCommentLength = 1_000_000
 
-func (c *Client) MaxCommentLength() int { return maxCommentLength }
+const updateMessageTimeout = 10 * time.Minute
+
+func (c *Client) MaxCommentLength() int { return MaxCommentLength }
 
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
 	_, span := tracer.Start(ctx, "PostMessage")
 	defer span.End()
 
-	if len(message) > maxCommentLength {
-		telemetry.SetError(span, fmt.Errorf("message length %d exceeds limit %d", len(message), maxCommentLength), "PostMessage")
-		return nil, fmt.Errorf("message length %d exceeds GitLab comment limit %d", len(message), maxCommentLength)
+	if len(message) > MaxCommentLength {
+		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
+		message = message[:MaxCommentLength]
 	}
 
 	n, _, err := c.c.Notes.CreateMergeRequestNote(
@@ -69,9 +72,9 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 </details>
 			`, c.cfg.Identifier, note.Body)
 
-		if len(newBody) > maxCommentLength {
+		if len(newBody) > MaxCommentLength {
 			log.Warn().Int("original_length", len(newBody)).Msg("trimming the comment size")
-			newBody = newBody[:maxCommentLength]
+			newBody = newBody[:MaxCommentLength]
 		}
 
 		log.Debug().Caller().Str("projectName", projectName).Int("mr", mergeRequestID).Msgf("Updating comment %d as outdated", note.ID)
@@ -89,33 +92,37 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 	return nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, chunks []string) error {
-	log.Debug().Caller().Msgf("Deleting placeholder note %d for MR %d in %s", m.NoteID, pr.CheckID, pr.FullName)
-	if _, err := c.c.Notes.DeleteMergeRequestNote(pr.FullName, int64(pr.CheckID), int64(m.NoteID)); err != nil {
-		log.Error().Err(err).Msg("failed to delete placeholder note")
-		return fmt.Errorf("deleting placeholder note: %w", err)
-	}
+func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, noteID int, chunks []string) error {
+	log.Debug().Caller().Int("chunks", len(chunks)).Msgf("Updating message %d for %s", noteID, pr.FullName)
 
-	log.Info().Int("chunks", len(chunks)).Msgf("Posting %d note(s) to MR %d in %s", len(chunks), pr.CheckID, pr.FullName)
+	// getBackOff allows three minutes per call, which adds up over a long report
+	ctx, cancel := context.WithTimeout(ctx, updateMessageTimeout)
+	defer cancel()
+
 	for i, chunk := range chunks {
-		var note *gitlab.Note
-		err := backoff.Retry(func() error {
-			var resp *gitlab.Response
-			var createErr error
-			note, resp, createErr = c.c.Notes.CreateMergeRequestNote(
-				pr.FullName, int64(pr.CheckID),
-				&gitlab.CreateMergeRequestNoteOptions{
-					Body: pkg.Pointer(chunk),
-				},
-				gitlab.WithContext(ctx),
-			)
-			return checkReturnForBackoff(resp, createErr)
-		}, getBackOff())
-		if err != nil {
-			log.Error().Err(err).Int("chunk", i+1).Msg("failed to post note chunk after retries")
-			return fmt.Errorf("posting note chunk %d of %d: %w", i+1, len(chunks), err)
+		if len(chunk) > MaxCommentLength {
+			log.Warn().Int("original_length", len(chunk)).Msg("trimming the comment size")
+			chunk = chunk[:MaxCommentLength]
 		}
-		m.NoteID = int(note.ID)
+
+		err := backoff.Retry(func() error {
+			if i == 0 {
+				_, resp, err := c.c.Notes.UpdateMergeRequestNote(pr.FullName, int64(pr.CheckID), int64(noteID),
+					&gitlab.UpdateMergeRequestNoteOptions{Body: pkg.Pointer(chunk)}, gitlab.WithContext(ctx))
+				return checkReturnForBackoff(resp, err)
+			}
+			// checkReturnForBackoff retries on 429 only, so a note is never created twice
+			_, resp, err := c.c.Notes.CreateMergeRequestNote(pr.FullName, int64(pr.CheckID),
+				&gitlab.CreateMergeRequestNoteOptions{Body: pkg.Pointer(chunk)}, gitlab.WithContext(ctx))
+			return checkReturnForBackoff(resp, err)
+		}, backoff.WithContext(getBackOff(), ctx))
+		if err != nil {
+			log.Error().Err(err).Int("chunk", i+1).Msg("could not update message to MR")
+			if ctx.Err() == context.DeadlineExceeded {
+				return fmt.Errorf("gave up after %s, posting note %d of %d: %w", updateMessageTimeout, i+1, len(chunks), err)
+			}
+			return fmt.Errorf("posting note %d of %d: %w", i+1, len(chunks), err)
+		}
 	}
 
 	return nil

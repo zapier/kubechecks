@@ -5,31 +5,33 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/zapier/kubechecks/pkg"
 )
 
-// ChunkConfig controls how a report is assembled into VCS comment chunks.
-type ChunkConfig struct {
-	MaxLength  int    // per-VCS comment size limit (bytes)
-	MaxChunks  int    // hard cap on number of comments; 0 = unlimited
-	Identifier string // kubechecks instance identifier shown in headers
+// A report becomes comments in three steps. buildAppSections renders every app
+// as sections that fit sectionBudget, cutting inside a check only when it has
+// to. packSections fills chunks with them in order. splitIntoChunks frames each
+// chunk with a header and a tail; the part count in the header is why nothing
+// can be framed before everything is packed. cutShort is the backstop for a
+// section that could not be made to fit.
+
+type chunkConfig struct {
+	MaxLength  int // bytes
+	MaxChunks  int
+	Identifier string
+	Footer     string
 }
 
 const (
-	// sectionSeparator is placed between app sections within a single chunk.
-	sectionSeparator = "\n\n"
+	footerSeparator = "\n\n"
 
-	// Continuation notes inserted into multi-chunk reports so the reader
-	// knows the report spans several comments.
 	continuedFrom = "\n*Continued from previous comment.*\n\n"
 	continuedIn   = "\n\n**Continued in next comment.**"
-
-	// truncatedNote is appended to the final chunk when the MaxChunks cap
-	// caused sections to be dropped.
 	truncatedNote = "\n\n**Warning**: Report exceeded the maximum number of comments. Some output was truncated."
+	cutShortNote  = "\n\n**Warning**: This comment was too long and was cut short."
 )
 
-// chunkHeader returns the markdown heading for a chunk.
-// Single-chunk reports omit the part number for a cleaner look.
 func chunkHeader(identifier string, part, total int) string {
 	if total == 1 {
 		return fmt.Sprintf("# Kubechecks %s Report\n", identifier)
@@ -37,40 +39,21 @@ func chunkHeader(identifier string, part, total int) string {
 	return fmt.Sprintf("# Kubechecks %s Report (Part %d of %d)\n", identifier, part, total)
 }
 
-// maxHeaderLen returns a worst-case header length for capacity planning.
-// Assumes up to 3-digit part numbers (999 chunks).
-func maxHeaderLen(identifier string) int {
-	return len(fmt.Sprintf("# Kubechecks %s Report (Part 999 of 999)\n", identifier))
+// sectionBudget is the space left for app sections in a chunk. We do not know
+// up front which chunk ends up last, so every chunk is budgeted for the worse
+// of the two tails.
+func (cfg chunkConfig) sectionBudget() int {
+	head := len(chunkHeader(cfg.Identifier, pkg.MaxCommentsPerCheck, pkg.MaxCommentsPerCheck)) + len(continuedFrom)
+	tail := max(len(continuedIn), len(footerSeparator)+len(cfg.Footer)+len(truncatedNote))
+
+	return cfg.MaxLength - head - tail
 }
 
-// maxOverhead returns the worst-case per-chunk overhead (header + continuation
-// notes). Used to compute the available space for section content.
-func maxOverhead(identifier string) int {
-	return maxHeaderLen(identifier) + len(continuedFrom) + len(continuedIn)
-}
+func splitIntoChunks(appSections []string, cfg chunkConfig) []string {
+	rawChunks := packSections(appSections, cfg.sectionBudget())
 
-// SplitIntoChunks packs pre-split sections into decorated VCS comment chunks
-// that each fit within cfg.MaxLength. The footer is appended only to the final
-// chunk.
-//
-// Sections are expected to arrive pre-split from [Message.buildAppSections] so
-// that each individual section already fits within the available space. This
-// function handles:
-//
-//  1. Greedy bin-packing of sections into chunks.
-//  2. Decorating each chunk with a header, continuation notes, and the footer.
-//  3. Enforcing MaxChunks - if the cap is hit, the last chunk carries a
-//     truncation warning.
-func SplitIntoChunks(appSections []string, footer string, cfg ChunkConfig) []string {
-	overhead := maxOverhead(cfg.Identifier)
-	available := cfg.MaxLength - overhead - len(footer)
-	if available <= 0 {
-		available = 1
-	}
-
-	rawChunks := packSections(appSections, available)
-
-	if cfg.MaxChunks > 0 && len(rawChunks) > cfg.MaxChunks {
+	truncated := len(rawChunks) > cfg.MaxChunks
+	if truncated {
 		rawChunks = rawChunks[:cfg.MaxChunks]
 	}
 
@@ -82,73 +65,67 @@ func SplitIntoChunks(appSections []string, footer string, cfg ChunkConfig) []str
 	result := make([]string, 0, total)
 
 	for i, sections := range rawChunks {
-		var sb strings.Builder
-		sb.WriteString(chunkHeader(cfg.Identifier, i+1, total))
-
+		body := chunkHeader(cfg.Identifier, i+1, total)
 		if i > 0 {
-			sb.WriteString(continuedFrom)
+			body += continuedFrom
 		}
+		body += strings.Join(sections, "")
 
-		sb.WriteString(strings.Join(sections, sectionSeparator))
-
-		isLast := i == total-1
-		if isLast {
-			fmt.Fprintf(&sb, "\n\n%s", footer)
-			if cfg.MaxChunks > 0 && total == cfg.MaxChunks && len(appSections) > countSections(rawChunks) {
-				sb.WriteString(truncatedNote)
+		tail := continuedIn
+		if i == total-1 {
+			tail = footerSeparator + cfg.Footer
+			if truncated {
+				tail += truncatedNote
 			}
-		} else {
-			sb.WriteString(continuedIn)
 		}
 
-		result = append(result, sb.String())
+		if len(body)+len(tail) > cfg.MaxLength {
+			// only a section that could not be split gets here, e.g. a check summary the size of a comment
+			log.Warn().Int("length", len(body)+len(tail)).Int("limit", cfg.MaxLength).Msg("comment does not fit, cutting it short")
+			body = cutShort(body, cfg.MaxLength-len(tail))
+		}
+
+		result = append(result, body+tail)
 	}
 
 	return result
 }
 
-// packSections greedily packs sections into chunks where each chunk's
-// content does not exceed availablePerChunk bytes.
-//
-// Sections are expected to be pre-split by buildAppSections so that each
-// individual section fits within the limit. If a section still exceeds the
-// limit (defensive), it is placed alone in its own chunk with a warning log.
-func packSections(sections []string, availablePerChunk int) [][]string {
-	if len(sections) == 0 {
-		return nil
-	}
+// cutShort cuts markdown down to maxLen and closes what the cut left open, so
+// that the tail of the comment and the comments after it still render.
+func cutShort(markdown string, maxLen int) string {
+	budget := maxLen - len(cutShortNote)
+	for room := budget; room > 0; {
+		cut := cutAtRune(markdown, room)
 
+		var state mdState
+		for _, line := range strings.SplitAfter(cut, "\n") {
+			state = state.next(line)
+		}
+		// the cut is most likely in the middle of a line
+		closer := "\n" + state.closer()
+
+		if over := len(cut) + len(closer) - budget; over > 0 {
+			room -= over
+			continue
+		}
+		return cut + closer + cutShortNote
+	}
+	return cutAtRune(markdown, maxLen)
+}
+
+func packSections(sections []string, budget int) [][]string {
 	var chunks [][]string
 	var current []string
 	currentLen := 0
 
 	for _, section := range sections {
-		sectionLen := len(section)
-		separatorLen := 0
-		if len(current) > 0 {
-			separatorLen = len(sectionSeparator)
-		}
-
-		if sectionLen > availablePerChunk {
-			log.Warn().Int("section_len", sectionLen).Int("limit", availablePerChunk).
-				Msg("section exceeds chunk limit; placing in its own chunk")
-			if len(current) > 0 {
-				chunks = append(chunks, current)
-				current = nil
-				currentLen = 0
-			}
-			chunks = append(chunks, []string{section})
-			continue
-		}
-
-		if currentLen+separatorLen+sectionLen > availablePerChunk {
+		if len(current) > 0 && currentLen+len(section) > budget {
 			chunks = append(chunks, current)
-			current = []string{section}
-			currentLen = sectionLen
-		} else {
-			current = append(current, section)
-			currentLen += separatorLen + sectionLen
+			current, currentLen = nil, 0
 		}
+		current = append(current, section)
+		currentLen += len(section)
 	}
 
 	if len(current) > 0 {
@@ -156,14 +133,4 @@ func packSections(sections []string, availablePerChunk int) [][]string {
 	}
 
 	return chunks
-}
-
-// countSections returns the total number of sections across all chunks.
-// Used to detect whether the MaxChunks cap caused sections to be dropped.
-func countSections(chunks [][]string) int {
-	n := 0
-	for _, c := range chunks {
-		n += len(c)
-	}
-	return n
 }

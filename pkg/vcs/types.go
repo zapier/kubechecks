@@ -18,9 +18,9 @@ type WebHookConfig struct {
 type Client interface {
 	// PostMessage takes in project name in form "owner/repo" (ie zapier/kubechecks), the PR/MR id, and the actual message
 	PostMessage(context.Context, PullRequest, string) (*msg.Message, error)
-	// UpdateMessage replaces the placeholder comment with the given chunks.
-	// The first chunk edits the existing comment; subsequent chunks are posted as new comments.
-	UpdateMessage(ctx context.Context, pr PullRequest, m *msg.Message, chunks []string) error
+	// UpdateMessage update a message with new content. Content that does not fit in one comment
+	// arrives as several chunks: the first replaces the message, the rest are posted after it.
+	UpdateMessage(ctx context.Context, pr PullRequest, noteID int, chunks []string) error
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
 	VerifyHook(*http.Request, string) ([]byte, error)
 	// ParseHook parses webook payload for valid events, with context for request-scoped values

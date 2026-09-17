@@ -17,17 +17,20 @@ import (
 	"github.com/zapier/kubechecks/telemetry"
 )
 
-const maxCommentLength = 64 * 1024
+const MaxCommentLength = 64 * 1024
 
-func (c *Client) MaxCommentLength() int { return maxCommentLength }
+// a long report is many calls, each with its own retries
+const updateMessageTimeout = 10 * time.Minute
+
+func (c *Client) MaxCommentLength() int { return MaxCommentLength }
 
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
 	_, span := tracer.Start(ctx, "PostMessageToMergeRequest")
 	defer span.End()
 
-	if len(message) > maxCommentLength {
-		telemetry.SetError(span, fmt.Errorf("message length %d exceeds limit %d", len(message), maxCommentLength), "PostMessage")
-		return nil, fmt.Errorf("message length %d exceeds GitHub comment limit %d", len(message), maxCommentLength)
+	if len(message) > MaxCommentLength {
+		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
+		message = message[:MaxCommentLength]
 	}
 
 	log.Debug().Caller().Msgf("Posting message to PR %d in repo %s", pr.CheckID, pr.FullName)
@@ -47,58 +50,41 @@ func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message st
 	return msg.NewMessage(pr.FullName, pr.CheckID, int(*comment.ID), c), nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, m *msg.Message, chunks []string) error {
+func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, noteID int, chunks []string) error {
 	_, span := tracer.Start(ctx, "UpdateMessage")
 	defer span.End()
 
-	log.Debug().Msgf("Deleting placeholder comment %d for PR %d in repo %s", m.NoteID, pr.CheckID, pr.FullName)
-	if _, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, int64(m.NoteID)); err != nil {
-		telemetry.SetError(span, err, "Delete placeholder comment")
-		log.Error().Err(err).Msg("failed to delete placeholder comment")
-		return fmt.Errorf("deleting placeholder comment: %w", err)
-	}
+	ctx, cancel := context.WithTimeout(ctx, updateMessageTimeout)
+	defer cancel()
 
-	log.Info().Int("chunks", len(chunks)).Msgf("Posting %d comment(s) to PR %d in repo %s", len(chunks), pr.CheckID, pr.FullName)
-	rc := retryConfig{}.withDefaults(3, 2*time.Second, 30*time.Second)
+	log.Info().Int("chunks", len(chunks)).Msgf("Updating message for PR %d in repo %s", pr.CheckID, pr.FullName)
+	rc := c.commentRetry.withDefaults(3, 2*time.Second, 30*time.Second)
 
 	for i, chunk := range chunks {
-		var cc *github.IssueComment
-		backoff := rc.initialBackoff
-
-		var lastErr error
-		for attempt := range rc.maxRetries + 1 {
-			cc, _, lastErr = c.googleClient.Issues.CreateComment(
-				ctx, pr.Owner, pr.Name, pr.CheckID,
-				&github.IssueComment{Body: &chunk},
-			)
-			if lastErr == nil {
-				break
-			}
-
-			if attempt == rc.maxRetries {
-				break
-			}
-
-			log.Warn().Err(lastErr).
-				Int("chunk", i+1).Int("attempt", attempt+1).Dur("backoff", backoff).
-				Msg("failed to post comment chunk, retrying")
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(backoff):
-				backoff *= 2
-				if backoff > rc.maxBackoff {
-					backoff = rc.maxBackoff
-				}
-			}
+		if len(chunk) > MaxCommentLength {
+			log.Warn().Int("original_length", len(chunk)).Msg("trimming the comment size")
+			chunk = chunk[:MaxCommentLength]
 		}
-		if lastErr != nil {
-			telemetry.SetError(span, lastErr, "Create comment chunk")
-			log.Error().Err(lastErr).Int("chunk", i+1).Msg("failed to post comment chunk after retries")
-			return fmt.Errorf("posting comment chunk %d of %d: %w", i+1, len(chunks), lastErr)
+
+		// a create that failed late may still have landed, doing it again would post the chunk twice
+		edit := i == 0
+
+		err := rc.do(ctx, "posting comment", edit, func() (*github.Response, error) {
+			if edit {
+				_, resp, err := c.googleClient.Issues.EditComment(ctx, pr.Owner, pr.Name, int64(noteID), &github.IssueComment{Body: &chunk})
+				return resp, err
+			}
+			_, resp, err := c.googleClient.Issues.CreateComment(ctx, pr.Owner, pr.Name, pr.CheckID, &github.IssueComment{Body: &chunk})
+			return resp, err
+		})
+		if err != nil {
+			telemetry.SetError(span, err, "Update Pull Request comment")
+			log.Error().Err(err).Int("chunk", i+1).Msg("could not update message to PR")
+			if ctx.Err() == context.DeadlineExceeded {
+				return fmt.Errorf("gave up after %s, posting comment %d of %d: %w", updateMessageTimeout, i+1, len(chunks), err)
+			}
+			return fmt.Errorf("posting comment %d of %d: %w", i+1, len(chunks), err)
 		}
-		m.NoteID = int(*cc.ID)
 	}
 
 	return nil

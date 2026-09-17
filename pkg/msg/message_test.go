@@ -18,6 +18,17 @@ type fakeEmojiable struct {
 
 func (fe fakeEmojiable) ToEmoji(state pkg.CommitState) string { return fe.emoji }
 
+var testCommentOptions = CommentOptions{
+	Start:        time.Now(),
+	CommitSHA:    "commit-sha",
+	LabelFilter:  "label-filter",
+	Identifier:   "test-identifier",
+	AppsChecked:  1,
+	TotalChecked: 2,
+	MaxLength:    64 * 1024,
+	MaxComments:  pkg.MaxCommentsPerCheck,
+}
+
 func TestBuildComment(t *testing.T) {
 	appResults := map[string]*AppResults{
 		"myapp": {
@@ -32,7 +43,7 @@ func TestBuildComment(t *testing.T) {
 	}
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	chunks := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 64*1024, 0, 1, 2)
+	chunks := m.BuildComment(context.TODO(), testCommentOptions)
 	require.Len(t, chunks, 1)
 	assert.Equal(t, `# Kubechecks test-identifier Report
 <details>
@@ -81,7 +92,7 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
 	m.apps = appResults
-	chunks := m.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 64*1024, 0, 1, 2)
+	chunks := m.BuildComment(context.TODO(), testCommentOptions)
 	require.Len(t, chunks, 1)
 	assert.Equal(t, `# Kubechecks test-identifier Report
 <details>
@@ -95,6 +106,41 @@ func TestBuildComment_SkipUnchanged(t *testing.T) {
 
 should add some important details here
 </details></details>
+
+<small> _Done. CommitSHA: commit-sha_ <small>
+`, chunks[0])
+}
+
+// a report that fits in one comment renders exactly as it does without splitting
+func TestBuildComment_SeveralApps(t *testing.T) {
+	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
+	m.apps = map[string]*AppResults{
+		"app-a": {results: []Result{{State: pkg.StateError, Summary: "this failed bigly", Details: "details"}}},
+		"app-b": {results: []Result{{State: pkg.StateSkip, Summary: "skipped", Details: "nothing"}}},
+		"app-c": {results: []Result{{State: pkg.StateSuccess, Summary: "fine", Details: "details"}, {NoChangesDetected: true}}},
+	}
+
+	chunks := m.BuildComment(context.TODO(), testCommentOptions)
+
+	require.Len(t, chunks, 1)
+	assert.Equal(t, `# Kubechecks test-identifier Report
+<details>
+<summary>
+
+## ArgoCD Application Checks: `+"`app-a`"+` :test:
+</summary>
+
+<details>
+<summary>this failed bigly Error :test:</summary>
+
+details
+</details></details><details>
+<summary>
+
+## ArgoCD Application Checks: `+"`app-b`"+` :test:
+</summary>
+
+</details>
 
 <small> _Done. CommitSHA: commit-sha_ <small>
 `, chunks[0])
@@ -229,7 +275,7 @@ func TestMultipleItemsWithNewlines(t *testing.T) {
 		Summary: "summary-2",
 		Details: "detail-2",
 	})
-	chunks := message.BuildComment(context.TODO(), time.Now(), "commit-sha", "label-filter", false, "test-identifier", 64*1024, 0, 1, 2)
+	chunks := message.BuildComment(context.TODO(), testCommentOptions)
 	require.NotEmpty(t, chunks)
 	result := chunks[0]
 
