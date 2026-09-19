@@ -39,6 +39,11 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v${{ env.GOLANGCI_LINT }}
+          # Build with the runner's Go rather than downloading a release binary.
+          # golangci-lint refuses to run when the Go version it was built with is
+          # older than the module's target, and the published binaries lag Go
+          # releases. Building here keeps the two in step automatically.
+          install-mode: goinstall
 
       - name: Run tests
         run: make test

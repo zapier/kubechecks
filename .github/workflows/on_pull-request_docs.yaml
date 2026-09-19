@@ -2,7 +2,7 @@ name: docs ci
 on:
   pull_request:
     paths:
-      - '.github/workflows/on_pull_request_docs.yaml'
+      - '.github/workflows/on_pull-request_docs.yaml'
       - 'Makefile'
       - '*/**.go'
       - '*.go'

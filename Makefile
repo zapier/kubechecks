@@ -14,7 +14,7 @@
 GOLANG_VERSION := $(shell grep '^golang ' .tool-versions | awk '{print $$2}')
 GOLANGCI_LINT_VERSION := $(shell grep '^golangci-lint ' .tool-versions | awk '{print $$2}')
 HELM_VERSION := $(shell grep '^helm ' .tool-versions | awk '{print $$2}')
-ALPINE_VERSION := 3.21
+ALPINE_VERSION := 3.23
 
 # ============================================================================
 # Git Information

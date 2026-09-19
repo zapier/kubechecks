@@ -2,7 +2,7 @@
 
 # Build arguments for versions (read from .tool-versions)
 ARG GOLANG_VERSION=1.26.3
-ARG ALPINE_VERSION=3.21
+ARG ALPINE_VERSION=3.23
 
 # ============================================================================
 # Stage: go-deps
