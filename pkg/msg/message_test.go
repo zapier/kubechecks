@@ -111,6 +111,20 @@ should add some important details here
 `, chunks[0])
 }
 
+// every check reporting no changes still has to say so, the one-comment path frames an empty chunk
+func TestBuildComment_NothingToReport(t *testing.T) {
+	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
+	m.apps = map[string]*AppResults{
+		"app-a": {results: []Result{{NoChangesDetected: true}}},
+		"app-b": {results: []Result{{State: pkg.StateSkip, Summary: "skipped"}, {NoChangesDetected: true}}},
+	}
+
+	chunks := m.BuildComment(context.TODO(), testCommentOptions)
+
+	require.Len(t, chunks, 1)
+	assert.Equal(t, "# Kubechecks test-identifier Report\nNo changes\n\n<small> _Done. CommitSHA: commit-sha_ <small>\n", chunks[0])
+}
+
 // a report that fits in one comment renders exactly as it does without splitting
 func TestBuildComment_SeveralApps(t *testing.T) {
 	m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})

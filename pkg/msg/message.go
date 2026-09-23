@@ -471,16 +471,33 @@ func (m *Message) BuildComment(ctx context.Context, opts CommentOptions) []strin
 		Footer:     m.buildFooter(opts.Start, opts.CommitSHA, opts.LabelFilter, opts.ShowDebugInfo, opts.AppsChecked, opts.TotalChecked),
 	}
 
-	var allSections []string
+	// sized with a single comment's overhead first, the report may well fit one
+	sections := m.buildSections(names, cfg.oneCommentBudget(), 1)
+	if cfg.fitsOneComment(sections) {
+		return frameChunks([][]string{sections}, false, cfg)
+	}
+
+	sections = m.buildSections(names, cfg.sectionBudget(), cfg.MaxChunks)
+
+	return splitIntoChunks(sections, cfg)
+}
+
+// what is past the cap never gets posted, so buildSections stops rendering once
+// the sections it has pack into more chunks than the cap allows.
+func (m *Message) buildSections(names []string, budget, maxChunks int) []string {
+	var sections []string
 	for _, appName := range names {
+		if len(packSections(sections, budget)) > maxChunks {
+			break
+		}
 		if m.isDeleted(appName) {
 			continue
 		}
-		sections := m.buildAppSections(appName, m.apps[appName], cfg.sectionBudget())
-		allSections = append(allSections, sections...)
+
+		sections = append(sections, m.buildAppSections(appName, m.apps[appName], budget)...)
 	}
 
-	return splitIntoChunks(allSections, cfg)
+	return sections
 }
 
 func getSortedKeys[K cmp.Ordered, V any](m map[K]V) []K {

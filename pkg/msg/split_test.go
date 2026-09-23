@@ -326,3 +326,84 @@ func TestBuildComment_EveryChunkFitsTheLimit(t *testing.T) {
 		}
 	}
 }
+
+// a report that takes one comment is sized with that comment's overhead, not with the room the parts of a split report leave
+func TestBuildComment_ExactlyAtTheLimit(t *testing.T) {
+	m := NewMessage("test/repo", 1, 1, fakeEmojiable{":ok:"})
+	m.AddNewApp(context.TODO(), "app-a")
+	m.AddToAppMessage(context.TODO(), "app-a", Result{State: pkg.StateWarning, Summary: "diff", Details: "```diff\n" + strings.Repeat("+line\n", 200) + "```\n"})
+	m.AddNewApp(context.TODO(), "app-b")
+	m.AddToAppMessage(context.TODO(), "app-b", Result{State: pkg.StateSuccess, Summary: "diff", Details: "ok"})
+
+	opts := CommentOptions{
+		Start: time.Now(), CommitSHA: "sha", Identifier: "id", AppsChecked: 2, TotalChecked: 2,
+		MaxLength: 64 * 1024, MaxComments: pkg.MaxCommentsPerCheck,
+	}
+
+	whole := m.BuildComment(context.TODO(), opts)
+	require.Len(t, whole, 1)
+
+	opts.MaxLength = len(whole[0])
+	assert.Equal(t, whole, m.BuildComment(context.TODO(), opts), "fits exactly, still one comment")
+
+	opts.MaxLength--
+	assert.Greater(t, len(m.BuildComment(context.TODO(), opts)), 1, "one byte over, split")
+}
+
+// a section bigger than the budget is packed alone, the stop must count chunks and not bytes
+func TestBuildComment_OversizedSectionKeepsTheCap(t *testing.T) {
+	m := NewMessage("test/repo", 1, 1, fakeEmojiable{":ok:"})
+	m.AddNewApp(context.TODO(), "app-a")
+	m.AddToAppMessage(context.TODO(), "app-a", Result{State: pkg.StateWarning, Summary: strings.Repeat("s", 2000), Details: "a diff"})
+	for _, app := range []string{"app-b", "app-c"} {
+		m.AddNewApp(context.TODO(), app)
+		m.AddToAppMessage(context.TODO(), app, Result{State: pkg.StateSuccess, Summary: "diff", Details: strings.Repeat("y", 1000)})
+	}
+
+	comments := m.BuildComment(context.TODO(), CommentOptions{
+		Start: time.Now(), CommitSHA: "sha", Identifier: "id", AppsChecked: 3, TotalChecked: 3,
+		MaxLength: 1500, MaxComments: 2,
+	})
+
+	require.Len(t, comments, 2)
+	assert.Contains(t, comments[1], "`app-b`")
+	assert.True(t, strings.HasSuffix(comments[1], truncatedNote))
+}
+
+// the cap does not change what fits a comment: what is left out is still noted
+func TestBuildComment_CapOfOneKeepsTheNote(t *testing.T) {
+	m := NewMessage("test/repo", 1, 1, fakeEmojiable{":ok:"})
+	for _, app := range []string{"app-a", "app-b", "app-c"} {
+		m.AddNewApp(context.TODO(), app)
+		m.AddToAppMessage(context.TODO(), app, Result{State: pkg.StateSuccess, Summary: "diff", Details: strings.Repeat("d", 800)})
+	}
+
+	comments := m.BuildComment(context.TODO(), CommentOptions{
+		Start: time.Now(), CommitSHA: "sha", Identifier: "id", AppsChecked: 3, TotalChecked: 3,
+		MaxLength: 1952, MaxComments: 1,
+	})
+
+	require.Len(t, comments, 1)
+	assert.LessOrEqual(t, len(comments[0]), 1952)
+	assert.Contains(t, comments[0], "`app-a`")
+	assert.NotContains(t, comments[0], "`app-c`")
+	assert.True(t, strings.HasSuffix(comments[0], truncatedNote), "the apps left out are noted")
+}
+
+func TestBuildSections_StopsPastTheCap(t *testing.T) {
+	m := NewMessage("test/repo", 1, 1, fakeEmojiable{":ok:"})
+	var names []string
+	for i := range 50 {
+		name := fmt.Sprintf("app-%02d", i)
+		names = append(names, name)
+		m.AddNewApp(context.TODO(), name)
+		m.AddToAppMessage(context.TODO(), name, Result{State: pkg.StateSuccess, Summary: "diff", Details: strings.Repeat("x", 100)})
+	}
+
+	// every app is one section of the same size, so ten chunks is ten apps
+	budget := len(m.buildSections(names[:1], 10000, 1)[0])
+
+	sections := m.buildSections(names, budget, 10)
+
+	assert.Len(t, sections, 11, "one section past the cap, then it stops")
+}
