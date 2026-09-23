@@ -120,12 +120,12 @@ func TestDirContainsPath(t *testing.T) {
 			changePath: "apps/production/app1.yaml",
 			expected:   true,
 		},
-                {
-                        name:       "repo root path './' matches any change",
-                        dir:        "./",
-                        changePath: "apps/production/app1.yaml",
-                        expected:   true,
-                },
+		{
+			name:       "repo root path './' matches any change",
+			dir:        "./",
+			changePath: "apps/production/app1.yaml",
+			expected:   true,
+		},
 		{
 			name:       "empty path matches any change",
 			dir:        "",
@@ -172,7 +172,7 @@ func TestDirContainsPath(t *testing.T) {
 }
 
 // TestFindAppsBasedOnChangeList_RootPath reproduces the root directory
-// bug: an Application whose ArgoCD source path is the repo  root (".") 
+// bug: an Application whose ArgoCD source path is the repo  root (".")
 // must be matched by changes anywhere in the repo, not skipped.
 func TestFindAppsBasedOnChangeList_RootPath(t *testing.T) {
 	d := NewAppDirectory()
