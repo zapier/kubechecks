@@ -24,6 +24,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/checks/diff"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/crdschema"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -45,6 +46,7 @@ type worker struct {
 	addAIReviewResult   func(appName string, result msg.Result, suggestions []vcs.ReviewSuggestion)
 	claimAIReviewSlot   func() bool
 	changedFiles        []string
+	repoCRDSchemas      *crdschema.Schemas
 }
 
 // process apps
@@ -132,7 +134,7 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 	k8sVersion = normalizeK8sVersion(k8sVersion, w.ctr.Config.FallbackK8sVersion)
 	rootLogger.Info().Msgf("Kubernetes version (normalized): %s", k8sVersion)
 
-	runner := newRunner(w.ctr, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger, w.vcsNote, w.queueApp, w.removeApp)
+	runner := newRunner(w.ctr, app, appName, k8sVersion, jsonManifests, yamlManifests, w.repoCRDSchemas, rootLogger, w.vcsNote, w.queueApp, w.removeApp)
 
 	// Launch AI review in parallel — but only if there are actual changes
 	var aiReviewWg sync.WaitGroup
