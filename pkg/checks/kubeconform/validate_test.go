@@ -225,3 +225,46 @@ func TestValidatesAgainstSchemasCommittedToTheRepository(t *testing.T) {
 		assert.Contains(t, result.Details, "Invalid")
 	})
 }
+
+// kubeconform reports a missing schema without saying where it looked, so the report
+// says it instead — otherwise the reader has nothing to act on, which is exactly the
+// position an operator is in when a template or a filename does not line up.
+func TestReportNamesTheLocationsSearchedForAMissingSchema(t *testing.T) {
+	repoDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repoDir, ".github", "schemas"), 0o755))
+
+	ctr := container.Container{Config: config.ServerConfig{
+		SchemasLocations: []string{".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"},
+	}}
+
+	result, err := argoCdAppValidate(context.Background(), ctr, "app", "1.30.0", repoDir,
+		[]string{"apiVersion: external-secrets.io/v1\nkind: ExternalSecret\nmetadata:\n  name: creds\nspec: {}\n"})
+	require.NoError(t, err)
+
+	assert.Equal(t, pkg.StateFailure, result.State)
+	assert.Contains(t, result.Details, "could not find schema")
+	assert.Contains(t, result.Details, "looked for in")
+	// shown relative to the checkout, because the absolute form is a temporary clone
+	assert.Contains(t, result.Details, ".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json")
+	assert.NotContains(t, result.Details, repoDir)
+}
+
+// A report with nothing missing stays as it was.
+func TestReportOmitsLocationsWhenNothingIsMissing(t *testing.T) {
+	repoDir := t.TempDir()
+	schemaDir := filepath.Join(repoDir, ".github", "schemas")
+	require.NoError(t, os.MkdirAll(schemaDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(schemaDir, "externalsecret_v1.json"),
+		[]byte(`{"type":"object"}`), 0o644))
+
+	ctr := container.Container{Config: config.ServerConfig{
+		SchemasLocations: []string{".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"},
+	}}
+
+	result, err := argoCdAppValidate(context.Background(), ctr, "app", "1.30.0", repoDir,
+		[]string{"apiVersion: external-secrets.io/v1\nkind: ExternalSecret\nmetadata:\n  name: creds\nspec: {}\n"})
+	require.NoError(t, err)
+
+	assert.Equal(t, pkg.StateSuccess, result.State, result.Details)
+	assert.NotContains(t, result.Details, "looked for in")
+}

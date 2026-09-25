@@ -176,6 +176,32 @@ func resolveInCheckout(location, repoDir string) (string, bool) {
 	return resolved, true
 }
 
+// describeSearchedLocations renders the locations a kind was looked for in, for a report
+// that has just said a schema could not be found without saying where it looked.
+//
+// Paths inside the checkout are shown relative to it. The absolute form is a temporary
+// clone directory that means nothing to the reader, while the relative form is exactly
+// what they configured and can compare against their repository.
+func describeSearchedLocations(locations []string, repoDir string) string {
+	root, err := filepath.Abs(repoDir)
+	if err != nil {
+		root = repoDir
+	}
+
+	lines := []string{"", "Schemas for the kinds above were looked for in, in order:"}
+	for _, location := range locations {
+		shown := location
+		if root != "" {
+			if relative, err := filepath.Rel(root, location); err == nil && !strings.HasPrefix(relative, "..") {
+				shown = relative + "  _(in this repository)_"
+			}
+		}
+		lines = append(lines, fmt.Sprintf(" * `%s`", shown))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, repoDir string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
@@ -212,14 +238,19 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 
 	log.Debug().Caller().Msgf("cache location: %s", vOpts.Cache)
 	log.Debug().Caller().Msgf("target kubernetes version: %s", targetKubernetesVersion)
-	log.Debug().Caller().Msgf("schema locations: %s", strings.Join(schemaLocations, ", "))
+
+	// Logged at info, and fully resolved: when a kind turns out to have no schema, the
+	// paths that were searched are the first thing anyone needs, and kubeconform does
+	// not report them.
+	log.Info().Caller().Str("app_name", appName).Strs("locations", schemaLocations).
+		Msg("schema locations")
 
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
 		return msg.Result{}, fmt.Errorf("could not create kubeconform validator: %v", err)
 	}
 	result := v.Validate("-", io.NopCloser(strings.NewReader(strings.Join(appManifests, "\n"))))
-	var invalid, failedValidation bool
+	var invalid, failedValidation, missingSchema bool
 	for _, res := range result {
 		sigData, _ := res.Resource.Signature()
 		sig := fmt.Sprintf("%s %s %s", sigData.Version, sigData.Kind, sigData.Name)
@@ -232,6 +263,11 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		case validator.Error:
 			outputString = append(outputString, fmt.Sprintf(" * :red_circle: **Error**: %s - %v", sig, res.Err))
 			failedValidation = true
+			// kubeconform reports a kind it could not resolve without saying where it
+			// looked, which leaves the reader of the comment with nothing to act on.
+			if res.Err != nil && strings.Contains(res.Err.Error(), "could not find schema") {
+				missingSchema = true
+			}
 		case validator.Empty:
 			// noop
 		case validator.Skipped:
@@ -248,6 +284,10 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		cr.State = pkg.StateFailure
 	} else {
 		cr.State = pkg.StateSuccess
+	}
+
+	if missingSchema {
+		outputString = append(outputString, describeSearchedLocations(schemaLocations, repoDir))
 	}
 
 	cr.Summary = "<b>Show kubeconform report:</b>"
