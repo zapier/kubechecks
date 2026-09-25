@@ -114,15 +114,19 @@ type ServerConfig struct {
 	RepoCacheTTL             time.Duration `mapstructure:"repo-cache-ttl"`
 	ArchiveCacheDir          string        `mapstructure:"archive-cache-dir"`
 	ArchiveCacheTTL          time.Duration `mapstructure:"archive-cache-ttl"`
-	SchemasLocations         []string      `mapstructure:"schemas-location"`
-	ShowDebugInfo            bool          `mapstructure:"show-debug-info"`
-	TidyOutdatedCommentsMode string        `mapstructure:"tidy-outdated-comments-mode"`
-	MaxQueueSize             int64         `mapstructure:"max-queue-size"`
-	MaxConcurrentChecks      int           `mapstructure:"max-concurrent-checks"`
-	MaxRepoWorkerQueueSize   int           `mapstructure:"max-repo-worker-queue-size"`
-	ReplanCommentMessage     string        `mapstructure:"replan-comment-msg"`
-	Identifier               string        `mapstructure:"identifier"`
-	MaxCommentsPerCheck      int           `mapstructure:"max-comments-per-check"`
+	// SchemasLocations are searched, in order, for the schema of each resource. An
+	// absolute path, an http(s) location or a git url addresses something outside the
+	// pull request; a relative path names a directory inside the repository being
+	// checked, so schemas committed alongside the manifests that use them are found.
+	SchemasLocations         []string `mapstructure:"schemas-location"`
+	ShowDebugInfo            bool     `mapstructure:"show-debug-info"`
+	TidyOutdatedCommentsMode string   `mapstructure:"tidy-outdated-comments-mode"`
+	MaxQueueSize             int64    `mapstructure:"max-queue-size"`
+	MaxConcurrentChecks      int      `mapstructure:"max-concurrent-checks"`
+	MaxRepoWorkerQueueSize   int      `mapstructure:"max-repo-worker-queue-size"`
+	ReplanCommentMessage     string   `mapstructure:"replan-comment-msg"`
+	Identifier               string   `mapstructure:"identifier"`
+	MaxCommentsPerCheck      int      `mapstructure:"max-comments-per-check"`
 }
 
 func (cfg ServerConfig) IsGithubApp() bool {

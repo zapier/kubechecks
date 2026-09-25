@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -19,7 +21,7 @@ import (
 
 var tracer = otel.Tracer("pkg/checks/kubeconform")
 
-func getSchemaLocations(ctr container.Container) []string {
+func getSchemaLocations(ctr container.Container, repoDir string) []string {
 	cfg := ctr.Config
 
 	locations := []string{
@@ -27,8 +29,8 @@ func getSchemaLocations(ctr container.Container) []string {
 		"default",
 	}
 
-	// schemas configured globally
-	locations = append(locations, cfg.SchemasLocations...)
+	// schemas configured globally, with relative ones resolved against the checkout
+	locations = append(locations, resolveSchemaLocations(cfg.SchemasLocations, repoDir)...)
 
 	for index := range locations {
 		location := locations[index]
@@ -51,7 +53,156 @@ func getSchemaLocations(ctr container.Container) []string {
 	return locations
 }
 
-func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion string, appManifests []string) (msg.Result, error) {
+// resolveSchemaLocations roots relative schema locations at the repository being checked.
+//
+// An absolute path, an http(s) location, and a git remote — which by this point has
+// already been cloned to a local directory — all address something outside the pull
+// request, and are passed through untouched. A relative location instead names a
+// directory committed to the repository under test, so that schemas kept alongside the
+// manifests that use them are the ones a resource is checked against.
+//
+// A location the checkout cannot supply is dropped rather than handed to kubeconform,
+// which would report the kinds it covers as having no schema at all.
+func resolveSchemaLocations(configured []string, repoDir string) []string {
+	var locations []string
+	for _, location := range configured {
+		location = strings.TrimSpace(location)
+		if location == "" {
+			continue
+		}
+
+		if filepath.IsAbs(location) || looksRemote(location) {
+			locations = append(locations, location)
+			continue
+		}
+
+		if resolved, ok := resolveInCheckout(location, repoDir); ok {
+			locations = append(locations, resolved)
+		}
+	}
+
+	return locations
+}
+
+// NeedsCheckout reports whether any of these schema locations is relative, and so needs
+// the repository under test to resolve against. Callers use it to decide whether to
+// supply a checkout: obtaining one is not free, and most configurations name only
+// absolute paths and remote locations, which do not need it.
+func NeedsCheckout(locations []string) bool {
+	for _, location := range locations {
+		location = strings.TrimSpace(location)
+		if location == "" {
+			continue
+		}
+		if !filepath.IsAbs(location) && !looksRemote(location) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// looksRemote reports whether a location addresses something other than the filesystem:
+// an http(s) schema server, or a git remote in either URL or scp-like form. Neither can
+// be relative to a checkout, however much the string looks like a path.
+func looksRemote(location string) bool {
+	if strings.Contains(location, "://") {
+		return true
+	}
+
+	// scp-like git remotes, git@github.com:org/repo.git
+	if at := strings.Index(location, "@"); at > 0 && strings.Contains(location[at:], ":") {
+		return true
+	}
+
+	return false
+}
+
+// resolveInCheckout turns one repository-relative location into an absolute one.
+//
+// A location that already carries a template is rooted and otherwise left alone, so a
+// repository whose schemas are named by some other convention can say so — the
+// CRDs-catalog layout, for instance, which `openapi2jsonschema` also produces:
+//
+//	.github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json
+//
+// One without a template is a plain directory and is treated exactly as an absolute or
+// remote location would be: the caller appends the Kubernetes version and the filename
+// kubeconform's registry asks for. Schemas vendored into a repository are often organised
+// by kind alone rather than by cluster version, and those should use a template.
+func resolveInCheckout(location, repoDir string) (string, bool) {
+	if repoDir == "" {
+		log.Warn().Caller().Str("location", location).
+			Msg("relative schema location needs a checkout to resolve against, ignoring it")
+		return "", false
+	}
+
+	root, err := filepath.Abs(repoDir)
+	if err != nil {
+		log.Warn().Caller().Err(err).Str("dir", repoDir).Str("location", location).
+			Msg("could not resolve the checkout, ignoring relative schema location")
+		return "", false
+	}
+
+	// The directory the location names: the whole thing when it is a plain path, and
+	// otherwise whatever precedes the template, with any partial filename dropped.
+	// Configured values are slash-separated regardless of host, so path, not filepath.
+	dir := location
+	if index := strings.Index(location, "{{"); index >= 0 {
+		dir = path.Dir(location[:index])
+	}
+
+	resolvedDir := filepath.Join(root, filepath.FromSlash(dir))
+	// filepath.Join cleans its result, so a location of "../../etc" would otherwise read
+	// schemas from outside the checkout.
+	if resolvedDir != root && !strings.HasPrefix(resolvedDir, root+string(filepath.Separator)) {
+		log.Warn().Caller().Str("location", location).
+			Msg("relative schema location escapes the checkout, ignoring it")
+		return "", false
+	}
+
+	// Naming a directory that is not in this commit is the likeliest way to get this
+	// wrong, and contributes nothing without saying so.
+	if info, err := os.Stat(resolvedDir); err != nil || !info.IsDir() {
+		log.Warn().Caller().Str("location", location).Str("resolved", resolvedDir).
+			Msg("relative schema location is not a directory in this commit, ignoring it")
+		return "", false
+	}
+
+	resolved := filepath.Join(root, filepath.FromSlash(location))
+	log.Debug().Caller().Str("location", location).Str("resolved", resolved).
+		Msg("resolved schema location inside the repository under test")
+
+	return resolved, true
+}
+
+// describeSearchedLocations renders the locations a kind was looked for in, for a report
+// that has just said a schema could not be found without saying where it looked.
+//
+// Paths inside the checkout are shown relative to it. The absolute form is a temporary
+// clone directory that means nothing to the reader, while the relative form is exactly
+// what they configured and can compare against their repository.
+func describeSearchedLocations(locations []string, repoDir string) string {
+	root, err := filepath.Abs(repoDir)
+	if err != nil {
+		root = repoDir
+	}
+
+	lines := []string{"", "Schemas for the kinds above were looked for in, in order:"}
+	for _, location := range locations {
+		shown := location
+		if root != "" {
+			if relative, err := filepath.Rel(root, location); err == nil && !strings.HasPrefix(relative, "..") {
+				shown = relative + "  _(in this repository)_"
+			}
+		}
+		lines = append(lines, fmt.Sprintf(" * `%s`", shown))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion, repoDir string, appManifests []string) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -82,19 +233,24 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(ctr)
+		schemaLocations = getSchemaLocations(ctr, repoDir)
 	)
 
 	log.Debug().Caller().Msgf("cache location: %s", vOpts.Cache)
 	log.Debug().Caller().Msgf("target kubernetes version: %s", targetKubernetesVersion)
-	log.Debug().Caller().Msgf("schema locations: %s", strings.Join(schemaLocations, ", "))
+
+	// Logged at info, and fully resolved: when a kind turns out to have no schema, the
+	// paths that were searched are the first thing anyone needs, and kubeconform does
+	// not report them.
+	log.Info().Caller().Str("app_name", appName).Strs("locations", schemaLocations).
+		Msg("schema locations")
 
 	v, err := validator.New(schemaLocations, vOpts)
 	if err != nil {
 		return msg.Result{}, fmt.Errorf("could not create kubeconform validator: %v", err)
 	}
 	result := v.Validate("-", io.NopCloser(strings.NewReader(strings.Join(appManifests, "\n"))))
-	var invalid, failedValidation bool
+	var invalid, failedValidation, missingSchema bool
 	for _, res := range result {
 		sigData, _ := res.Resource.Signature()
 		sig := fmt.Sprintf("%s %s %s", sigData.Version, sigData.Kind, sigData.Name)
@@ -107,6 +263,11 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		case validator.Error:
 			outputString = append(outputString, fmt.Sprintf(" * :red_circle: **Error**: %s - %v", sig, res.Err))
 			failedValidation = true
+			// kubeconform reports a kind it could not resolve without saying where it
+			// looked, which leaves the reader of the comment with nothing to act on.
+			if res.Err != nil && strings.Contains(res.Err.Error(), "could not find schema") {
+				missingSchema = true
+			}
 		case validator.Empty:
 			// noop
 		case validator.Skipped:
@@ -123,6 +284,10 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 		cr.State = pkg.StateFailure
 	} else {
 		cr.State = pkg.StateSuccess
+	}
+
+	if missingSchema {
+		outputString = append(outputString, describeSearchedLocations(schemaLocations, repoDir))
 	}
 
 	cr.Summary = "<b>Show kubeconform report:</b>"

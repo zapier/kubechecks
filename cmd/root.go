@@ -91,7 +91,7 @@ func init() {
 		newStringOpts().
 			withChoices("hide", "delete").
 			withDefault("hide"))
-	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.")
+	stringSliceFlag(flags, "schemas-location", "Sets schema locations to be used for every check request. An absolute path on the host, or a git url in either git or http(s) format, is used as given. A relative path names a directory inside the repository being checked, so that schemas committed alongside the manifests that use them are found. Any location may be a kubeconform path template, such as \".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json\", when the files are not named \"<kind>-<group>-<version>.json\".")
 	boolFlag(flags, "enable-conftest", "Set to true to enable conftest policy checking of manifests.")
 	stringSliceFlag(flags, "policies-location", "Sets rego policy locations to be used for every check request. Can be common path inside the repos being checked or git urls in either git or http(s) format.",
 		newStringSliceOpts().
