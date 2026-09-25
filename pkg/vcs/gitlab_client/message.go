@@ -17,6 +17,8 @@ import (
 
 const MaxCommentLength = 1_000_000
 
+func (c *Client) MaxCommentLength() int { return MaxCommentLength }
+
 func (c *Client) PostMessage(ctx context.Context, pr vcs.PullRequest, message string) (*msg.Message, error) {
 	_, span := tracer.Start(ctx, "PostMessage")
 	defer span.End()
@@ -86,28 +88,44 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 	return nil
 }
 
-func (c *Client) UpdateMessage(ctx context.Context, m *msg.Message, message string) error {
-	log.Debug().Caller().Msgf("Updating message %d for %s", m.NoteID, m.Name)
+func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, noteID int, chunks []string) error {
+	log.Debug().Caller().Int("chunks", len(chunks)).Msgf("Updating message %d for %s", noteID, pr.FullName)
 
-	if len(message) > MaxCommentLength {
-		log.Warn().Int("original_length", len(message)).Msg("trimming the comment size")
-		message = message[:MaxCommentLength]
+	// the first chunk replaces the placeholder note, every other chunk is a new note
+	for i, chunk := range chunks {
+		if len(chunk) > MaxCommentLength {
+			log.Warn().Int("original_length", len(chunk)).Msg("trimming the comment size")
+			chunk = chunk[:MaxCommentLength]
+		}
+
+		var err error
+		if i == 0 {
+			err = c.editNote(ctx, pr, noteID, chunk)
+		} else {
+			err = c.addNote(ctx, pr, chunk)
+		}
+		if err != nil {
+			log.Error().Err(err).Int("chunk", i+1).Msg("could not update message to MR")
+			return fmt.Errorf("posting note %d of %d: %w", i+1, len(chunks), err)
+		}
 	}
 
-	n, _, err := c.c.Notes.UpdateMergeRequestNote(m.Name, int64(m.CheckID), int64(m.NoteID), &gitlab.UpdateMergeRequestNoteOptions{
-		Body: pkg.Pointer(message),
-	},
-		gitlab.WithContext(ctx),
-	)
-
-	if err != nil {
-		log.Error().Err(err).Msg("could not update message to MR")
-		return err
-	}
-
-	// just incase the note ID changes
-	m.NoteID = int(n.ID)
 	return nil
+}
+
+func (c *Client) editNote(ctx context.Context, pr vcs.PullRequest, noteID int, body string) error {
+	_, _, err := c.c.Notes.UpdateMergeRequestNote(pr.FullName, int64(pr.CheckID), int64(noteID),
+		&gitlab.UpdateMergeRequestNoteOptions{Body: pkg.Pointer(body)}, gitlab.WithContext(ctx))
+	return err
+}
+
+// addNote posts one part as a new note. The gitlab client retries 429 and 5xx
+// on its own, so a 5xx that came back after GitLab had saved the note leaves
+// that part on the MR twice. Rare and harmless, nothing guards against it.
+func (c *Client) addNote(ctx context.Context, pr vcs.PullRequest, body string) error {
+	_, _, err := c.c.Notes.CreateMergeRequestNote(pr.FullName, int64(pr.CheckID),
+		&gitlab.CreateMergeRequestNoteOptions{Body: pkg.Pointer(body)}, gitlab.WithContext(ctx))
+	return err
 }
 
 // Iterate over all comments for the Merge Request, deleting any from the authenticated user

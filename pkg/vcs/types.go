@@ -18,8 +18,9 @@ type WebHookConfig struct {
 type Client interface {
 	// PostMessage takes in project name in form "owner/repo" (ie zapier/kubechecks), the PR/MR id, and the actual message
 	PostMessage(context.Context, PullRequest, string) (*msg.Message, error)
-	// UpdateMessage update a message with new content
-	UpdateMessage(context.Context, *msg.Message, string) error
+	// UpdateMessage update a message with new content. Content that does not fit in one comment
+	// arrives as several chunks: the first replaces the message, the rest are posted after it.
+	UpdateMessage(ctx context.Context, pr PullRequest, noteID int, chunks []string) error
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
 	VerifyHook(*http.Request, string) ([]byte, error)
 	// ParseHook parses webook payload for valid events, with context for request-scoped values
@@ -56,6 +57,9 @@ type Client interface {
 	// PostReviewSuggestions posts a PR review with inline code suggestions.
 	// Each suggestion targets a specific file+line in the PR diff.
 	PostReviewSuggestions(ctx context.Context, pr PullRequest, summary string, suggestions []ReviewSuggestion) error
+
+	// MaxCommentLength returns the maximum allowed comment length for this VCS provider
+	MaxCommentLength() int
 
 	Username() string
 	CloneUsername() string
