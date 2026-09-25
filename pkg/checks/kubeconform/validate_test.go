@@ -249,6 +249,50 @@ func TestReportNamesTheLocationsSearchedForAMissingSchema(t *testing.T) {
 	assert.NotContains(t, result.Details, repoDir)
 }
 
+// The CRDs-catalog layout: <group>/<kind>_<version>.json, one directory per API group.
+// This is what the catalog publishes and what openapi2jsonschema produces when run per
+// group, so it is the layout a repository most often ends up with — and it needs
+// .Group in the template, which is the full API group rather than its first label.
+func TestValidatesAgainstTheGroupedCatalogLayout(t *testing.T) {
+	repoDir := t.TempDir()
+	for group, file := range map[string]string{
+		"external-secrets.io":       "externalsecret_v1.json",
+		"gateway.networking.k8s.io": "httproute_v1.json",
+		"monitoring.googleapis.com": "podmonitoring_v1.json",
+	} {
+		dir := filepath.Join(repoDir, ".github", "schemas", group)
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, file),
+			[]byte(`{"type":"object","properties":{"spec":{"type":"object","required":["needed"],"properties":{"needed":{"type":"string"}}}}}`), 0o644))
+	}
+
+	ctr := container.Container{Config: config.ServerConfig{
+		SchemasLocations: []string{".github/schemas/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"},
+	}}
+
+	for _, tc := range []struct{ apiVersion, kind string }{
+		{"external-secrets.io/v1", "ExternalSecret"},
+		{"gateway.networking.k8s.io/v1", "HTTPRoute"},
+		{"monitoring.googleapis.com/v1", "PodMonitoring"},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			header := "apiVersion: " + tc.apiVersion + "\nkind: " + tc.kind + "\nmetadata:\n  name: thing\n"
+
+			result, err := argoCdAppValidate(context.Background(), ctr, "app", "1.30.0", repoDir,
+				[]string{header + "spec:\n  needed: a-string\n"})
+			require.NoError(t, err)
+			assert.Equal(t, pkg.StateSuccess, result.State, result.Details)
+
+			// and the schema is doing real work, not merely resolving
+			result, err = argoCdAppValidate(context.Background(), ctr, "app", "1.30.0", repoDir,
+				[]string{header + "spec: {}\n"})
+			require.NoError(t, err)
+			assert.Equal(t, pkg.StateWarning, result.State)
+			assert.Contains(t, result.Details, "Invalid")
+		})
+	}
+}
+
 // A report with nothing missing stays as it was.
 func TestReportOmitsLocationsWhenNothingIsMissing(t *testing.T) {
 	repoDir := t.TempDir()

@@ -62,20 +62,35 @@ By default a location is a directory, and `kubechecks` looks in it for
 first label of the API group. This is the layout of the published Kubernetes schemas.
 
 Schemas kept in a repository are usually organised differently, so any location may instead
-be a full kubeconform path template, used exactly as written. `openapi2jsonschema` and the
-[CRDs-catalog](https://github.com/datreeio/CRDs-catalog) both write flat
-`<kind>_<version>.json` files, which need no renaming:
+be a full kubeconform path template, used exactly as written.
+
+The [CRDs-catalog](https://github.com/datreeio/CRDs-catalog) layout — one directory per API
+group, holding `<kind>_<version>.json` — is what you get from the catalog itself and from
+`openapi2jsonschema` run per group. It needs no renaming, just `{{ .Group }}`:
 
 ```yaml
 env:
   - name: KUBECHECKS_SCHEMAS_LOCATION
-    value: ".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"
+    # .github/schemas/external-secrets.io/externalsecret_v1.json
+    value: ".github/schemas/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"
 ```
 
-The variables are `.ResourceKind` (lowercased), `.ResourceAPIVersion` (the version alone),
-`.Group` (the full API group), `.KindSuffix` (`-<group label>-<version>`) and
-`.NormalizedKubernetesVersion`. Note that a templated location is used verbatim, so it only
-looks under a Kubernetes version directory if you ask it to.
+Drop the `{{ .Group }}/` segment if your files are flat in one directory instead.
+
+The variables are:
+
+|Variable|For `external-secrets.io/v1 ExternalSecret`|
+|--------|--------------------------------------------|
+|`.ResourceKind`|`externalsecret` — always lowercased|
+|`.ResourceAPIVersion`|`v1` — the version alone|
+|`.Group`|`external-secrets.io` — the full API group|
+|`.KindSuffix`|`-external-secrets-v1` — only the group's first label|
+|`.NormalizedKubernetesVersion`|`1.30.0`|
+
+Note that a templated location is used verbatim, so it only looks under a Kubernetes version
+directory if you ask it to. If a kind is reported as having no schema, the report lists every
+location that was searched, which is usually enough to spot a template that does not match how
+the files are laid out.
 
 A relative location that is not a directory in the commit being checked is logged and skipped,
 rather than silently contributing nothing. These are ordinary JSON Schema files wherever they
