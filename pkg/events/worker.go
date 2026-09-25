@@ -23,6 +23,7 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/checks/diff"
+	"github.com/zapier/kubechecks/pkg/checks/kubeconform"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
@@ -132,7 +133,19 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 	k8sVersion = normalizeK8sVersion(k8sVersion, w.ctr.Config.FallbackK8sVersion)
 	rootLogger.Info().Msgf("Kubernetes version (normalized): %s", k8sVersion)
 
-	runner := newRunner(w.ctr, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger, w.vcsNote, w.queueApp, w.removeApp)
+	// Checks that read the repository under test need its checkout. Obtaining one is
+	// cached but not free, so only ask when something is configured that will use it.
+	var checkoutRepo *git.Repo
+	if kubeconform.NeedsCheckout(w.ctr.Config.SchemasLocations) {
+		checkoutRepo, err = w.getRepo(ctx, w.pullRequest.CloneURL, w.pullRequest.HeadRef)
+		if err != nil {
+			rootLogger.Warn().Caller().Err(err).
+				Msg("failed to get repo, schema locations inside the repository will be skipped")
+			checkoutRepo = nil
+		}
+	}
+
+	runner := newRunner(w.ctr, app, appName, k8sVersion, jsonManifests, yamlManifests, rootLogger, w.vcsNote, w.queueApp, w.removeApp, checkoutRepo)
 
 	// Launch AI review in parallel — but only if there are actual changes
 	var aiReviewWg sync.WaitGroup

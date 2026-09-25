@@ -135,6 +135,38 @@ func TestResolveSchemaLocations(t *testing.T) {
 	}
 }
 
+// Callers use this to decide whether to obtain a checkout at all, so it has to agree
+// with what resolveSchemaLocations actually treats as relative.
+func TestNeedsCheckout(t *testing.T) {
+	tests := []struct {
+		name      string
+		locations []string
+		want      bool
+	}{
+		{"no locations", nil, false},
+		{"absolute only", []string{"/host/schemas"}, false},
+		{"git url", []string{"git@github.com:org/schemas.git"}, false},
+		{"http url", []string{"https://example.com/{{ .ResourceKind }}.json"}, false},
+		{"blank entries", []string{"", "   "}, false},
+		{"relative directory", []string{".github/schemas"}, true},
+		{"relative template", []string{".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"}, true},
+		{"relative among absolute", []string{"/host/schemas", ".github/schemas"}, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, NeedsCheckout(tc.locations))
+
+			// whenever a checkout is said to be unnecessary, resolving without one must
+			// not drop anything
+			if !tc.want {
+				withCheckout := resolveSchemaLocations(tc.locations, t.TempDir())
+				assert.Equal(t, withCheckout, resolveSchemaLocations(tc.locations, ""))
+			}
+		})
+	}
+}
+
 // Without a checkout a relative location cannot be resolved and is dropped; absolute and
 // remote locations are unaffected, so the check still runs against those.
 func TestResolveSchemaLocationsWithoutACheckout(t *testing.T) {

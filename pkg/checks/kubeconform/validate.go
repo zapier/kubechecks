@@ -84,6 +84,24 @@ func resolveSchemaLocations(configured []string, repoDir string) []string {
 	return locations
 }
 
+// NeedsCheckout reports whether any of these schema locations is relative, and so needs
+// the repository under test to resolve against. Callers use it to decide whether to
+// supply a checkout: obtaining one is not free, and most configurations name only
+// absolute paths and remote locations, which do not need it.
+func NeedsCheckout(locations []string) bool {
+	for _, location := range locations {
+		location = strings.TrimSpace(location)
+		if location == "" {
+			continue
+		}
+		if !filepath.IsAbs(location) && !looksRemote(location) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // looksRemote reports whether a location addresses something other than the filesystem:
 // an http(s) schema server, or a git remote in either URL or scp-like form. Neither can
 // be relative to a checkout, however much the string looks like a path.
