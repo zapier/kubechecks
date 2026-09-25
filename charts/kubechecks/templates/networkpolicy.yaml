@@ -1,0 +1,49 @@
+{{- if .Values.argocd.networkPolicy.create }}
+---
+{{/*
+kubechecks generates the manifests it diffs by calling Argo CD's own
+repo-server over gRPC (KUBECHECKS_ARGOCD_REPOSITORY_ENDPOINT), so that the
+render behind a pull request comment is the render Argo CD would apply --
+same repository credentials, same chart cache, same plugins.
+
+The argo-cd chart ships a NetworkPolicy over the repo-server that admits its
+gRPC port from four in-namespace pod selectors and nothing else: argocd-server,
+the application controller, the notifications controller and the
+applicationset controller. kubechecks is a fifth client that chart has never
+heard of, and it usually runs in a namespace of its own, so on any cluster
+that enforces NetworkPolicy the dial is dropped by the dataplane. What the
+user sees is a check that times out with a context deadline naming nothing.
+
+This is an additional policy, not a patch of that one. NetworkPolicies union:
+two policies selecting the same pods admit the sum of what they allow, so
+this adds one source without touching a resource the argo-cd release owns.
+It is also why the policy has to be created in argocd.namespace rather than
+beside the pod that dials -- a NetworkPolicy is evaluated in the namespace of
+its target.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-argocd-repo-server" (include "kubechecks.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Values.argocd.namespace }}
+  labels: {{- include "kubechecks.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- toYaml .Values.argocd.networkPolicy.repoServerSelector | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # namespaceSelector and podSelector in ONE list entry are ANDed, so this
+    # admits kubechecks' own pods rather than everything in its namespace.
+    # Split across two entries it would admit every pod in the kubechecks
+    # namespace, and every pod anywhere carrying kubechecks' labels.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels: {{- include "kubechecks.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.argocd.networkPolicy.port }}
+{{- end }}

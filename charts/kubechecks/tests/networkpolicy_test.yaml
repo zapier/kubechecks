@@ -1,0 +1,92 @@
+suite: networkpolicy
+
+templates:
+  - templates/networkpolicy.yaml
+
+release:
+  name: kubechecks
+  namespace: kubechecks
+
+tests:
+  - it: renders into the argocd namespace by default
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: metadata.name
+          value: kubechecks-argocd-repo-server
+      # The policy protects the repo-server, so it belongs to the repo-server's
+      # namespace and not to the release's.
+      - equal:
+          path: metadata.namespace
+          value: argocd
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: argocd-repo-server
+
+  - it: admits only kubechecks' own pods, from its own namespace
+    asserts:
+      # One `from` entry holding both selectors, which is what ANDs them. Split
+      # across two entries this would admit every pod in the kubechecks
+      # namespace and every pod anywhere carrying kubechecks' labels.
+      - equal:
+          path: spec.ingress[0].from
+          value:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kubechecks
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kubechecks
+                  app.kubernetes.io/instance: kubechecks
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - protocol: TCP
+              port: repo-server
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+
+  - it: is not rendered when disabled
+    set:
+      argocd.networkPolicy.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: follows the argocd namespace
+    set:
+      argocd.namespace: argo
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: argo
+
+  - it: follows the release namespace, which is the traffic's source
+    release:
+      name: kubechecks
+      namespace: checks
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels
+          value:
+            kubernetes.io/metadata.name: checks
+
+  - it: accepts a narrowed repo-server selector and a numeric port
+    set:
+      argocd.networkPolicy.repoServerSelector:
+        app.kubernetes.io/name: argocd-repo-server
+        app.kubernetes.io/instance: my-argocd
+      argocd.networkPolicy.port: 8081
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: argocd-repo-server
+            app.kubernetes.io/instance: my-argocd
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 8081
