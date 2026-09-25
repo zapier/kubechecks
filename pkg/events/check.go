@@ -414,29 +414,38 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	ce.logger.Info().Msg("Finished")
 
-	comment := ce.vcsNote.BuildComment(
-		ctx, start, ce.pullRequest.SHA, ce.ctr.Config.LabelFilter,
-		ce.ctr.Config.ShowDebugInfo, ce.ctr.Config.Identifier,
-		len(ce.addedAppsSet), int(ce.appsSent),
-	)
+	chunks := ce.vcsNote.BuildComment(ctx, msg.CommentOptions{
+		Start:         start,
+		CommitSHA:     ce.pullRequest.SHA,
+		LabelFilter:   ce.ctr.Config.LabelFilter,
+		ShowDebugInfo: ce.ctr.Config.ShowDebugInfo,
+		Identifier:    ce.ctr.Config.Identifier,
+		AppsChecked:   len(ce.addedAppsSet),
+		TotalChecked:  int(ce.appsSent),
+		MaxLength:     ce.ctr.VcsClient.MaxCommentLength(),
+		MaxComments:   ce.ctr.Config.MaxCommentsPerCheck,
+	})
 
-	if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.vcsNote, comment); err != nil {
-		return errors.Wrap(err, "failed to push comment")
-	}
+	// returned once the commit status is set, the checks did run
+	postErr := ce.ctr.VcsClient.UpdateMessage(ctx, ce.pullRequest, ce.vcsNote.NoteID, chunks)
 
 	worstStatus := ce.vcsNote.WorstState()
 
 	// Update the AI review comment with aggregated results
 	if ce.aiNote != nil {
 		aiComment, aiWorstState, suggestions := ce.buildAIReviewComment(ctx)
-		if err = ce.ctr.VcsClient.UpdateMessage(ctx, ce.aiNote, aiComment); err != nil {
+		if maxLen := ce.ctr.VcsClient.MaxCommentLength(); len(aiComment) > maxLen {
+			ce.logger.Warn().Int("original_length", len(aiComment)).Msg("trimming AI review comment size")
+			aiComment = aiComment[:maxLen]
+		}
+		if err := ce.ctr.VcsClient.UpdateMessage(ctx, ce.pullRequest, ce.aiNote.NoteID, []string{aiComment}); err != nil {
 			ce.logger.Error().Caller().Err(err).Msg("failed to update AI review comment")
 		}
 		// Post code suggestions as a separate review with inline comments
 		if len(suggestions) > 0 {
 			if !ce.ctr.Config.AIReviewPostSuggestions {
 				ce.logger.Info().Int("count", len(suggestions)).Msg("AI review inline suggestions suppressed by config (ai-review-post-suggestions=false)")
-			} else if err = ce.ctr.VcsClient.PostReviewSuggestions(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s AI Suggestion Report ##", ce.ctr.Config.Identifier), suggestions); err != nil {
+			} else if err := ce.ctr.VcsClient.PostReviewSuggestions(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s AI Suggestion Report ##", ce.ctr.Config.Identifier), suggestions); err != nil {
 				ce.logger.Error().Caller().Err(err).Msg("failed to post AI review suggestions")
 			}
 		}
@@ -446,6 +455,10 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	ce.CommitStatus(ctx, worstStatus)
+
+	if postErr != nil {
+		return errors.Wrap(postErr, "failed to push comment")
+	}
 
 	return nil
 }
