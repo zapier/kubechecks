@@ -28,6 +28,59 @@ helm install kubechecks charts/kubechecks -n kubechecks --create-namespace
 
 Refer to [configuration](#configuration) for details about the various options available for customising `kubechecks`. You **must** provide the required secrets in some capacity; refer to the chart for more details
 
+## Schema locations
+
+`kubechecks` validates manifests against the schemas published for your Kubernetes version,
+plus any locations set in `KUBECHECKS_SCHEMAS_LOCATION`. A custom resource with no schema in
+either place is reported as `could not find schema for <kind>`.
+
+`KUBECHECKS_SCHEMAS_LOCATION` is a comma-separated list, searched in the order given. How each
+entry is interpreted depends on its form:
+
+|Form|Example|Meaning|
+|----|-------|-------|
+|Absolute path|`/schemas`|A directory on the host running `kubechecks`|
+|Git url|`git@github.com:org/schemas.git`|Cloned at startup and refreshed periodically|
+|http(s) url|`https://example.com/schemas`|Fetched per resource|
+|**Relative path**|`.github/schemas`|**A directory inside the repository being checked**|
+
+A relative location is resolved against the checkout of the pull request under review, so
+schemas committed alongside the manifests that use them are found — and a schema the branch
+adds or changes is the one validated against. Kinds with no schema there fall through to the
+remaining locations unchanged.
+
+```yaml
+env:
+  - name: KUBECHECKS_SCHEMAS_LOCATION
+    value: ".github/schemas"
+```
+
+### Naming
+
+By default a location is a directory, and `kubechecks` looks in it for
+`<k8s version>/<kind>-<group>-<version>.json` — all lowercase, where `<group>` is only the
+first label of the API group. This is the layout of the published Kubernetes schemas.
+
+Schemas kept in a repository are usually organised differently, so any location may instead
+be a full kubeconform path template, used exactly as written. `openapi2jsonschema` and the
+[CRDs-catalog](https://github.com/datreeio/CRDs-catalog) both write flat
+`<kind>_<version>.json` files, which need no renaming:
+
+```yaml
+env:
+  - name: KUBECHECKS_SCHEMAS_LOCATION
+    value: ".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"
+```
+
+The variables are `.ResourceKind` (lowercased), `.ResourceAPIVersion` (the version alone),
+`.Group` (the full API group), `.KindSuffix` (`-<group label>-<version>`) and
+`.NormalizedKubernetesVersion`. Note that a templated location is used verbatim, so it only
+looks under a Kubernetes version directory if you ask it to.
+
+A relative location that is not a directory in the commit being checked is logged and skipped,
+rather than silently contributing nothing. These are ordinary JSON Schema files wherever they
+come from; only how the location is resolved differs.
+
 ## Configuration
 
 `kubechecks` can be configured to meet your specific set up through the use of enviornment variables defined in your provided `values.yaml`.
@@ -90,7 +143,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_REPO_CACHE_ENABLED`|Enable persistent repository caching.|`true`|
 |`KUBECHECKS_REPO_CACHE_TTL`|Time-to-live for cached repositories.|`24h0m0s`|
 |`KUBECHECKS_REPO_REFRESH_INTERVAL`|Interval between static repo refreshes (for schemas and policies).|`5m`|
-|`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.|`[]`|
+|`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. An absolute path on the host, or a git url in either git or http(s) format, is used as given. A relative path names a directory inside the repository being checked, so that schemas committed alongside the manifests that use them are found. Any location may be a kubeconform path template, such as ".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json", when the files are not named "<kind>-<group>-<version>.json".|`[]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||
