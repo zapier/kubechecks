@@ -81,6 +81,11 @@ type ServerConfig struct {
 	// -- kubeconform
 	EnableKubeConform     bool            `mapstructure:"enable-kubeconform"`
 	WorstKubeConformState pkg.CommitState `mapstructure:"worst-kubeconform-state"`
+	// RepoCRDSchemaPaths names the directories, relative to the repository root, that are
+	// searched for CustomResourceDefinitions in the pull request's own commit, so that a
+	// CRD and an instance of it added in the same branch validate against each other.
+	// Empty turns the behaviour off; "." searches the whole repository.
+	RepoCRDSchemaPaths []string `mapstructure:"repo-crd-schema-paths"`
 	// -- preupgrade
 	EnablePreupgrade      bool            `mapstructure:"enable-preupgrade"`
 	WorstPreupgradeState  pkg.CommitState `mapstructure:"worst-preupgrade-state"`

@@ -102,6 +102,7 @@ func init() {
 	stringFlag(flags, "worst-kubeconform-state", "The worst state that can be returned from kubeconform.",
 		newStringOpts().
 			withDefault("panic"))
+	stringSliceFlag(flags, "repo-crd-schema-paths", "Directories, relative to the repository root, to search for CustomResourceDefinitions, so that a CRD and an instance of it added in the same pull request validate against each other. Empty turns this off; \".\" searches the whole repository.")
 	boolFlag(flags, "enable-preupgrade", "Enable preupgrade checks.",
 		newBoolOpts().
 			withDefault(true))
