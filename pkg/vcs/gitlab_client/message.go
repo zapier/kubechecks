@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"gitlab.com/gitlab-org/api/client-go"
@@ -18,8 +16,6 @@ import (
 )
 
 const MaxCommentLength = 1_000_000
-
-const updateMessageTimeout = 10 * time.Minute
 
 func (c *Client) MaxCommentLength() int { return MaxCommentLength }
 
@@ -95,37 +91,41 @@ func (c *Client) hideOutdatedMessages(ctx context.Context, projectName string, m
 func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, noteID int, chunks []string) error {
 	log.Debug().Caller().Int("chunks", len(chunks)).Msgf("Updating message %d for %s", noteID, pr.FullName)
 
-	// getBackOff allows three minutes per call, which adds up over a long report
-	ctx, cancel := context.WithTimeout(ctx, updateMessageTimeout)
-	defer cancel()
-
+	// the first chunk replaces the placeholder note, every other chunk is a new note
 	for i, chunk := range chunks {
 		if len(chunk) > MaxCommentLength {
 			log.Warn().Int("original_length", len(chunk)).Msg("trimming the comment size")
 			chunk = chunk[:MaxCommentLength]
 		}
 
-		err := backoff.Retry(func() error {
-			if i == 0 {
-				_, resp, err := c.c.Notes.UpdateMergeRequestNote(pr.FullName, int64(pr.CheckID), int64(noteID),
-					&gitlab.UpdateMergeRequestNoteOptions{Body: pkg.Pointer(chunk)}, gitlab.WithContext(ctx))
-				return checkReturnForBackoff(resp, err)
-			}
-			// checkReturnForBackoff retries on 429 only, so a note is never created twice
-			_, resp, err := c.c.Notes.CreateMergeRequestNote(pr.FullName, int64(pr.CheckID),
-				&gitlab.CreateMergeRequestNoteOptions{Body: pkg.Pointer(chunk)}, gitlab.WithContext(ctx))
-			return checkReturnForBackoff(resp, err)
-		}, backoff.WithContext(getBackOff(), ctx))
+		var err error
+		if i == 0 {
+			err = c.editNote(ctx, pr, noteID, chunk)
+		} else {
+			err = c.addNote(ctx, pr, chunk)
+		}
 		if err != nil {
 			log.Error().Err(err).Int("chunk", i+1).Msg("could not update message to MR")
-			if ctx.Err() == context.DeadlineExceeded {
-				return fmt.Errorf("gave up after %s, posting note %d of %d: %w", updateMessageTimeout, i+1, len(chunks), err)
-			}
 			return fmt.Errorf("posting note %d of %d: %w", i+1, len(chunks), err)
 		}
 	}
 
 	return nil
+}
+
+func (c *Client) editNote(ctx context.Context, pr vcs.PullRequest, noteID int, body string) error {
+	_, _, err := c.c.Notes.UpdateMergeRequestNote(pr.FullName, int64(pr.CheckID), int64(noteID),
+		&gitlab.UpdateMergeRequestNoteOptions{Body: pkg.Pointer(body)}, gitlab.WithContext(ctx))
+	return err
+}
+
+// addNote posts one part as a new note. The gitlab client retries 429 and 5xx
+// on its own, so a 5xx that came back after GitLab had saved the note leaves
+// that part on the MR twice. Rare and harmless, nothing guards against it.
+func (c *Client) addNote(ctx context.Context, pr vcs.PullRequest, body string) error {
+	_, _, err := c.c.Notes.CreateMergeRequestNote(pr.FullName, int64(pr.CheckID),
+		&gitlab.CreateMergeRequestNoteOptions{Body: pkg.Pointer(body)}, gitlab.WithContext(ctx))
+	return err
 }
 
 // Iterate over all comments for the Merge Request, deleting any from the authenticated user

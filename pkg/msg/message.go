@@ -471,7 +471,7 @@ func (m *Message) BuildComment(ctx context.Context, opts CommentOptions) []strin
 		Footer:     m.buildFooter(opts.Start, opts.CommitSHA, opts.LabelFilter, opts.ShowDebugInfo, opts.AppsChecked, opts.TotalChecked),
 	}
 
-	// sized with a single comment's overhead first, the report may well fit one
+	// assume that we can fit into single comment
 	sections := m.buildSections(names, cfg.oneCommentBudget(), 1)
 	if cfg.fitsOneComment(sections) {
 		return frameChunks([][]string{sections}, false, cfg)
@@ -482,8 +482,7 @@ func (m *Message) BuildComment(ctx context.Context, opts CommentOptions) []strin
 	return splitIntoChunks(sections, cfg)
 }
 
-// what is past the cap never gets posted, so buildSections stops rendering once
-// the sections it has pack into more chunks than the cap allows.
+// buildSections stops rendering sections once the cap is exceeded.
 func (m *Message) buildSections(names []string, budget, maxChunks int) []string {
 	var sections []string
 	for _, appName := range names {
