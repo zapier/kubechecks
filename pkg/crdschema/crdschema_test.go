@@ -1,6 +1,7 @@
 package crdschema
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -408,6 +409,54 @@ func TestExtractSearchesTheWholeRepositoryForDot(t *testing.T) {
 	schemas := extract(t, repoDir, ".")
 	require.Len(t, schemas.Schemas(), 1)
 	assert.Equal(t, "Widget", schemas.Schemas()[0].Kind)
+}
+
+// A configured path that is not a directory here is reported and stepped over rather
+// than failing the extraction: a path can exist on some branches and not others. It is
+// also the likeliest explanation for finding no CRDs, so it must not pass silently.
+func TestExtractReportsUnusablePathsAndContinues(t *testing.T) {
+	repoDir := t.TempDir()
+	writeFile(t, repoDir, "crds/widget.yaml", widgetCRD)
+	writeFile(t, repoDir, "notadir.yaml", widgetCRD)
+
+	var logs bytes.Buffer
+	schemas, err := Extract(context.Background(), zerolog.New(&logs), Options{
+		RepoDir: repoDir,
+		Paths:   []string{"crds", "typo/missing", "notadir.yaml"},
+	})
+	require.NoError(t, err)
+	t.Cleanup(schemas.Cleanup)
+
+	// The usable path is still searched.
+	require.Len(t, schemas.Schemas(), 1)
+	assert.Equal(t, "Widget", schemas.Schemas()[0].Kind)
+
+	// And both unusable ones are named in the log.
+	assert.Contains(t, logs.String(), "typo/missing")
+	assert.Contains(t, logs.String(), "notadir.yaml")
+}
+
+// Finding nothing must say enough to tell a mistyped path from a directory that simply
+// holds no CRDs — a directory of pre-built JSON schemas, say, which is not a CRD and
+// cannot be treated as one.
+func TestExtractExplainsFindingNothing(t *testing.T) {
+	repoDir := t.TempDir()
+	writeFile(t, repoDir, ".github/schemas/autoscalingrunnerset_v1alpha1.json",
+		`{"type":"object","properties":{"spec":{"type":"object"}}}`)
+
+	var logs bytes.Buffer
+	schemas, err := Extract(context.Background(), zerolog.New(&logs), Options{
+		RepoDir: repoDir,
+		Paths:   []string{".github/schemas"},
+	})
+	require.NoError(t, err)
+	t.Cleanup(schemas.Cleanup)
+
+	assert.Empty(t, schemas.Schemas())
+	assert.Contains(t, logs.String(), "no CustomResourceDefinitions found")
+	// The counts are what separate "wrong path" from "right path, nothing to extract".
+	assert.Contains(t, logs.String(), `"files_considered":1`)
+	assert.Contains(t, logs.String(), `"files_mentioning_crds":0`)
 }
 
 func TestExtractRejectsPathsOutsideTheRepository(t *testing.T) {

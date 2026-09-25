@@ -147,11 +147,16 @@ func Extract(ctx context.Context, logger zerolog.Logger, opts Options) (*Schemas
 		opts.MaxFileSize = defaultMaxFileSize
 	}
 
-	repoDir, roots, err := resolveRoots(opts)
+	repoDir, roots, unusable, err := resolveRoots(opts)
 	if err != nil {
 		return nil, err
 	}
 	opts.RepoDir = repoDir
+
+	for _, path := range unusable {
+		logger.Warn().Str("path", path).
+			Msg("configured CRD schema path is not a directory in this commit, skipping it")
+	}
 
 	outputDir, err := os.MkdirTemp("", "kubechecks-repo-crds-")
 	if err != nil {
@@ -172,7 +177,32 @@ func Extract(ctx context.Context, logger zerolog.Logger, opts Options) (*Schemas
 		}
 	}
 
+	// Finding nothing is legitimate, but it is also what a mistyped path, a directory of
+	// something other than CRDs, and a CRD we failed to parse all look like from outside.
+	// Report enough to tell them apart without turning on debug logging.
+	if len(e.schemas) == 0 {
+		logger.Warn().
+			Strs("searched", relativeTo(repoDir, roots)).
+			Int("files_considered", e.considered).
+			Int("files_mentioning_crds", e.candidates).
+			Msg("no CustomResourceDefinitions found in the configured CRD schema paths")
+	}
+
 	return e.result(), nil
+}
+
+// relativeTo renders the walked roots as repository-relative paths, so the log echoes
+// back something the reader can compare against what they configured.
+func relativeTo(repoDir string, roots []string) []string {
+	out := make([]string, 0, len(roots))
+	for _, root := range roots {
+		relative, err := filepath.Rel(repoDir, root)
+		if err != nil {
+			relative = root
+		}
+		out = append(out, relative)
+	}
+	return out
 }
 
 type extractor struct {
@@ -185,6 +215,12 @@ type extractor struct {
 	// to whichever the walk happened to reach last.
 	claimedBy map[string]Schema
 	schemas   []Schema
+
+	// considered counts the files whose extension and size made them worth reading;
+	// candidates counts the subset that mentioned a CRD. Together they separate "the
+	// path was wrong" from "nothing there is a CRD" from "a CRD failed to parse".
+	considered int
+	candidates int
 }
 
 func (e *extractor) result() *Schemas {
@@ -242,6 +278,8 @@ func (e *extractor) walk(ctx context.Context, root string) error {
 			return nil
 		}
 
+		e.considered++
+
 		contents, err := os.ReadFile(path)
 		if err != nil {
 			e.logger.Debug().Err(err).Str("path", path).Msg("skipping unreadable file")
@@ -255,6 +293,7 @@ func (e *extractor) walk(ctx context.Context, root string) error {
 			return nil
 		}
 
+		e.candidates++
 		e.processFile(path, contents)
 		return nil
 	})
@@ -442,17 +481,21 @@ func valueAt(node map[string]any, keys ...string) (any, bool) {
 }
 
 // resolveRoots returns the absolute repository root along with the directories to walk.
-func resolveRoots(opts Options) (string, []string, error) {
-	repoDir, err := filepath.Abs(opts.RepoDir)
+//
+// Configured paths that are not directories in this checkout are reported separately
+// rather than walked. They are not an error — a path can legitimately exist on some
+// branches and not others — but they are the likeliest reason for finding no CRDs at
+// all, so the caller surfaces them instead of letting the walk silently do nothing.
+func resolveRoots(opts Options) (repoDir string, roots []string, unusable []string, err error) {
+	repoDir, err = filepath.Abs(opts.RepoDir)
 	if err != nil {
-		return "", nil, errors.Wrapf(err, "failed to resolve %q", opts.RepoDir)
+		return "", nil, nil, errors.Wrapf(err, "failed to resolve %q", opts.RepoDir)
 	}
 
 	if len(opts.Paths) == 0 {
-		return repoDir, []string{repoDir}, nil
+		return repoDir, []string{repoDir}, nil, nil
 	}
 
-	var roots []string
 	for _, path := range opts.Paths {
 		path = strings.TrimSpace(path)
 		if path == "" {
@@ -463,14 +506,21 @@ func resolveRoots(opts Options) (string, []string, error) {
 		// filepath.Join cleans its result, so a configured path of "../../etc" would
 		// otherwise walk out of the checkout entirely.
 		if root != repoDir && !strings.HasPrefix(root, repoDir+string(filepath.Separator)) {
-			return "", nil, errors.Errorf("crd schema path %q escapes the repository", path)
+			return "", nil, nil, errors.Errorf("crd schema path %q escapes the repository", path)
 		}
 
-		roots = append(roots, root)
+		switch info, statErr := os.Stat(root); {
+		case statErr != nil:
+			unusable = append(unusable, path)
+		case !info.IsDir():
+			unusable = append(unusable, path)
+		default:
+			roots = append(roots, root)
+		}
 	}
 
-	if len(roots) == 0 {
-		return repoDir, []string{repoDir}, nil
+	if len(roots) == 0 && len(unusable) == 0 {
+		return repoDir, []string{repoDir}, nil, nil
 	}
-	return repoDir, roots, nil
+	return repoDir, roots, unusable, nil
 }
