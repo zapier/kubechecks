@@ -367,7 +367,7 @@ func (e *extractor) processCRD(sourceFile string, crd map[string]any) {
 	// v1beta1 CRDs may carry one schema for every version, under spec.validation; v1
 	// requires a schema per version. Either may be present, and a v1beta1 CRD that
 	// predates the `versions` list names its single version in spec.version.
-	sharedSchema, _ := valueAt(spec, "validation", "openAPIV3Schema")
+	sharedSchema := valueAt(spec, "validation", "openAPIV3Schema")
 
 	versions, _ := spec["versions"].([]any)
 	if len(versions) == 0 {
@@ -388,7 +388,7 @@ func (e *extractor) processCRD(sourceFile string, crd map[string]any) {
 			continue
 		}
 
-		schema, _ := valueAt(version, "schema", "openAPIV3Schema")
+		schema := valueAt(version, "schema", "openAPIV3Schema")
 		if schema == nil {
 			schema = sharedSchema
 		}
@@ -465,19 +465,19 @@ func SchemaFileName(kind, group, version string) string {
 }
 
 // valueAt walks a chain of map keys, returning nil if any link is missing.
-func valueAt(node map[string]any, keys ...string) (any, bool) {
+func valueAt(node map[string]any, keys ...string) any {
 	var current any = node
 	for _, key := range keys {
 		object, ok := current.(map[string]any)
 		if !ok {
-			return nil, false
+			return nil
 		}
 		current, ok = object[key]
 		if !ok {
-			return nil, false
+			return nil
 		}
 	}
-	return current, true
+	return current
 }
 
 // resolveRoots returns the absolute repository root along with the directories to walk.
