@@ -645,8 +645,8 @@ func buildRawReviewBody(appReviews map[string]string) string {
 	return sb.String()
 }
 
-// extractRepoCRDSchemas converts the CustomResourceDefinitions in the checkout into
-// kubeconform schemas. Failing to do so is not fatal: without them, custom resources
+// extractRepoCRDSchemas collects kubeconform schemas from the CustomResourceDefinitions
+// in the checkout. Failing to do so is not fatal: without them, custom resources
 // simply fall back to whatever schema locations are configured globally, which is the
 // behaviour every check had before this existed.
 func (ce *CheckEvent) extractRepoCRDSchemas(ctx context.Context, repo *git.Repo) *crdschema.Schemas {

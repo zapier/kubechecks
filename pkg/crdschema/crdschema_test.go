@@ -116,7 +116,11 @@ spec:
 		assert.Equal(t, validator.Valid, result.Status, "%v", result.Err)
 	})
 
-	t.Run("rejects a typo'd field", func(t *testing.T) {
+	// A CRD's openAPIV3Schema does not close its objects, and we pass it through as
+	// written, so an unrecognised field is accepted here. That matches how the API server
+	// treats one — it prunes the field rather than rejecting the resource — and closing
+	// the objects ourselves to catch it would mean rewriting every schema we extract.
+	t.Run("accepts an unrecognised field, as the API server does", func(t *testing.T) {
 		result := validate(t, schemas, `
 apiVersion: example.com/v1
 kind: Widget
@@ -126,7 +130,7 @@ spec:
   size: 3
   collor: red
 `)
-		assert.Equal(t, validator.Invalid, result.Status)
+		assert.Equal(t, validator.Valid, result.Status, "%v", result.Err)
 	})
 
 	t.Run("rejects a missing required field", func(t *testing.T) {
@@ -192,6 +196,69 @@ metadata:
   name: settings
 data:
   key: value
+`, filepath.Join(fallback, "{{ .ResourceKind }}{{ .KindSuffix }}.json"))
+	assert.Equal(t, validator.Valid, result.Status, "%v", result.Err)
+}
+
+// A schema kubeconform cannot compile must not be offered to it. kubeconform skips an
+// uncompilable schema silently and, finding the kind nowhere else, reports "could not
+// find schema" — a check failure naming the wrong problem. Dropping it here makes the
+// kind resolve through the remaining locations, exactly as if the repository had never
+// defined it. `required: []` is the readiest example: legal in a CRD, rejected by
+// draft-04.
+func TestExtractDropsSchemasKubeconformCannotCompile(t *testing.T) {
+	const uncompilableCRD = `
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gizmos.example.com
+spec:
+  group: example.com
+  names:
+    kind: Gizmo
+    plural: gizmos
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: []
+          properties:
+            spec:
+              type: object
+`
+
+	repoDir := t.TempDir()
+	writeFile(t, repoDir, "crds/widget.yaml", widgetCRD)
+	writeFile(t, repoDir, "crds/gizmo.yaml", uncompilableCRD)
+
+	schemas := extract(t, repoDir)
+
+	_, ok := schemas.Lookup("example.com/v1", "Gizmo")
+	assert.False(t, ok, "an uncompilable schema must not be reported as generated")
+	assert.NoFileExists(t, filepath.Join(schemas.dir, SchemaFileName("Gizmo", "example.com", "v1")))
+
+	// The rest of the repository's CRDs are unaffected.
+	_, ok = schemas.Lookup("example.com/v1", "Widget")
+	assert.True(t, ok)
+
+	// And the dropped kind resolves through a later schema location.
+	fallback := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(fallback, SchemaFileName("Gizmo", "example.com", "v1")),
+		[]byte(`{"type":"object","properties":{"spec":{"type":"object"}}}`),
+		0o644,
+	))
+
+	result := validate(t, schemas, `
+apiVersion: example.com/v1
+kind: Gizmo
+metadata:
+  name: g
+spec: {}
 `, filepath.Join(fallback, "{{ .ResourceKind }}{{ .KindSuffix }}.json"))
 	assert.Equal(t, validator.Valid, result.Status, "%v", result.Err)
 }

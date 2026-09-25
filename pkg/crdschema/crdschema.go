@@ -1,9 +1,15 @@
-// Package crdschema turns CustomResourceDefinitions found in a git checkout into
-// JSON Schema files laid out the way kubeconform's local schema registry expects.
+// Package crdschema collects the schemas out of CustomResourceDefinitions found in a git
+// checkout and lays them out as files named the way kubeconform's local schema registry
+// expects.
 //
 // It exists so that a pull request can add a CRD and an instance of that CRD in the
 // same commit and have the instance validated against the definition it ships with,
 // rather than against whatever version of the CRD happens to be published elsewhere.
+//
+// Each openAPIV3Schema is written out as-is: OpenAPI 3.0's schema object is a subset of
+// JSON Schema draft-04, the dialect kubeconform compiles with, so no translation is
+// needed. Schemas kubeconform would fail to compile are dropped rather than rewritten;
+// see compiles.
 package crdschema
 
 import (
@@ -128,9 +134,9 @@ func (s *Schemas) Cleanup() {
 	s.byGVK = nil
 }
 
-// Extract walks a checkout, converts every CustomResourceDefinition it finds into JSON
-// Schema, and writes the results to a temporary directory. The caller owns that
-// directory and must Cleanup the result.
+// Extract walks a checkout and writes the schema of every CustomResourceDefinition it
+// finds to a temporary directory. The caller owns that directory and must Cleanup the
+// result.
 //
 // A manifest that cannot be parsed is skipped rather than failing the extraction: a
 // repository is free to contain Helm templates and fixtures that are not valid YAML on
@@ -375,11 +381,20 @@ func (e *extractor) writeSchema(sourceFile, kind, group, version string, openAPI
 		return
 	}
 
-	converted := convert(openAPISchema, true)
-	encoded, err := json.MarshalIndent(converted, "", "  ")
+	// The openAPIV3Schema is written out as-is. OpenAPI 3.0's schema object is a subset
+	// of JSON Schema draft-04, which is the dialect kubeconform compiles with, so the two
+	// agree without translation; the handful of places they diverge are rare enough in
+	// practice not to be worth a rewriting pass.
+	encoded, err := json.MarshalIndent(openAPISchema, "", "  ")
 	if err != nil {
 		e.logger.Warn().Err(err).Str("kind", kind).Str("path", sourceFile).
 			Msg("failed to encode generated CRD schema")
+		return
+	}
+
+	if err := compiles(filename, encoded); err != nil {
+		e.logger.Warn().Err(err).Str("kind", kind).Str("path", sourceFile).
+			Msg("CRD schema does not compile, falling back to the other schema locations for this kind")
 		return
 	}
 
