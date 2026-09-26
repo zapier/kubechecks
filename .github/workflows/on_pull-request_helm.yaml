@@ -15,8 +15,30 @@ jobs:
         with:
           fetch-depth: 0  # Required for chart-testing to compare changes
 
+      - name: Parse tool versions
+        uses: wistia/parse-tool-versions@v2.1.1
+
       - name: Set up Helm
         uses: azure/setup-helm@v4
+
+      # ct runs this through .github/ct.yaml's additional-commands. Pinned, so a
+      # new major of the plugin cannot change what a pull request is checked
+      # against without a commit saying so. --verify=false because helm 4
+      # verifies a plugin source by default and a git source cannot satisfy it;
+      # the pinned tag is what makes this reproducible, not the signature.
+      - name: Set up helm-unittest
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git \
+            --version v1.1.2 --verify=false
+          helm unittest --help >/dev/null
+
+      # Likewise, and the version comes from .tool-versions so the binary here
+      # matches the one a developer gets from `mise install`.
+      - name: Set up kubeconform
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM}/kubeconform-linux-amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin kubeconform
+          kubeconform -v
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -30,11 +52,11 @@ jobs:
       - name: Run chart-testing (list-changed)
         id: list-changed
         run: |
-          changed=$(ct list-changed --target-branch ${{ github.event.repository.default_branch }})
+          changed=$(ct list-changed --config ./.github/ct.yaml --target-branch ${{ github.event.repository.default_branch }})
           if [[ -n "$changed" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
-        run: ct lint --target-branch ${{ github.event.repository.default_branch }}
+        run: ct lint --config ./.github/ct.yaml --target-branch ${{ github.event.repository.default_branch }}
