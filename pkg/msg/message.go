@@ -85,6 +85,35 @@ func (m *Message) WorstState() pkg.CommitState {
 	return state
 }
 
+// HasChanges reports whether the report has anything to show: an app that is
+// still in it and whose checks found changes. When it is false, BuildComment
+// comes back with the "No changes" report.
+func (m *Message) HasChanges() bool {
+	for app, results := range m.apps {
+		if m.isDeleted(app) {
+			continue
+		}
+
+		if hasChanges(results) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasChanges reports whether an app renders a section at all: a check that came
+// back with no changes takes the whole app out of the report.
+func hasChanges(results *AppResults) bool {
+	for _, check := range results.results {
+		if check.NoChangesDetected {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (m *Message) RemoveApp(app string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -178,13 +207,14 @@ func wrapAppSection(appHeader string, checks []string) string {
 }
 
 func (m *Message) buildAppSections(appName string, results *AppResults, maxSectionLen int) []string {
+	if !hasChanges(results) {
+		return nil
+	}
+
 	var checks []checkBlock
 	appState := pkg.StateSuccess
 
 	for _, check := range results.results {
-		if check.NoChangesDetected {
-			return nil
-		}
 		if check.State == pkg.StateSkip {
 			continue
 		}

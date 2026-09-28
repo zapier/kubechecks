@@ -45,6 +45,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_AI_REVIEW_PROVIDER`|AI review provider. One of anthropic, openai.|`anthropic`|
 |`KUBECHECKS_AI_REVIEW_SYSTEM_PROMPT`|Custom system prompt for AI review. Overrides the default review instructions.||
 |`KUBECHECKS_AI_REVIEW_TIMEOUT`|Timeout per AI review.|`5m0s`|
+|`KUBECHECKS_ANNOUNCE_NO_CHANGES`|Comment on the PR/MR even when a check run finds no changes. Set to false to only comment when there is something to report, which keeps a repository watched by several kubechecks instances quiet.|`true`|
 |`KUBECHECKS_ANTHROPIC_API_KEY`|Anthropic API key for AI review.||
 |`KUBECHECKS_ARCHIVE_CACHE_DIR`|Directory for archive cache.|`/tmp/kubechecks/archives`|
 |`KUBECHECKS_ARCHIVE_CACHE_TTL`|Time-to-live for cached archives.|`1h0m0s`|
