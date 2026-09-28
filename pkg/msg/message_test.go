@@ -262,6 +262,53 @@ func TestWorstStateSkipsNoChangesDetected(t *testing.T) {
 	})
 }
 
+// HasChanges has to agree with what BuildComment renders: an empty report and
+// only an empty report is the one that has nothing to announce
+func TestHasChanges(t *testing.T) {
+	noChangesReport := "# Kubechecks test-identifier Report\nNo changes"
+
+	tests := map[string]map[string]*AppResults{
+		"no apps at all": {},
+		"every app came back with no changes": {
+			"app-a": {results: []Result{{NoChangesDetected: true}}},
+			"app-b": {results: []Result{{State: pkg.StateSkip, Summary: "skipped"}, {NoChangesDetected: true}}},
+		},
+		"one app with changes": {
+			"app-a": {results: []Result{{NoChangesDetected: true}}},
+			"app-b": {results: []Result{{State: pkg.StateSuccess, Summary: "1 added, 0 modified, 0 removed"}}},
+		},
+		"an app with no results yet": {
+			"app-a": {},
+		},
+	}
+
+	for name, apps := range tests {
+		t.Run(name, func(t *testing.T) {
+			m := NewMessage("message", 1, 2, fakeEmojiable{":test:"})
+			m.apps = apps
+
+			chunks := m.BuildComment(context.TODO(), testCommentOptions)
+
+			require.Len(t, chunks, 1)
+			assert.Equal(t, !strings.HasPrefix(chunks[0], noChangesReport), m.HasChanges())
+		})
+	}
+}
+
+func TestHasChangesSkipsDeletedApps(t *testing.T) {
+	var (
+		m   = NewMessage("message", 1, 2, fakeEmojiable{":test:"})
+		ctx = context.TODO()
+	)
+
+	m.AddNewApp(ctx, "some-app")
+	m.AddToAppMessage(ctx, "some-app", Result{State: pkg.StateSuccess, Summary: "1 added, 0 modified, 0 removed"})
+	assert.True(t, m.HasChanges())
+
+	m.RemoveApp("some-app")
+	assert.False(t, m.HasChanges())
+}
+
 func TestMultipleItemsWithNewlines(t *testing.T) {
 	var (
 		message = NewMessage("name", 1, 2, fakeEmojiable{":test:"})
