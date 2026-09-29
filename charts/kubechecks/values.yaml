@@ -2,6 +2,48 @@
 argocd:
   namespace: argocd
 
+  # kubechecks generates the manifests it diffs by calling Argo CD's own
+  # repo-server over gRPC (KUBECHECKS_ARGOCD_REPOSITORY_ENDPOINT). The argo-cd
+  # chart puts a NetworkPolicy over that port admitting only four in-namespace
+  # Argo CD components, so on a cluster that enforces NetworkPolicy the call
+  # from this chart's namespace is dropped and every check times out with a
+  # context deadline that names no policy. This adds the missing source.
+  #
+  # NetworkPolicies union, so this neither edits nor conflicts with the policy
+  # the argo-cd release owns. It is created in `namespace` above, because a
+  # NetworkPolicy is evaluated in the namespace of the pods it selects.
+  networkPolicy:
+    # DISABLE THIS if the repo-server is not already selected by some other
+    # NetworkPolicy. A pod with no policy accepts all ingress; the FIRST policy
+    # to select it switches it to default-deny. So on such a cluster this does
+    # not add kubechecks to an existing allowlist -- it creates the allowlist,
+    # and everything not on it, argocd-server and the application controller
+    # included, loses the repo-server. Argo CD then renders nothing. On an
+    # upgrade that happens the moment this chart is applied.
+    #
+    # To know which cluster you have: `kubectl get networkpolicy -n argocd`.
+    # The argo-cd chart creates one (global.networkPolicy.create defaults true),
+    # so a Helm-installed Argo CD is normally safe; an Argo CD installed from
+    # plain manifests has none, and neither does a release that turned them off.
+    #
+    # That hazard is what took the chart to 4.0.0: defaulting this on can change
+    # how an existing cluster behaves, so the version says so rather than
+    # arriving as a minor nobody reads the notes for.
+    create: true
+
+    # Selects the repo-server pods within `namespace` above. The argo-cd chart
+    # also labels them app.kubernetes.io/instance: <its release name>; this
+    # deliberately does not, so the selector holds whatever that release is
+    # called. Add the instance label here if more than one Argo CD shares the
+    # namespace.
+    repoServerSelector:
+      app.kubernetes.io/name: argocd-repo-server
+
+    # The repo-server's gRPC port. Named rather than numbered, as the argo-cd
+    # chart's own policy names it, so a repo-server moved off 8081 carries
+    # this with it. A number works too.
+    port: repo-server
+
 commonLabels: {}
 
 configMap:

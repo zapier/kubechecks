@@ -9,6 +9,38 @@
   },
   "type": "object",
   "properties": {
+    "argocd": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "type": "string"
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "create": {
+              "type": "boolean"
+            },
+            "repoServerSelector": {
+              "$ref": "#/$defs/key-value-map"
+            },
+            "port": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          },
+          "required": [
+            "create",
+            "port",
+            "repoServerSelector"
+          ]
+        }
+      }
+    },
     "autoscaling": {
       "type": "object",
       "additionalProperties": false,
