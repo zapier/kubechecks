@@ -41,6 +41,8 @@ type Client struct {
 
 	// archiveRetry overrides retry parameters for DownloadArchive. Zero value uses defaults.
 	archiveRetry retryConfig
+	// commentRetry does the same for UpdateMessage.
+	commentRetry retryConfig
 
 	username, email string
 }

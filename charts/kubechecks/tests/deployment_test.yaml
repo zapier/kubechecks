@@ -47,13 +47,18 @@ tests:
       deployment:
         annotations:
           fake-annotation.xyz/abc: "123"
+    # checksum/config below is a sha256 of the rendered ConfigMap, which carries
+    # helm.sh/chart and so moves with the chart's version. Pinned here, as the
+    # sibling test above pins it, so the fixture survives a version bump.
+    chart:
+      version: 0.1.0
     asserts:
       - equal:
           path: metadata.annotations["fake-annotation.xyz/abc"]
           value: "123"
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: "b93c78f3befac1ee6dbb5f9d8c1ef45f9b14197fd3985c424d181ffd8f285aa2"
+          value: "2fb7a6f708f879d5fe0ab560802da038a8205e67b3193eeb2a874fcf106628a5"
   - it: should allow configuration of resources
     template: templates/deployment.yaml
     set:
