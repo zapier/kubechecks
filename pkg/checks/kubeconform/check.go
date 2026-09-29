@@ -8,5 +8,10 @@ import (
 )
 
 func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
-	return argoCdAppValidate(ctx, request.Container, request.AppName, request.KubernetesVersion, request.YamlManifests)
+	var repoDir string
+	if request.Repo != nil {
+		repoDir = request.Repo.Directory
+	}
+
+	return argoCdAppValidate(ctx, request.Container, request.AppName, request.KubernetesVersion, repoDir, request.YamlManifests)
 }
