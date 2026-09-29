@@ -18,7 +18,8 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	ctx, span := tracer.Start(ctx, "DownloadArchive")
 	defer span.End()
 
-	// Retry configuration for waiting on GitHub to compute merge commit SHA
+	// Retry configuration for waiting on GitHub to compute merge commit SHA.
+	// This waits for a condition; for a call that fails, see retryConfig.do.
 	rc := c.archiveRetry.withDefaults(10, 1*time.Second, 16*time.Second)
 
 	var ghPR *github.PullRequest

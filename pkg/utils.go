@@ -31,3 +31,7 @@ func WithErrorLogging(f func() error, msg string) {
 		log.Error().Err(err).Msg(msg)
 	}
 }
+
+// MaxCommentsPerCheck is as far as a report can go: part numbers in the comment
+// header are budgeted for three digits.
+const MaxCommentsPerCheck = 999
