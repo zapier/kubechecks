@@ -23,6 +23,7 @@ import (
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/crdschema"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -66,6 +67,7 @@ type CheckEvent struct {
 	aiReviewChecker AIReviewChecker // runs separately, posts its own comment
 	repoLock        sync.Mutex
 	clonedRepos     map[repoKey]*git.Repo
+	repoSchemas     *crdschema.Schemas
 
 	addedAppsSet     map[string]v1alpha1.Application
 	addedAppsSetLock sync.Mutex
@@ -333,6 +335,11 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 		Msg("archived repo stored in clonedRepos under multiple keys (HeadRef, BaseRef, HEAD)")
 	ce.repoLock.Unlock()
 
+	// Generate schemas for the CRDs carried by this commit, so that a CRD and a resource
+	// instantiating it can be added in the same pull request and still validate.
+	ce.repoSchemas = ce.extractRepoCRDSchemas(ctx, repo)
+	defer ce.repoSchemas.Cleanup()
+
 	// Get changed files from VCS API (replaces git diff)
 	ce.fileList, err = ce.ctr.ArchiveManager.GetChangedFiles(ctx, ce.pullRequest)
 	if err != nil {
@@ -393,6 +400,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 			removeApp:         ce.removeApp,
 			addAIReviewResult: ce.addAIReviewResult,
 			claimAIReviewSlot: ce.claimAIReviewSlot,
+			repoCRDSchemas:    ce.repoSchemas,
 		}
 		go w.run(ctx)
 	}
@@ -648,4 +656,33 @@ func buildRawReviewBody(appReviews map[string]string) string {
 		fmt.Fprintf(&sb, "<details>\n<summary><code>%s</code></summary>\n\n%s\n\n</details>\n\n", appName, appReviews[appName])
 	}
 	return sb.String()
+}
+
+// extractRepoCRDSchemas collects kubeconform schemas from the CustomResourceDefinitions
+// in the checkout. Failing to do so is not fatal: without them, custom resources
+// simply fall back to whatever schema locations are configured globally, which is the
+// behaviour every check had before this existed.
+func (ce *CheckEvent) extractRepoCRDSchemas(ctx context.Context, repo *git.Repo) *crdschema.Schemas {
+	// kubeconform is the only check that consumes these, so there is no point paying for
+	// the walk when it is turned off.
+	if len(ce.ctr.Config.RepoCRDSchemaPaths) == 0 || !ce.ctr.Config.EnableKubeConform || repo == nil {
+		return nil
+	}
+
+	start := time.Now()
+	schemas, err := crdschema.Extract(ctx, ce.logger, crdschema.Options{
+		RepoDir: repo.Directory,
+		Paths:   ce.ctr.Config.RepoCRDSchemaPaths,
+	})
+	if err != nil {
+		ce.logger.Warn().Caller().Err(err).Msg("failed to generate schemas from repository CRDs")
+		return nil
+	}
+
+	ce.logger.Info().
+		Int("crd_schemas", len(schemas.Schemas())).
+		Dur("duration", time.Since(start)).
+		Msg("generated schemas from repository CRDs")
+
+	return schemas
 }

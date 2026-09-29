@@ -14,18 +14,23 @@ import (
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/crdschema"
 	"github.com/zapier/kubechecks/pkg/msg"
 )
 
 var tracer = otel.Tracer("pkg/checks/kubeconform")
 
-func getSchemaLocations(ctr container.Container) []string {
+func getSchemaLocations(ctr container.Container, repoLocations []string) []string {
 	cfg := ctr.Config
 
-	locations := []string{
+	// schemas generated from the commit under test come first, so a CRD added in the
+	// pull request wins over an older copy of the same kind published elsewhere
+	locations := append([]string{}, repoLocations...)
+
+	locations = append(locations,
 		// schemas included in kubechecks
 		"default",
-	}
+	)
 
 	// schemas configured globally
 	locations = append(locations, cfg.SchemasLocations...)
@@ -51,7 +56,7 @@ func getSchemaLocations(ctr container.Container) []string {
 	return locations
 }
 
-func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion string, appManifests []string) (msg.Result, error) {
+func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, targetKubernetesVersion string, appManifests []string, repoCRDSchemas *crdschema.Schemas) (msg.Result, error) {
 	_, span := tracer.Start(ctx, "ArgoCdAppValidate")
 	defer span.End()
 
@@ -82,7 +87,8 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 
 	var (
 		outputString    []string
-		schemaLocations = getSchemaLocations(ctr)
+		usedRepoCRDs    []crdschema.Schema
+		schemaLocations = getSchemaLocations(ctr, repoCRDSchemas.Locations())
 	)
 
 	log.Debug().Caller().Msgf("cache location: %s", vOpts.Cache)
@@ -98,6 +104,12 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 	for _, res := range result {
 		sigData, _ := res.Resource.Signature()
 		sig := fmt.Sprintf("%s %s %s", sigData.Version, sigData.Kind, sigData.Name)
+
+		// Record which of the commit's own CRDs this app exercised, so the report can
+		// show that the definition and its instance were checked against each other.
+		if crd, ok := repoCRDSchemas.Lookup(sigData.Version, sigData.Kind); ok {
+			usedRepoCRDs = appendUnique(usedRepoCRDs, crd)
+		}
 
 		switch res.Status {
 		case validator.Invalid:
@@ -126,7 +138,36 @@ func argoCdAppValidate(ctx context.Context, ctr container.Container, appName, ta
 	}
 
 	cr.Summary = "<b>Show kubeconform report:</b>"
-	cr.Details = fmt.Sprintf(">Validated against Kubernetes Version: %s\n\n%s", targetKubernetesVersion, strings.Join(outputString, "\n"))
+	cr.Details = fmt.Sprintf(">Validated against Kubernetes Version: %s\n%s\n%s",
+		targetKubernetesVersion, describeRepoCRDs(usedRepoCRDs), strings.Join(outputString, "\n"))
 
 	return cr, nil
+}
+
+// appendUnique keeps the list of exercised CRDs free of duplicates; an app will usually
+// hold several instances of the same custom resource.
+func appendUnique(schemas []crdschema.Schema, schema crdschema.Schema) []crdschema.Schema {
+	for _, existing := range schemas {
+		if existing == schema {
+			return schemas
+		}
+	}
+	return append(schemas, schema)
+}
+
+// describeRepoCRDs renders the CRDs from the commit under test that this app's resources
+// were validated against, so a pull request adding a CRD alongside an instance of it can
+// see that the two were checked together.
+func describeRepoCRDs(schemas []crdschema.Schema) string {
+	if len(schemas) == 0 {
+		return ""
+	}
+
+	lines := make([]string, 0, len(schemas)+1)
+	lines = append(lines, fmt.Sprintf(">Validated against %d CustomResourceDefinition(s) from this commit:", len(schemas)))
+	for _, schema := range schemas {
+		lines = append(lines, fmt.Sprintf(">  * `%s` `%s` (`%s`)", schema.Kind, schema.APIVersion(), schema.SourceFile))
+	}
+
+	return strings.Join(lines, "\n") + "\n"
 }
