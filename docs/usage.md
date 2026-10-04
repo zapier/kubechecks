@@ -28,43 +28,73 @@ helm install kubechecks charts/kubechecks -n kubechecks --create-namespace
 
 Refer to [configuration](#configuration) for details about the various options available for customising `kubechecks`. You **must** provide the required secrets in some capacity; refer to the chart for more details
 
-## Validating against CRDs in the pull request
+## Schema locations
 
-By default, `kubechecks` validates manifests against the schemas published for your
-Kubernetes version plus any schema locations you configure globally. A CustomResourceDefinition
-that only exists on the branch under review is not in either place, so a resource that
-instantiates it cannot be checked.
+`kubechecks` validates manifests against the schemas published for your Kubernetes version,
+plus any locations set in `KUBECHECKS_SCHEMAS_LOCATION`. A custom resource with no schema in
+either place is reported as `could not find schema for <kind>`.
 
-Point `KUBECHECKS_REPO_CRD_SCHEMA_PATHS` at the directories that hold your CRDs and
-`kubechecks` searches them in the commit being checked, takes each version's
-`openAPIV3Schema`, and hands those to kubeconform ahead of every other schema location. A
-pull request can then add a CRD and a resource that uses it in the same branch, and the
-resource is validated against the definition it ships with.
+`KUBECHECKS_SCHEMAS_LOCATION` is a comma-separated list, searched in the order given. How each
+entry is interpreted depends on its form:
 
-Schemas found in the commit take precedence over the ones published elsewhere, so a CRD
-that the branch changes is checked in its new shape. Kinds with no CRD in the repository
-fall through to the usual schema locations, unchanged.
+|Form|Example|Meaning|
+|----|-------|-------|
+|Absolute path|`/schemas`|A directory on the host running `kubechecks`|
+|Git url|`git@github.com:org/schemas.git`|Cloned at startup and refreshed periodically|
+|http(s) url|`https://example.com/schemas`|Fetched per resource|
+|**Relative path**|`.github/schemas`|**A directory inside the repository being checked**|
 
-The schema is used exactly as the CRD declares it, which means validation matches what the
-API server enforces: types, `required`, `enum`, and bounds are all checked. A field the CRD
-does not declare is accepted, just as the API server accepts it and prunes it — misspelled
-field names are not reported. If a CRD's schema is one kubeconform cannot compile, that
-kind falls back to the other schema locations and the reason is logged.
-
-The value is a comma-separated list of directories relative to the repository root. Leave
-it unset to turn the behaviour off, or set it to `.` to search the whole repository —
-worth narrowing on a large monorepo, since every run walks these paths.
+A relative location is resolved against the checkout of the pull request under review, so
+schemas committed alongside the manifests that use them are found — and a schema the branch
+adds or changes is the one validated against. Kinds with no schema there fall through to the
+remaining locations unchanged.
 
 ```yaml
 env:
-  - name: KUBECHECKS_REPO_CRD_SCHEMA_PATHS
-    value: "crds,charts/platform/crds"
+  - name: KUBECHECKS_SCHEMAS_LOCATION
+    value: ".github/schemas"
 ```
 
-Resources validated against a CRD from the commit are listed in the kubeconform section of
-the report, along with the file each definition came from.
+### Naming
 
-This setting has no effect when `KUBECHECKS_ENABLE_KUBECONFORM` is disabled.
+By default a location is a directory, and `kubechecks` looks in it for
+`<k8s version>/<kind>-<group>-<version>.json` — all lowercase, where `<group>` is only the
+first label of the API group. This is the layout of the published Kubernetes schemas.
+
+Schemas kept in a repository are usually organised differently, so any location may instead
+be a full kubeconform path template, used exactly as written.
+
+The [CRDs-catalog](https://github.com/datreeio/CRDs-catalog) layout — one directory per API
+group, holding `<kind>_<version>.json` — is what you get from the catalog itself and from
+`openapi2jsonschema` run per group. It needs no renaming, just `{{ .Group }}`:
+
+```yaml
+env:
+  - name: KUBECHECKS_SCHEMAS_LOCATION
+    # .github/schemas/external-secrets.io/externalsecret_v1.json
+    value: ".github/schemas/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"
+```
+
+Drop the `{{ .Group }}/` segment if your files are flat in one directory instead.
+
+The variables are:
+
+|Variable|For `external-secrets.io/v1 ExternalSecret`|
+|--------|--------------------------------------------|
+|`.ResourceKind`|`externalsecret` — always lowercased|
+|`.ResourceAPIVersion`|`v1` — the version alone|
+|`.Group`|`external-secrets.io` — the full API group|
+|`.KindSuffix`|`-external-secrets-v1` — only the group's first label|
+|`.NormalizedKubernetesVersion`|`1.30.0`|
+
+Note that a templated location is used verbatim, so it only looks under a Kubernetes version
+directory if you ask it to. If a kind is reported as having no schema, the report lists every
+location that was searched, which is usually enough to spot a template that does not match how
+the files are laid out.
+
+A relative location that is not a directory in the commit being checked is logged and skipped,
+ rather than silently contributing nothing. These are ordinary JSON Schema files wherever they
+ come from; only how the location is resolved differs.
 
 ## Configuration
 
@@ -130,7 +160,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_REPO_CACHE_TTL`|Time-to-live for cached repositories.|`24h0m0s`|
 |`KUBECHECKS_REPO_CRD_SCHEMA_PATHS`|Directories, relative to the repository root, to search for CustomResourceDefinitions, so that a CRD and an instance of it added in the same pull request validate against each other. Empty turns this off; "." searches the whole repository.|`[]`|
 |`KUBECHECKS_REPO_REFRESH_INTERVAL`|Interval between static repo refreshes (for schemas and policies).|`5m`|
-|`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. Can be a common path on the host or git urls in either git or http(s) format.|`[]`|
+|`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. An absolute path on the host, or a git url in either git or http(s) format, is used as given. A relative path names a directory inside the repository being checked, so that schemas committed alongside the manifests that use them are found. Any location may be a kubeconform path template, such as ".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json", when the files are not named "<kind>-<group>-<version>.json".|`[]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
 |`KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE`|Sets the mode to use when tidying outdated comments. One of hide, delete.|`hide`|
 |`KUBECHECKS_VCS_BASE_URL`|VCS base url, useful if self hosting gitlab, enterprise github, etc.||

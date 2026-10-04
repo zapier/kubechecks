@@ -11,7 +11,7 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
-	"github.com/zapier/kubechecks/pkg/crdschema"
+	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/telemetry"
 )
@@ -27,10 +27,10 @@ func newRunner(
 	app v1alpha1.Application,
 	appName, k8sVersion string,
 	jsonManifests, yamlManifests []string,
-	repoCRDSchemas *crdschema.Schemas,
 	logger zerolog.Logger,
 	note *msg.Message,
 	queueApp, removeApp func(application v1alpha1.Application),
+	repo *git.Repo,
 ) *Runner {
 	return &Runner{
 		Request: checks.Request{
@@ -43,8 +43,8 @@ func newRunner(
 			Note:              note,
 			QueueApp:          queueApp,
 			RemoveApp:         removeApp,
+			Repo:              repo,
 			YamlManifests:     yamlManifests,
-			RepoCRDSchemas:    repoCRDSchemas,
 		},
 	}
 }
