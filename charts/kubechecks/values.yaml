@@ -13,23 +13,18 @@ argocd:
   # the argo-cd release owns. It is created in `namespace` above, because a
   # NetworkPolicy is evaluated in the namespace of the pods it selects.
   networkPolicy:
-    # DISABLE THIS if the repo-server is not already selected by some other
-    # NetworkPolicy. A pod with no policy accepts all ingress; the FIRST policy
-    # to select it switches it to default-deny. So on such a cluster this does
-    # not add kubechecks to an existing allowlist -- it creates the allowlist,
-    # and everything not on it, argocd-server and the application controller
-    # included, loses the repo-server. Argo CD then renders nothing. On an
-    # upgrade that happens the moment this chart is applied.
+    # Off by default. Enable it if Argo CD's repo-server is already selected by
+    # some other NetworkPolicy, as it is under the argo-cd chart's defaults
+    # (global.networkPolicy.create: true). Check with
+    # `kubectl get networkpolicy -n argocd`.
     #
-    # To know which cluster you have: `kubectl get networkpolicy -n argocd`.
-    # The argo-cd chart creates one (global.networkPolicy.create defaults true),
-    # so a Helm-installed Argo CD is normally safe; an Argo CD installed from
-    # plain manifests has none, and neither does a release that turned them off.
-    #
-    # That hazard is what took the chart to 4.0.0: defaulting this on can change
-    # how an existing cluster behaves, so the version says so rather than
-    # arriving as a minor nobody reads the notes for.
-    create: true
+    # Do NOT enable it if nothing selects the repo-server yet. A pod with no
+    # policy accepts all ingress; the FIRST policy to select it switches it to
+    # default-deny. On such a cluster this would not add kubechecks to an
+    # existing allowlist -- it would create the allowlist, and everything not
+    # on it, argocd-server and the application controller included, would lose
+    # the repo-server. Argo CD would then render nothing.
+    create: false
 
     # Selects the repo-server pods within `namespace` above. The argo-cd chart
     # also labels them app.kubernetes.io/instance: <its release name>; this

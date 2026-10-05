@@ -8,7 +8,14 @@ release:
   namespace: kubechecks
 
 tests:
-  - it: renders into the argocd namespace by default
+  - it: is not rendered by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders into the argocd namespace when enabled
+    set:
+      argocd.networkPolicy.create: true
     asserts:
       - isKind:
           of: NetworkPolicy
@@ -26,6 +33,8 @@ tests:
             app.kubernetes.io/name: argocd-repo-server
 
   - it: admits only kubechecks' own pods, from its own namespace
+    set:
+      argocd.networkPolicy.create: true
     asserts:
       # One `from` entry holding both selectors, which is what ANDs them. Split
       # across two entries this would admit every pod in the kubechecks
@@ -50,15 +59,9 @@ tests:
           value:
             - Ingress
 
-  - it: is not rendered when disabled
-    set:
-      argocd.networkPolicy.create: false
-    asserts:
-      - hasDocuments:
-          count: 0
-
   - it: follows the argocd namespace
     set:
+      argocd.networkPolicy.create: true
       argocd.namespace: argo
     asserts:
       - equal:
@@ -69,6 +72,8 @@ tests:
     release:
       name: kubechecks
       namespace: checks
+    set:
+      argocd.networkPolicy.create: true
     asserts:
       - equal:
           path: spec.ingress[0].from[0].namespaceSelector.matchLabels
@@ -77,6 +82,7 @@ tests:
 
   - it: accepts a narrowed repo-server selector and a numeric port
     set:
+      argocd.networkPolicy.create: true
       argocd.networkPolicy.repoServerSelector:
         app.kubernetes.io/name: argocd-repo-server
         app.kubernetes.io/instance: my-argocd
