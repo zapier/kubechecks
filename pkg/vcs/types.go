@@ -21,6 +21,9 @@ type Client interface {
 	// UpdateMessage update a message with new content. Content that does not fit in one comment
 	// arrives as several chunks: the first replaces the message, the rest are posted after it.
 	UpdateMessage(ctx context.Context, pr PullRequest, noteID int, chunks []string) error
+	// DeleteMessage removes a message posted by PostMessage. Used to take back a
+	// placeholder comment when the finished run turned out to have nothing to report.
+	DeleteMessage(ctx context.Context, pr PullRequest, noteID int) error
 	// VerifyHook validates a webhook secret and return the body; must be called even if no secret
 	VerifyHook(*http.Request, string) ([]byte, error)
 	// ParseHook parses webook payload for valid events, with context for request-scoped values

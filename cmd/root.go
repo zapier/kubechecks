@@ -150,6 +150,9 @@ func init() {
 		fmt.Sprintf("Maximum number of comments posted per check run, 1 to %d. What does not fit is left out of the report, with a warning.", pkg.MaxCommentsPerCheck),
 		newInt64Opts().
 			withDefault(pkg.MaxCommentsPerCheck))
+	boolFlag(flags, "announce-no-changes", "Comment on the PR/MR even when a check run finds no changes. Set to false to only comment when there is something to report, which keeps a repository watched by several kubechecks instances quiet.",
+		newBoolOpts().
+			withDefault(true))
 	stringFlag(flags, "kubepug-generated-store", "URL for the kubepug generated store.",
 		newStringOpts().
 			withDefault("https://kubepug.xyz/data/data.json"))
