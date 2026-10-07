@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
@@ -65,16 +66,19 @@ func (r *Runner) Run(ctx context.Context, desc string, fn checkFunction, worstSt
 		}
 
 		defer func() {
-			r.wg.Done()
+			// only signal completion once the result (panic or not) is recorded,
+			// otherwise the comment can be built before it lands
+			defer r.wg.Done()
 
 			if err := recover(); err != nil {
-				logger.Error().Caller().Str("check", desc).Msgf("panic while running check")
+				stack := debug.Stack()
+				logger.Error().Caller().Any("error", err).Str("stack", string(stack)).Str("check", desc).Msgf("panic while running check")
 
 				telemetry.SetError(span, fmt.Errorf("%v", err), desc)
 				result := msg.Result{
 					State:   pkg.StatePanic,
 					Summary: desc,
-					Details: fmt.Sprintf(errorCommentFormat, desc, err),
+					Details: panicDetails(desc, err, stack),
 				}
 				addToAppMessage(result)
 			}
