@@ -93,8 +93,8 @@ location that was searched, which is usually enough to spot a template that does
 the files are laid out.
 
 A relative location that is not a directory in the commit being checked is logged and skipped,
-rather than silently contributing nothing. These are ordinary JSON Schema files wherever they
-come from; only how the location is resolved differs.
+ rather than silently contributing nothing. These are ordinary JSON Schema files wherever they
+ come from; only how the location is resolved differs.
 
 ## Configuration
 
