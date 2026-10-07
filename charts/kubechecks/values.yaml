@@ -2,6 +2,43 @@
 argocd:
   namespace: argocd
 
+  # kubechecks generates the manifests it diffs by calling Argo CD's own
+  # repo-server over gRPC (KUBECHECKS_ARGOCD_REPOSITORY_ENDPOINT). The argo-cd
+  # chart puts a NetworkPolicy over that port admitting only four in-namespace
+  # Argo CD components, so on a cluster that enforces NetworkPolicy the call
+  # from this chart's namespace is dropped and every check times out with a
+  # context deadline that names no policy. This adds the missing source.
+  #
+  # NetworkPolicies union, so this neither edits nor conflicts with the policy
+  # the argo-cd release owns. It is created in `namespace` above, because a
+  # NetworkPolicy is evaluated in the namespace of the pods it selects.
+  networkPolicy:
+    # Off by default. Enable it if Argo CD's repo-server is already selected by
+    # some other NetworkPolicy, as it is under the argo-cd chart's defaults
+    # (global.networkPolicy.create: true). Check with
+    # `kubectl get networkpolicy -n argocd`.
+    #
+    # Do NOT enable it if nothing selects the repo-server yet. A pod with no
+    # policy accepts all ingress; the FIRST policy to select it switches it to
+    # default-deny. On such a cluster this would not add kubechecks to an
+    # existing allowlist -- it would create the allowlist, and everything not
+    # on it, argocd-server and the application controller included, would lose
+    # the repo-server. Argo CD would then render nothing.
+    create: false
+
+    # Selects the repo-server pods within `namespace` above. The argo-cd chart
+    # also labels them app.kubernetes.io/instance: <its release name>; this
+    # deliberately does not, so the selector holds whatever that release is
+    # called. Add the instance label here if more than one Argo CD shares the
+    # namespace.
+    repoServerSelector:
+      app.kubernetes.io/name: argocd-repo-server
+
+    # The repo-server's gRPC port. Named rather than numbered, as the argo-cd
+    # chart's own policy names it, so a repo-server moved off 8081 carries
+    # this with it. A number works too.
+    port: repo-server
+
 commonLabels: {}
 
 configMap:
