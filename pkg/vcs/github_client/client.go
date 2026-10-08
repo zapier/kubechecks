@@ -261,10 +261,10 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.I
 	return c.buildRepo(pr), nil
 }
 
-func parseRepo(cloneUrl string) (string, string) {
+func parseRepo(cloneUrl string) (string, string, error) {
 	result, err := giturls.Parse(cloneUrl)
 	if err != nil {
-		panic(fmt.Errorf("%s: %s", cloneUrl, err.Error()))
+		return "", "", fmt.Errorf("%s: %w", cloneUrl, err)
 	}
 
 	path := result.Path
@@ -272,12 +272,12 @@ func parseRepo(cloneUrl string) (string, string) {
 	path = strings.TrimSuffix(path, ".git")
 	parts := strings.Split(path, "/")
 	if len(parts) != 2 {
-		panic(fmt.Errorf("%s: invalid path", cloneUrl))
+		return "", "", fmt.Errorf("%s: invalid path", cloneUrl)
 	}
 
 	owner := parts[0]
 	repoName := strings.TrimSuffix(parts[1], ".git")
-	return owner, repoName
+	return owner, repoName, nil
 }
 
 func unPtr[T interface{ string | int }](ps *T) T {

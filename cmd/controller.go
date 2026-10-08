@@ -196,7 +196,8 @@ func init() {
 	stringFlag(flags, "webhook-secret", "Optional secret key for validating the source of incoming webhooks.")
 	boolFlag(flags, "monitor-all-applications", "Monitor all applications in argocd automatically.",
 		newBoolOpts().withDefault(true))
-	boolFlag(flags, "ensure-webhooks", "Ensure that webhooks are created in repositories referenced by argo.")
+	boolFlag(flags, "ensure-webhooks", "Ensure that webhooks are created in the repositories listed in 'webhook-repositories'.")
+	stringSliceFlag(flags, "webhook-repositories", "Repositories that should have a webhook pointing at kubechecks when 'ensure-webhooks' is enabled. Accepts clone urls (https or ssh) or 'owner/repo' paths.")
 	stringFlag(flags, "repo-refresh-interval", "Interval between static repo refreshes (for schemas and policies).",
 		newStringOpts().withDefault("5m"))
 
