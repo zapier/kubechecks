@@ -34,6 +34,10 @@ var ControllerCmd = &cobra.Command{
 			Str("git-commit", pkg.GitCommit).
 			Msg("Starting KubeChecks")
 
+		if _, ok := os.LookupEnv("KUBECHECKS_ENSURE_WEBHOOKS"); ok {
+			log.Warn().Msg("KUBECHECKS_ENSURE_WEBHOOKS has been removed and is ignored; list the repositories that need webhooks in KUBECHECKS_WEBHOOK_REPOSITORIES instead")
+		}
+
 		log.Info().Msg("parsing configuration")
 		cfg, err := config.New()
 		if err != nil {
@@ -196,8 +200,7 @@ func init() {
 	stringFlag(flags, "webhook-secret", "Optional secret key for validating the source of incoming webhooks.")
 	boolFlag(flags, "monitor-all-applications", "Monitor all applications in argocd automatically.",
 		newBoolOpts().withDefault(true))
-	boolFlag(flags, "ensure-webhooks", "Ensure that webhooks are created in the repositories listed in 'webhook-repositories'.")
-	stringSliceFlag(flags, "webhook-repositories", "Repositories that should have a webhook pointing at kubechecks when 'ensure-webhooks' is enabled. Accepts clone urls (https or ssh) or 'owner/repo' paths.")
+	stringSliceFlag(flags, "webhook-repositories", "Repositories that kubechecks ensures have a webhook pointing at it. Accepts clone urls (https or ssh) or 'owner/repo' paths. Requires 'webhook-url-base'.")
 	stringFlag(flags, "repo-refresh-interval", "Interval between static repo refreshes (for schemas and policies).",
 		newStringOpts().withDefault("5m"))
 

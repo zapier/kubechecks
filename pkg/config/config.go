@@ -65,13 +65,12 @@ type ServerConfig struct {
 	GitCreds GitCredsFunc `mapstructure:"-" json:"-"`
 
 	// webhooks
-	EnsureWebhooks bool `mapstructure:"ensure-webhooks"`
 	// WebhookRepositories are the repositories that kubechecks ensures have a webhook
-	// pointing back at it, when EnsureWebhooks is set.
+	// pointing back at it. When empty, no webhooks are managed.
 	WebhookRepositories []string `mapstructure:"webhook-repositories"`
 	WebhookSecret       string   `mapstructure:"webhook-secret"`
 	WebhookUrlBase      string   `mapstructure:"webhook-url-base"`
-	UrlPrefix      string `mapstructure:"webhook-url-prefix"`
+	UrlPrefix           string   `mapstructure:"webhook-url-prefix"`
 
 	// checks
 	// -- conftest

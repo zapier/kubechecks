@@ -132,13 +132,9 @@ func (s *Server) hooksPrefix() string {
 }
 
 func (s *Server) ensureWebhooks(ctx context.Context) error {
-	if !s.ctr.Config.EnsureWebhooks {
-		return nil
-	}
-
 	repos := s.ctr.Config.WebhookRepositories
 	if len(repos) == 0 {
-		return errors.New("must define 'webhook-repositories' to create webhooks")
+		return nil
 	}
 
 	urlBase := s.ctr.Config.WebhookUrlBase
