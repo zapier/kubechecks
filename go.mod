@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.78.0
-	github.com/argoproj/argo-cd/v3 v3.5.3
+	github.com/argoproj/argo-cd/v3 v3.5.4
 	github.com/aws/aws-sdk-go-v2 v1.47.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.6
 	github.com/aws/aws-sdk-go-v2/service/eks v1.102.0
