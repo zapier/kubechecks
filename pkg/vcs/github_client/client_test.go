@@ -67,7 +67,8 @@ func TestParseRepo(t *testing.T) {
 	for _, tc := range testcases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			owner, repo := parseRepo(tc.input)
+			owner, repo, err := parseRepo(tc.input)
+			require.NoError(t, err)
 			assert.Equal(t, tc.expectedOwner, owner)
 			assert.Equal(t, tc.expectedRepo, repo)
 		})
@@ -962,17 +963,17 @@ func TestClient_CommitStatus(t *testing.T) {
 }
 
 func TestParseRepo_InvalidURL(t *testing.T) {
-	// parseRepo panics on invalid URLs
-	assert.Panics(t, func() {
-		parseRepo("not a valid url")
-	})
+	_, _, err := parseRepo("not a valid url")
+	assert.Error(t, err)
 }
 
 func TestParseRepo_InvalidPath(t *testing.T) {
-	// parseRepo panics on URLs with invalid path structure
-	assert.Panics(t, func() {
-		parseRepo("https://github.com/invalid")
-	})
+	_, _, err := parseRepo("https://github.com/invalid")
+	assert.Error(t, err)
+
+	// helm chart repositories referenced by argo have no owner/repo path
+	_, _, err = parseRepo("https://kubechecks@charts.jetstack.io/")
+	assert.Error(t, err)
 }
 
 func TestClient_DownloadArchive_HappyPath(t *testing.T) {

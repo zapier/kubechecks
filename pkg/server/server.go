@@ -132,12 +132,9 @@ func (s *Server) hooksPrefix() string {
 }
 
 func (s *Server) ensureWebhooks(ctx context.Context) error {
-	if !s.ctr.Config.EnsureWebhooks {
+	repos := s.ctr.Config.WebhookRepositories
+	if len(repos) == 0 {
 		return nil
-	}
-
-	if !s.ctr.Config.MonitorAllApplications {
-		return errors.New("must enable 'monitor-all-applications' to create webhooks")
 	}
 
 	urlBase := s.ctr.Config.WebhookUrlBase
@@ -156,7 +153,7 @@ func (s *Server) ensureWebhooks(ctx context.Context) error {
 	}
 	log.Info().Str("webhookUrl", fullUrl).Msg("webhook URL for this kubechecks instance")
 
-	for _, repo := range s.ctr.VcsToArgoMap.GetVcsRepos() {
+	for _, repo := range repos {
 		wh, err := vcsClient.GetHookByUrl(ctx, repo, fullUrl)
 		if err != nil && !errors.Is(err, vcs.ErrHookNotFound) {
 			log.Error().Err(err).Msgf("failed to get hook for %s:", repo)
