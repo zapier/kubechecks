@@ -55,7 +55,7 @@ func GenerateDiffText(ctx context.Context, request checks.Request) (string, erro
 	}
 
 	items := make([]objKeyLiveTarget, 0)
-	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name, app.Spec.Destination.Namespace); err != nil {
+	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, appInstanceName(request, argoSettings), app.Spec.Destination.Namespace); err != nil {
 		return "", err
 	}
 

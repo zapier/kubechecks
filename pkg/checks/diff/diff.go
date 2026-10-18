@@ -102,7 +102,7 @@ func Check(ctx context.Context, request checks.Request) (msg.Result, error) {
 		return msg.Result{}, err
 	}
 
-	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, app.Name, app.Spec.Destination.Namespace); err != nil {
+	if items, err = groupObjsForDiff(resources, groupedObjs, items, argoSettings, appInstanceName(request, argoSettings), app.Spec.Destination.Namespace); err != nil {
 		return msg.Result{}, err
 	}
 
@@ -255,6 +255,19 @@ func getResources(ctx context.Context, request checks.Request) ([]*argoappv1.Res
 	return resources.Items, nil
 }
 
+// appInstanceName returns the app instance name exactly as Argo CD records it in
+// resource tracking ids. Under apps-in-any-namespace an Application living outside
+// the Argo CD controller namespace is qualified as `<appNamespace>_<appName>`, so
+// diffing against the bare name reports a tracking-id change on every resource of
+// every such app.
+func appInstanceName(request checks.Request, argoSettings *settings.Settings) string {
+	controllerNamespace := argoSettings.GetControllerNamespace()
+	if controllerNamespace == "" {
+		controllerNamespace = request.Container.Config.ArgoCDNamespace
+	}
+	return request.App.InstanceName(controllerNamespace)
+}
+
 func getArgoSettings(ctx context.Context, request checks.Request) (*settings.Settings, error) {
 	ctx, span := tracer.Start(ctx, "getArgoSettings")
 	defer span.End()
@@ -343,7 +356,8 @@ func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.Resourc
 		if local, ok := objs[key]; ok || live != nil {
 			if local != nil && !kube.IsCRD(local) {
 				if err := resourceTracking.SetAppInstance(
-					local, argoSettings.AppLabelKey, appName, namespace, argoappv1.TrackingMethod(argoSettings.GetTrackingMethod()), "",
+					local, argoSettings.AppLabelKey, appName, namespace,
+					argoappv1.TrackingMethod(argoSettings.GetTrackingMethod()), argoSettings.GetInstallationID(),
 				); err != nil {
 					return nil, err
 				}
