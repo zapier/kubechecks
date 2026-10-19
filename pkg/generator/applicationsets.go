@@ -38,27 +38,27 @@ func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha
 
 // GetGenerators returns the generators that will be used to generate applications for the ApplicationSet
 //
-// only support List and Clusters generators
+// supports List, Clusters, Matrix and Merge generators, and returns an error for all others
 func getGenerators(c client.Client, namespace string) map[string]argogenerator.Generator {
 
-	terminalGenerators := map[string]argogenerator.Generator{
+	terminalGenerators := withUnsupportedGenerators(map[string]argogenerator.Generator{
 		"List":     argogenerator.NewListGenerator(),
 		"Clusters": argogenerator.NewClusterGenerator(c, namespace),
-	}
+	})
 
-	nestedGenerators := map[string]argogenerator.Generator{
+	nestedGenerators := withUnsupportedGenerators(map[string]argogenerator.Generator{
 		"List":     terminalGenerators["List"],
 		"Clusters": terminalGenerators["Clusters"],
 		"Matrix":   argogenerator.NewMatrixGenerator(terminalGenerators),
 		"Merge":    argogenerator.NewMergeGenerator(terminalGenerators),
-	}
+	})
 
-	topLevelGenerators := map[string]argogenerator.Generator{
+	topLevelGenerators := withUnsupportedGenerators(map[string]argogenerator.Generator{
 		"List":     terminalGenerators["List"],
 		"Clusters": terminalGenerators["Clusters"],
 		"Matrix":   argogenerator.NewMatrixGenerator(nestedGenerators),
 		"Merge":    argogenerator.NewMergeGenerator(nestedGenerators),
-	}
+	})
 	return topLevelGenerators
 }
 

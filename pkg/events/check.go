@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -59,6 +60,7 @@ type CheckEvent struct {
 	aiNote      *msg.Message // separate comment for AI review
 
 	affectedItems affected_apps.AffectedItems
+	appSetResults map[string][]msg.Result // keyed by comment section name, reported once the note exists
 
 	ctr             container.Container
 	repoManager     repoManager
@@ -160,9 +162,10 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 		ce.logger.Error().Caller().Err(err).Msg("could not get list of affected apps and appsets")
 	}
 	for _, appSet := range ce.affectedItems.ApplicationSets {
-		apps, err := ce.generator.GenerateApplicationSetApps(ctx, appSet, &ce.ctr)
+		apps, err := ce.generateAppSetApps(ctx, appSet)
 		if err != nil {
-			ce.logger.Error().Caller().Err(err).Msg("could not generate apps from appSet")
+			ce.recordAppSetError(appSet.Name, err)
+			ce.logger.Error().Caller().Err(err).Str("appset", appSet.Name).Msg("could not generate apps from appSet")
 			continue
 		}
 
@@ -276,14 +279,19 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	return repo, nil
 }
 
-func (ce *CheckEvent) Process(ctx context.Context) error {
+func (ce *CheckEvent) Process(ctx context.Context) (err error) {
 	start := time.Now()
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = ce.reportPanic(ctx, r)
+		}
+	}()
 
 	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
 
 	var repo *git.Repo
-	var err error
 
 	// Archive mode: Download merge commit archive from VCS
 	ce.logger.Info().Msg("using archive mode for PR processing")
@@ -365,6 +373,8 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create note")
 	}
+
+	ce.reportAppSetResults(ctx)
 
 	// Create a separate placeholder comment for AI review
 	if ce.ctr.Config.EnableAIReview {
@@ -463,6 +473,64 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	return nil
 }
 
+// appSetPanicError marks an error that was recovered from a panic, so it can be reported as such.
+type appSetPanicError struct {
+	value any
+}
+
+func (e appSetPanicError) Error() string {
+	return fmt.Sprintf("panic: %v", e.value)
+}
+
+// generateAppSetApps runs the generator for one ApplicationSet. Generation is delegated to Argo CD's
+// library, so a panic in it is turned into an error for that appset rather than crashing the check.
+func (ce *CheckEvent) generateAppSetApps(ctx context.Context, appSet v1alpha1.ApplicationSet) (apps []v1alpha1.Application, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			ce.logger.Error().Caller().Any("error", r).Str("appset", appSet.Name).
+				Str("stack", string(debug.Stack())).Msg("panic while generating apps from appSet")
+			apps, err = nil, appSetPanicError{value: r}
+		}
+	}()
+
+	return ce.generator.GenerateApplicationSetApps(ctx, appSet, &ce.ctr)
+}
+
+// recordAppSetError stores a generation error for an ApplicationSet, so it can be reported in the PR
+// comment once it has been created.
+func (ce *CheckEvent) recordAppSetError(name string, err error) {
+	result := msg.Result{
+		State:   pkg.StateError,
+		Summary: "ApplicationSet generation failed",
+		Details: fmt.Sprintf("```\n%s\n```", err),
+	}
+
+	var panicErr appSetPanicError
+	if errors.As(err, &panicErr) {
+		desc := "generating applications from ApplicationSet"
+		result = msg.Result{
+			State:   pkg.StatePanic,
+			Summary: "ApplicationSet generation panicked",
+			Details: fmt.Sprintf(errorCommentFormat, desc, panicErr.value),
+		}
+	}
+
+	if ce.appSetResults == nil {
+		ce.appSetResults = make(map[string][]msg.Result)
+	}
+	section := fmt.Sprintf("%s (ApplicationSet)", name)
+	ce.appSetResults[section] = append(ce.appSetResults[section], result)
+}
+
+func (ce *CheckEvent) reportAppSetResults(ctx context.Context) {
+	for section, results := range ce.appSetResults {
+		ce.vcsNote.AddNewApp(ctx, section)
+		for _, result := range results {
+			ce.vcsNote.AddToAppMessage(ctx, section, result)
+		}
+	}
+}
+
 func (ce *CheckEvent) removeApp(app v1alpha1.Application) {
 	ce.logger.Info().Str("app", app.Name).Msg("removing app")
 
@@ -521,6 +589,26 @@ const (
 Check kubechecks application logs for more information.
 `
 )
+
+// reportPanic posts a panic from the check run to the PR/MR and marks the commit status, so a crash is
+// visible to the author instead of only showing up in the kubechecks logs.
+func (ce *CheckEvent) reportPanic(ctx context.Context, r any) error {
+	ce.logger.Error().Caller().Any("error", r).Str("stack", string(debug.Stack())).Msg("panic while processing check")
+
+	desc := "running kubechecks"
+	body := fmt.Sprintf("## Kubechecks %s Report\n%s", ce.ctr.Config.Identifier, fmt.Sprintf(errorCommentFormat, desc, r))
+	if ce.vcsNote != nil {
+		if err := ce.ctr.VcsClient.UpdateMessage(ctx, ce.pullRequest, ce.vcsNote.NoteID, []string{body}); err != nil {
+			ce.logger.Error().Caller().Err(err).Msg("failed to report panic to the existing comment")
+		}
+	} else if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, body); err != nil {
+		ce.logger.Error().Caller().Err(err).Msg("failed to report panic")
+	}
+
+	ce.CommitStatus(ctx, pkg.StatePanic)
+
+	return fmt.Errorf("panic while processing check: %v", r)
+}
 
 // createNote creates a generic Note struct that we can write into across all worker threads
 func (ce *CheckEvent) createNote(ctx context.Context) (*msg.Message, error) {
