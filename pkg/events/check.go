@@ -164,7 +164,7 @@ func (ce *CheckEvent) GenerateListOfAffectedApps(ctx context.Context, repo *git.
 	for _, appSet := range ce.affectedItems.ApplicationSets {
 		apps, err := ce.generateAppSetApps(ctx, appSet)
 		if err != nil {
-			ce.recordAppSetError(appSet.Name, err)
+			ce.recordAppSetError(appSet, err)
 			ce.logger.Error().Caller().Err(err).Str("appset", appSet.Name).Msg("could not generate apps from appSet")
 			continue
 		}
@@ -497,29 +497,48 @@ func (ce *CheckEvent) generateAppSetApps(ctx context.Context, appSet v1alpha1.Ap
 }
 
 // recordAppSetError stores a generation error for an ApplicationSet, so it can be reported in the PR
-// comment once it has been created.
-func (ce *CheckEvent) recordAppSetError(name string, err error) {
+// comment once it has been created. An unsupported generator is reported as a warning, since it is a
+// limitation of kubechecks rather than a problem with the PR.
+func (ce *CheckEvent) recordAppSetError(appSet v1alpha1.ApplicationSet, err error) {
 	result := msg.Result{
 		State:   pkg.StateError,
 		Summary: "ApplicationSet generation failed",
 		Details: fmt.Sprintf("```\n%s\n```", err),
 	}
 
+	var unsupportedErr generator.UnsupportedGeneratorError
 	var panicErr appSetPanicError
-	if errors.As(err, &panicErr) {
+	switch {
+	case errors.As(err, &panicErr):
 		desc := "generating applications from ApplicationSet"
 		result = msg.Result{
 			State:   pkg.StatePanic,
 			Summary: "ApplicationSet generation panicked",
 			Details: fmt.Sprintf(errorCommentFormat, desc, panicErr.value),
 		}
+	case errors.As(err, &unsupportedErr):
+		result = msg.Result{
+			State:   pkg.StateWarning,
+			Summary: fmt.Sprintf("Unsupported generator: %s", unsupportedErr.Generator),
+			Details: fmt.Sprintf("kubechecks cannot evaluate the %s generator, so the applications this ApplicationSet generates were not checked.", unsupportedErr.Generator),
+		}
 	}
 
 	if ce.appSetResults == nil {
 		ce.appSetResults = make(map[string][]msg.Result)
 	}
-	section := fmt.Sprintf("%s (ApplicationSet)", name)
+	section := appSetSectionName(appSet)
 	ce.appSetResults[section] = append(ce.appSetResults[section], result)
+}
+
+// appSetSectionName names an ApplicationSet's section in the PR comment. It is qualified with the namespace
+// so that ApplicationSets sharing a name across namespaces get separate sections.
+func appSetSectionName(appSet v1alpha1.ApplicationSet) string {
+	name := appSet.Name
+	if appSet.Namespace != "" {
+		name = appSet.Namespace + "/" + name
+	}
+	return fmt.Sprintf("%s (ApplicationSet)", name)
 }
 
 func (ce *CheckEvent) reportAppSetResults(ctx context.Context) {

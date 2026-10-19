@@ -2,6 +2,7 @@ package generator
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/argoproj/argo-cd/v3/applicationset/utils"
@@ -93,12 +94,16 @@ func TestGetTempApplication(t *testing.T) {
 func TestGetGenerators(t *testing.T) {
 	generators := getGenerators(fake.NewClientBuilder().Build(), "argocd")
 
-	assert.Len(t, generators, 4+len(unsupportedGeneratorNames))
-	for _, name := range []string{"List", "Clusters", "Matrix", "Merge"} {
-		assert.NotNil(t, generators[name], "expected generator %q to be registered", name)
-	}
-	for _, name := range unsupportedGeneratorNames {
-		assert.IsType(t, unsupportedGenerator{}, generators[name], "expected generator %q to be a stub", name)
+	assert.Len(t, generators, len(generatorNames))
+	supported := []string{"List", "Clusters", "Matrix", "Merge"}
+	for _, name := range generatorNames {
+		_, isStub := generators[name].(unsupportedGenerator)
+		if slices.Contains(supported, name) {
+			assert.NotNil(t, generators[name], "expected generator %q to be registered", name)
+			assert.False(t, isStub, "expected generator %q to not be a stub", name)
+		} else {
+			assert.True(t, isStub, "expected generator %q to be a stub", name)
+		}
 	}
 }
 
@@ -455,7 +460,8 @@ func TestGenerateApplications_UnsupportedGenerators(t *testing.T) {
 			require.NotPanics(t, func() {
 				_, _, err = generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
 			})
-			assert.ErrorContains(t, err, "generator is not supported")
+			var unsupported UnsupportedGeneratorError
+			assert.ErrorAs(t, err, &unsupported)
 		})
 	}
 }

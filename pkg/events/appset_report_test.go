@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
@@ -17,6 +18,7 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/generator"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -56,13 +58,38 @@ func TestGenerateListOfAffectedApps_RecoversGeneratorPanic(t *testing.T) {
 }
 
 func TestRecordAppSetError(t *testing.T) {
-	ce := &CheckEvent{}
-	ce.recordAppSetError("orbit", errors.New("Git generator is not supported"))
+	t.Run("a generation error fails the check", func(t *testing.T) {
+		ce := &CheckEvent{}
+		ce.recordAppSetError(appSetNamed("orbit"), errors.New("error parsing label selector"))
 
-	results := ce.appSetResults["orbit (ApplicationSet)"]
-	require.Len(t, results, 1)
-	assert.Equal(t, pkg.StateError, results[0].State)
-	assert.Contains(t, results[0].Details, "Git generator is not supported")
+		results := ce.appSetResults["orbit (ApplicationSet)"]
+		require.Len(t, results, 1)
+		assert.Equal(t, pkg.StateError, results[0].State)
+		assert.Contains(t, results[0].Details, "error parsing label selector")
+	})
+
+	t.Run("an unsupported generator is only a warning", func(t *testing.T) {
+		ce := &CheckEvent{}
+		err := fmt.Errorf("error generating applications: %w", generator.UnsupportedGeneratorError{Generator: "Git"})
+		ce.recordAppSetError(appSetNamed("orbit"), err)
+
+		results := ce.appSetResults["orbit (ApplicationSet)"]
+		require.Len(t, results, 1)
+		assert.Equal(t, pkg.StateWarning, results[0].State)
+		assert.Contains(t, results[0].Summary, "Git")
+	})
+
+	t.Run("sections are qualified with the namespace", func(t *testing.T) {
+		ce := &CheckEvent{}
+		for _, ns := range []string{"team-a", "team-b"} {
+			appSet := appSetNamed("orbit")
+			appSet.Namespace = ns
+			ce.recordAppSetError(appSet, errors.New("boom"))
+		}
+
+		assert.Len(t, ce.appSetResults["team-a/orbit (ApplicationSet)"], 1)
+		assert.Len(t, ce.appSetResults["team-b/orbit (ApplicationSet)"], 1)
+	})
 }
 
 func TestReportPanic(t *testing.T) {
