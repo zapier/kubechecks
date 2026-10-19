@@ -3,7 +3,9 @@ package generator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 
 	argogenerator "github.com/argoproj/argo-cd/v3/applicationset/generators"
 	"github.com/argoproj/argo-cd/v3/applicationset/utils"
@@ -21,24 +23,34 @@ type gen struct {
 }
 
 type AppsGenerator interface {
-	GenerateApplicationSetApps(ctx context.Context, appset argov1alpha1.ApplicationSet, ctr *container.Container) ([]argov1alpha1.Application, error)
+	GenerateApplicationSetApps(ctx context.Context, appset argov1alpha1.ApplicationSet, ctr *container.Container) (AppSetResult, error)
 }
 
-func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha1.ApplicationSet, ctr *container.Container) ([]argov1alpha1.Application, error) {
+// AppSetResult holds the Applications rendered from an ApplicationSet.
+type AppSetResult struct {
+	// Apps were rendered from real generator params and can be checked like any other Application.
+	Apps []argov1alpha1.Application
+	// Previews were rendered from sample params (e.g. a pullRequest generator), so they validate the
+	// template but do not correspond to Applications that exist or will exist.
+	Previews []argov1alpha1.Application
+}
+
+func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha1.ApplicationSet, ctr *container.Container) (AppSetResult, error) {
 
 	appSetGenerators := getGenerators(*ctr.KubeClientSet.ControllerClient(), ctr.Config.ArgoCDNamespace)
 
-	apps, appsetReason, err := generateApplications(appset, appSetGenerators, *ctr.KubeClientSet.ControllerClient())
+	// generation errors are per generator and per application, so return whatever rendered cleanly too
+	result, _, err := generateApplications(appset, appSetGenerators, *ctr.KubeClientSet.ControllerClient())
 	if err != nil {
-		fmt.Printf("error generating applications: %v, appset reason: %v", err, appsetReason)
-		return nil, fmt.Errorf("error generating applications: %w", err)
+		return result, fmt.Errorf("error generating applications: %w", err)
 	}
-	return apps, nil
+	return result, nil
 }
 
 // GetGenerators returns the generators that will be used to generate applications for the ApplicationSet
 //
-// supports List, Clusters, Matrix and Merge generators, and returns an error for all others
+// supports List, Clusters, Matrix and Merge generators, renders PullRequest generators with sample params,
+// and returns an error for all others
 func getGenerators(c client.Client, namespace string) map[string]argogenerator.Generator {
 
 	terminalGenerators := withUnsupportedGenerators(map[string]argogenerator.Generator{
@@ -64,20 +76,20 @@ func getGenerators(c client.Client, namespace string) map[string]argogenerator.G
 
 // generateApplications generates applications from the ApplicationSet
 func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[string]argogenerator.Generator, client client.Client) (
-	[]argov1alpha1.Application, argov1alpha1.ApplicationSetReasonType, error,
+	AppSetResult, argov1alpha1.ApplicationSetReasonType, error,
 ) {
-	var res []argov1alpha1.Application
+	var res AppSetResult
 	renderer := &utils.Render{}
-	var firstError error
+	var errs []error
 	var applicationSetReason argov1alpha1.ApplicationSetReasonType
 
 	for _, requestedGenerator := range applicationSetInfo.Spec.Generators {
 		t, err := argogenerator.Transform(requestedGenerator, g, applicationSetInfo.Spec.Template, &applicationSetInfo, map[string]interface{}{}, client)
 		if err != nil {
-			if firstError == nil {
-				firstError = err
+			if applicationSetReason == "" {
 				applicationSetReason = argov1alpha1.ApplicationSetReasonApplicationParamsGenerationError
 			}
+			errs = append(errs, err)
 			continue
 		}
 
@@ -85,25 +97,31 @@ func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[
 			tmplApplication := getTempApplication(a.Template)
 
 			for _, p := range a.Params {
+				isSample := isSampleParams(p)
+				if isSample {
+					p = maps.Clone(p)
+					delete(p, sampleParamsKey)
+				}
+
 				app, err := renderer.RenderTemplateParams(tmplApplication, applicationSetInfo.Spec.SyncPolicy, p, applicationSetInfo.Spec.GoTemplate, applicationSetInfo.Spec.GoTemplateOptions)
 				if err != nil {
 					//logCtx.WithError(err).WithField("params", a.Params).WithField("generator", requestedGenerator).
 					//	Error("error generating application from params")
 
-					if firstError == nil {
-						firstError = err
+					if applicationSetReason == "" {
 						applicationSetReason = argov1alpha1.ApplicationSetReasonRenderTemplateParamsError
 					}
+					errs = append(errs, err)
 					continue
 				}
 
 				if applicationSetInfo.Spec.TemplatePatch != nil {
 					patchedApplication, err := renderTemplatePatch(renderer, app, applicationSetInfo, p)
 					if err != nil {
-						if firstError == nil {
-							firstError = err
+						if applicationSetReason == "" {
 							applicationSetReason = argov1alpha1.ApplicationSetReasonRenderTemplateParamsError
 						}
+						errs = append(errs, err)
 						continue
 					}
 
@@ -113,7 +131,20 @@ func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[
 				// The app's namespace must be the same as the AppSet's namespace to preserve the appsets-in-any-namespace
 				// security boundary.
 				app.Namespace = applicationSetInfo.Namespace
-				res = append(res, *app)
+
+				if err := validateApplication(app); err != nil {
+					if applicationSetReason == "" {
+						applicationSetReason = argov1alpha1.ApplicationSetReasonRenderTemplateParamsError
+					}
+					errs = append(errs, fmt.Errorf("generated application %q is invalid: %w", app.Name, err))
+					continue
+				}
+
+				if isSample {
+					res.Previews = append(res.Previews, *app)
+				} else {
+					res.Apps = append(res.Apps, *app)
+				}
 			}
 		}
 
@@ -121,7 +152,7 @@ func generateApplications(applicationSetInfo argov1alpha1.ApplicationSet, g map[
 		//logCtx.WithField("generator", requestedGenerator).Debugf("apps from generator: %+v", res)
 	}
 
-	return res, applicationSetReason, firstError
+	return res, applicationSetReason, errors.Join(errs...)
 }
 
 func renderTemplatePatch(r utils.Renderer, app *argov1alpha1.Application, applicationSetInfo argov1alpha1.ApplicationSet, params map[string]interface{}) (*argov1alpha1.Application, error) {

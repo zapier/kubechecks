@@ -17,6 +17,7 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/generator"
 	"github.com/zapier/kubechecks/pkg/git"
 	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
@@ -31,7 +32,7 @@ func TestGenerateListOfAffectedApps_RecoversGeneratorPanic(t *testing.T) {
 	gen.On("GenerateApplicationSetApps", mock.Anything, mock.MatchedBy(func(a v1alpha1.ApplicationSet) bool { return a.Name == "broken" }), mock.Anything).
 		Run(func(mock.Arguments) { panic("nil pointer dereference") })
 	gen.On("GenerateApplicationSetApps", mock.Anything, mock.MatchedBy(func(a v1alpha1.ApplicationSet) bool { return a.Name == "working" }), mock.Anything).
-		Return([]v1alpha1.Application{{ObjectMeta: metav1.ObjectMeta{Name: "app1"}}}, nil)
+		Return(generator.AppSetResult{Apps: []v1alpha1.Application{{ObjectMeta: metav1.ObjectMeta{Name: "app1"}}}}, nil)
 
 	matcher := new(affectedappsmocks.MockMatcher)
 	matcher.On("AffectedApps", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(affected_apps.AffectedItems{
@@ -55,14 +56,35 @@ func TestGenerateListOfAffectedApps_RecoversGeneratorPanic(t *testing.T) {
 	assert.NotContains(t, ce.appSetResults, "working (ApplicationSet)")
 }
 
-func TestRecordAppSetError(t *testing.T) {
-	ce := &CheckEvent{}
-	ce.recordAppSetError("orbit", errors.New("Git generator is not supported"))
+func TestRecordAppSetResult(t *testing.T) {
+	t.Run("previews and partial errors are both reported", func(t *testing.T) {
+		ce := &CheckEvent{}
+		ce.recordAppSetResult("orbit-preview", generator.AppSetResult{
+			Previews: []v1alpha1.Application{{
+				TypeMeta:   metav1.TypeMeta{APIVersion: "argoproj.io/v1alpha1", Kind: "Application"},
+				ObjectMeta: metav1.ObjectMeta{Name: "orbit-pr-1234", Namespace: "argocd"},
+				Spec:       v1alpha1.ApplicationSpec{Project: "default"},
+			}},
+		}, errors.New("generated application \"Bad\" is invalid"))
 
-	results := ce.appSetResults["orbit (ApplicationSet)"]
-	require.Len(t, results, 1)
-	assert.Equal(t, pkg.StateError, results[0].State)
-	assert.Contains(t, results[0].Details, "Git generator is not supported")
+		results := ce.appSetResults["orbit-preview (ApplicationSet)"]
+		require.Len(t, results, 2)
+
+		assert.Equal(t, pkg.StateError, results[0].State)
+		assert.Contains(t, results[0].Details, `"Bad" is invalid`)
+
+		assert.Equal(t, pkg.StateSuccess, results[1].State)
+		assert.Contains(t, results[1].Details, "name: orbit-pr-1234")
+		assert.Contains(t, results[1].Details, "project: default")
+		assert.NotContains(t, results[1].Details, "status:")
+		assert.NotContains(t, results[1].Details, "creationTimestamp")
+	})
+
+	t.Run("an appset that only produced real apps is not reported", func(t *testing.T) {
+		ce := &CheckEvent{}
+		ce.recordAppSetResult("plain", generator.AppSetResult{Apps: []v1alpha1.Application{{}}}, nil)
+		assert.Empty(t, ce.appSetResults)
+	})
 }
 
 func TestReportPanic(t *testing.T) {

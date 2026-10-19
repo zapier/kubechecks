@@ -10,6 +10,7 @@ import (
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	mock "github.com/stretchr/testify/mock"
 	"github.com/zapier/kubechecks/pkg/container"
+	generator0 "github.com/zapier/kubechecks/pkg/generator"
 )
 
 // NewMockAppsGenerator creates a new instance of MockAppsGenerator. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,23 +41,23 @@ func (_m *MockAppsGenerator) EXPECT() *MockAppsGenerator_Expecter {
 }
 
 // GenerateApplicationSetApps provides a mock function for the type MockAppsGenerator
-func (_mock *MockAppsGenerator) GenerateApplicationSetApps(ctx context.Context, appset v1alpha1.ApplicationSet, ctr *container.Container) ([]v1alpha1.Application, error) {
+func (_mock *MockAppsGenerator) GenerateApplicationSetApps(ctx context.Context, appset v1alpha1.ApplicationSet, ctr *container.Container) (generator0.AppSetResult, error) {
 	ret := _mock.Called(ctx, appset, ctr)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GenerateApplicationSetApps")
 	}
 
-	var r0 []v1alpha1.Application
+	var r0 generator0.AppSetResult
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.ApplicationSet, *container.Container) ([]v1alpha1.Application, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.ApplicationSet, *container.Container) (generator0.AppSetResult, error)); ok {
 		return returnFunc(ctx, appset, ctr)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.ApplicationSet, *container.Container) []v1alpha1.Application); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.ApplicationSet, *container.Container) generator0.AppSetResult); ok {
 		r0 = returnFunc(ctx, appset, ctr)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]v1alpha1.Application)
+			r0 = ret.Get(0).(generator0.AppSetResult)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, v1alpha1.ApplicationSet, *container.Container) error); ok {
@@ -103,12 +104,12 @@ func (_c *MockAppsGenerator_GenerateApplicationSetApps_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *MockAppsGenerator_GenerateApplicationSetApps_Call) Return(applications []v1alpha1.Application, err error) *MockAppsGenerator_GenerateApplicationSetApps_Call {
-	_c.Call.Return(applications, err)
+func (_c *MockAppsGenerator_GenerateApplicationSetApps_Call) Return(appSetResult generator0.AppSetResult, err error) *MockAppsGenerator_GenerateApplicationSetApps_Call {
+	_c.Call.Return(appSetResult, err)
 	return _c
 }
 
-func (_c *MockAppsGenerator_GenerateApplicationSetApps_Call) RunAndReturn(run func(ctx context.Context, appset v1alpha1.ApplicationSet, ctr *container.Container) ([]v1alpha1.Application, error)) *MockAppsGenerator_GenerateApplicationSetApps_Call {
+func (_c *MockAppsGenerator_GenerateApplicationSetApps_Call) RunAndReturn(run func(ctx context.Context, appset v1alpha1.ApplicationSet, ctr *container.Container) (generator0.AppSetResult, error)) *MockAppsGenerator_GenerateApplicationSetApps_Call {
 	_c.Call.Return(run)
 	return _c
 }

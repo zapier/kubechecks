@@ -93,10 +93,11 @@ func TestGetTempApplication(t *testing.T) {
 func TestGetGenerators(t *testing.T) {
 	generators := getGenerators(fake.NewClientBuilder().Build(), "argocd")
 
-	assert.Len(t, generators, 4+len(unsupportedGeneratorNames))
+	assert.Len(t, generators, 5+len(unsupportedGeneratorNames))
 	for _, name := range []string{"List", "Clusters", "Matrix", "Merge"} {
 		assert.NotNil(t, generators[name], "expected generator %q to be registered", name)
 	}
+	assert.IsType(t, samplePullRequestGenerator{}, generators["PullRequest"])
 	for _, name := range unsupportedGeneratorNames {
 		assert.IsType(t, unsupportedGenerator{}, generators[name], "expected generator %q to be a stub", name)
 	}
@@ -210,7 +211,8 @@ func TestGenerateApplications(t *testing.T) {
 		}
 		appset.Namespace = "argocd"
 
-		apps, reason, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		result, reason, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		apps := result.Apps
 		require.NoError(t, err)
 		assert.Empty(t, reason)
 		require.Len(t, apps, 2)
@@ -247,7 +249,8 @@ func TestGenerateApplications(t *testing.T) {
 		}
 		appset.Namespace = "argocd"
 
-		apps, _, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		result, _, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		apps := result.Apps
 		require.NoError(t, err)
 		require.Len(t, apps, 1)
 		assert.Equal(t, "app1", apps[0].Name)
@@ -282,7 +285,8 @@ func TestGenerateApplications(t *testing.T) {
 		}
 		appset.Namespace = "argocd"
 
-		apps, _, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		result, _, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		apps := result.Apps
 		require.NoError(t, err)
 		require.Len(t, apps, 1)
 		assert.Equal(t, "app1", apps[0].Labels["owner"])
@@ -311,7 +315,8 @@ func TestGenerateApplications(t *testing.T) {
 		}
 		appset.Namespace = "argocd"
 
-		apps, reason, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		result, reason, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		apps := result.Apps
 		require.Error(t, err)
 		assert.Equal(t, argov1alpha1.ApplicationSetReasonType(argov1alpha1.ApplicationSetReasonApplicationParamsGenerationError), reason)
 		assert.Empty(t, apps)
@@ -343,7 +348,8 @@ func TestGenerateApplications(t *testing.T) {
 		}
 		appset.Namespace = "argocd"
 
-		apps, reason, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		result, reason, err := generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		apps := result.Apps
 		require.Error(t, err)
 		assert.Equal(t, argov1alpha1.ApplicationSetReasonType(argov1alpha1.ApplicationSetReasonRenderTemplateParamsError), reason)
 		require.Len(t, apps, 1)
@@ -383,8 +389,9 @@ func TestGenerateApplicationSetApps(t *testing.T) {
 		}
 		appset.Namespace = "team-namespace"
 
-		apps, err := gen.GenerateApplicationSetApps(context.Background(), appset, ctr)
+		result, err := gen.GenerateApplicationSetApps(context.Background(), appset, ctr)
 		require.NoError(t, err)
+		apps := result.Apps
 		require.Len(t, apps, 1)
 		assert.Equal(t, "app1", apps[0].Name)
 		assert.Equal(t, "team-namespace", apps[0].Namespace)
@@ -417,9 +424,10 @@ func TestGenerateApplicationSetApps(t *testing.T) {
 		}
 		appset.Namespace = "team-namespace"
 
-		apps, err := gen.GenerateApplicationSetApps(context.Background(), appset, ctr)
+		result, err := gen.GenerateApplicationSetApps(context.Background(), appset, ctr)
 		assert.Error(t, err)
-		assert.Nil(t, apps)
+		assert.Empty(t, result.Apps)
+		assert.Empty(t, result.Previews)
 	})
 }
 
@@ -429,7 +437,6 @@ func TestGenerateApplications_UnsupportedGenerators(t *testing.T) {
 	for name, gen := range map[string]argov1alpha1.ApplicationSetGenerator{
 		"Git":         {Git: &argov1alpha1.GitGenerator{}},
 		"SCMProvider": {SCMProvider: &argov1alpha1.SCMProviderGenerator{}},
-		"PullRequest": {PullRequest: &argov1alpha1.PullRequestGenerator{}},
 		"Merge(List, Plugin)": {Merge: &argov1alpha1.MergeGenerator{
 			MergeKeys: []string{"name"},
 			Generators: []argov1alpha1.ApplicationSetNestedGenerator{
@@ -456,6 +463,159 @@ func TestGenerateApplications_UnsupportedGenerators(t *testing.T) {
 				_, _, err = generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
 			})
 			assert.ErrorContains(t, err, "generator is not supported")
+		})
+	}
+}
+
+func pullRequestAppSet(gen argov1alpha1.ApplicationSetGenerator, name string) argov1alpha1.ApplicationSet {
+	appset := argov1alpha1.ApplicationSet{
+		ObjectMeta: metav1ObjectMeta("preview", nil),
+		Spec: argov1alpha1.ApplicationSetSpec{
+			GoTemplate:        true,
+			GoTemplateOptions: []string{"missingkey=error"},
+			Generators:        []argov1alpha1.ApplicationSetGenerator{gen},
+			Template: argov1alpha1.ApplicationSetTemplate{
+				ApplicationSetTemplateMeta: argov1alpha1.ApplicationSetTemplateMeta{Name: name},
+				Spec:                       baseApplicationSpec(),
+			},
+		},
+	}
+	appset.Namespace = "argocd"
+	return appset
+}
+
+func githubPullRequest(labels ...string) *argov1alpha1.PullRequestGenerator {
+	return &argov1alpha1.PullRequestGenerator{
+		Github: &argov1alpha1.PullRequestGeneratorGithub{Owner: "e2b-dev", Repo: "orbit", Labels: labels},
+		Values: map[string]string{"env": "pr-{{ .number }}"},
+	}
+}
+
+func TestGenerateApplications_SampleParams(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().Build()
+	generate := func(appset argov1alpha1.ApplicationSet) (AppSetResult, error) {
+		var (
+			result AppSetResult
+			err    error
+		)
+		require.NotPanics(t, func() {
+			result, _, err = generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+		})
+		return result, err
+	}
+
+	t.Run("pull request generator renders a preview from sample params", func(t *testing.T) {
+		appset := pullRequestAppSet(
+			argov1alpha1.ApplicationSetGenerator{PullRequest: githubPullRequest("preview")},
+			"orbit-{{ .branch_slug }}-{{ .head_short_sha_7 }}-{{ .values.env }}-{{ index .labels 0 }}",
+		)
+
+		result, err := generate(appset)
+		require.NoError(t, err)
+		assert.Empty(t, result.Apps, "sample-param apps must never be checked as real apps")
+		require.Len(t, result.Previews, 1)
+		assert.Equal(t, "orbit-kubechecks-sample-branch-0123456-pr-1234-preview", result.Previews[0].Name)
+		assert.Equal(t, "argocd", result.Previews[0].Namespace)
+	})
+
+	t.Run("referencing a param the generator does not produce is an error", func(t *testing.T) {
+		appset := pullRequestAppSet(
+			argov1alpha1.ApplicationSetGenerator{PullRequest: githubPullRequest()},
+			"orbit-{{ .branch_name }}",
+		)
+
+		result, err := generate(appset)
+		require.ErrorContains(t, err, "branch_name")
+		assert.Empty(t, result.Previews)
+	})
+
+	t.Run("a template that renders an invalid application name is an error", func(t *testing.T) {
+		appset := pullRequestAppSet(
+			argov1alpha1.ApplicationSetGenerator{PullRequest: githubPullRequest()},
+			"orbit-{{ .branch }}",
+		)
+
+		result, err := generate(appset)
+		require.ErrorContains(t, err, `generated application "orbit-kubechecks/sample-branch" is invalid`)
+		assert.Empty(t, result.Previews)
+	})
+
+	t.Run("pull request generator without an SCM provider is an error", func(t *testing.T) {
+		appset := pullRequestAppSet(
+			argov1alpha1.ApplicationSetGenerator{PullRequest: &argov1alpha1.PullRequestGenerator{}},
+			"orbit-{{ .number }}",
+		)
+
+		_, err := generate(appset)
+		assert.ErrorContains(t, err, "no SCM provider configured")
+	})
+
+	t.Run("pull request generator with multiple SCM providers is an error", func(t *testing.T) {
+		pr := githubPullRequest()
+		pr.GitLab = &argov1alpha1.PullRequestGeneratorGitLab{Project: "123"}
+		appset := pullRequestAppSet(argov1alpha1.ApplicationSetGenerator{PullRequest: pr}, "orbit-{{ .number }}")
+
+		_, err := generate(appset)
+		assert.ErrorContains(t, err, "multiple SCM providers configured: github, gitlab")
+	})
+
+	t.Run("sample params propagate through a matrix", func(t *testing.T) {
+		appset := pullRequestAppSet(argov1alpha1.ApplicationSetGenerator{Matrix: &argov1alpha1.MatrixGenerator{
+			Generators: []argov1alpha1.ApplicationSetNestedGenerator{
+				{List: &argov1alpha1.ListGenerator{Elements: []apiextensionsv1.JSON{
+					listElement(t, `{"cluster": "dev"}`),
+					listElement(t, `{"cluster": "prod"}`),
+				}}},
+				{PullRequest: githubPullRequest()},
+			},
+		}}, "orbit-{{ .cluster }}-{{ .number }}")
+
+		result, err := generate(appset)
+		require.NoError(t, err)
+		assert.Empty(t, result.Apps)
+		require.Len(t, result.Previews, 2)
+		assert.ElementsMatch(t, []string{"orbit-dev-1234", "orbit-prod-1234"},
+			[]string{result.Previews[0].Name, result.Previews[1].Name})
+	})
+
+	t.Run("real and sample generators in one appset are kept apart", func(t *testing.T) {
+		appset := pullRequestAppSet(argov1alpha1.ApplicationSetGenerator{PullRequest: githubPullRequest()}, "{{ .name }}")
+		appset.Spec.Generators = append(appset.Spec.Generators, argov1alpha1.ApplicationSetGenerator{
+			List: &argov1alpha1.ListGenerator{Elements: []apiextensionsv1.JSON{listElement(t, `{"name": "real"}`)}},
+		})
+		appset.Spec.Generators[0].PullRequest.Template.Name = "preview-{{ .number }}"
+
+		result, err := generate(appset)
+		require.NoError(t, err)
+		require.Len(t, result.Apps, 1)
+		assert.Equal(t, "real", result.Apps[0].Name)
+		require.Len(t, result.Previews, 1)
+		assert.Equal(t, "preview-1234", result.Previews[0].Name)
+	})
+}
+
+func TestValidateApplication(t *testing.T) {
+	valid := func() *argov1alpha1.Application {
+		return &argov1alpha1.Application{ObjectMeta: metav1ObjectMeta("app", nil), Spec: baseApplicationSpec()}
+	}
+
+	require.NoError(t, validateApplication(valid()))
+
+	for name, tc := range map[string]struct {
+		mutate func(*argov1alpha1.Application)
+		want   string
+	}{
+		"empty name":       {func(a *argov1alpha1.Application) { a.Name = "" }, "invalid name"},
+		"uppercase name":   {func(a *argov1alpha1.Application) { a.Name = "App" }, "invalid name"},
+		"no project":       {func(a *argov1alpha1.Application) { a.Spec.Project = "" }, "spec.project is empty"},
+		"no destination":   {func(a *argov1alpha1.Application) { a.Spec.Destination = argov1alpha1.ApplicationDestination{} }, "either server or name"},
+		"both destination": {func(a *argov1alpha1.Application) { a.Spec.Destination.Name = "in-cluster" }, "both server and name"},
+		"no source":        {func(a *argov1alpha1.Application) { a.Spec.Source = nil }, "source, sources or sourceHydrator"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app := valid()
+			tc.mutate(app)
+			assert.ErrorContains(t, validateApplication(app), tc.want)
 		})
 	}
 }
