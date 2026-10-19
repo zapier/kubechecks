@@ -12,10 +12,12 @@ import (
 // unsupportedGeneratorNames are the ApplicationSetGenerator field names that kubechecks cannot evaluate.
 // Argo CD looks generators up by field name and dereferences the result without a nil check, so every
 // generator type must be present in the map or an appset using it will panic.
-var unsupportedGeneratorNames = []string{"Git", "SCMProvider", "PullRequest", "ClusterDecisionResource", "Plugin"}
+var unsupportedGeneratorNames = []string{"Git", "SCMProvider", "ClusterDecisionResource", "Plugin"}
 
-// withUnsupportedGenerators registers a stub for every generator type kubechecks cannot evaluate.
+// withUnsupportedGenerators registers the sample PullRequest generator and a stub for every generator type
+// kubechecks cannot evaluate.
 func withUnsupportedGenerators(generators map[string]argogenerator.Generator) map[string]argogenerator.Generator {
+	generators["PullRequest"] = samplePullRequestGenerator{}
 	for _, name := range unsupportedGeneratorNames {
 		generators[name] = unsupportedGenerator{name: name}
 	}
