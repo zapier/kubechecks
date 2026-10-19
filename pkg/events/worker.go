@@ -93,16 +93,15 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			desc := fmt.Sprintf("panic while checking %s", appName)
-			w.logger.Error().Caller().Any("error", r).
+			stack := debug.Stack()
+			w.logger.Error().Caller().Any("error", r).Str("stack", string(stack)).
 				Str("app", appName).Msgf("panic while running check")
-			println(string(debug.Stack()))
 
 			telemetry.SetError(span, fmt.Errorf("%v", r), "panic while running check")
 			result := msg.Result{
 				State:   pkg.StatePanic,
-				Summary: desc,
-				Details: fmt.Sprintf(errorCommentFormat, desc, r),
+				Summary: fmt.Sprintf("panic while checking %s", appName),
+				Details: panicDetails(fmt.Sprintf("checking %s", appName), r, stack),
 			}
 			w.vcsNote.AddToAppMessage(ctx, appName, result)
 		}
