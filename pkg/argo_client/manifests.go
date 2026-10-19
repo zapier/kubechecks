@@ -128,6 +128,19 @@ func isExternalHelmChart(source v1alpha1.ApplicationSource) bool {
 	return false
 }
 
+// appInstanceName returns the app instance name exactly as Argo CD records it in
+// resource tracking ids. Under apps-in-any-namespace an Application living outside
+// the Argo CD controller namespace is qualified as `<appNamespace>_<appName>`, so
+// rendering with the bare name stamps every manifest with a tracking id that
+// disagrees with the live one and shows up as a spurious annotation diff.
+func (a *ArgoClient) appInstanceName(app v1alpha1.Application, argoSettings *settings.Settings) string {
+	controllerNamespace := argoSettings.GetControllerNamespace()
+	if controllerNamespace == "" {
+		controllerNamespace = a.cfg.ArgoCDNamespace
+	}
+	return app.InstanceName(controllerNamespace)
+}
+
 // generateManifestForExternalChart handles manifest generation for external Helm chart
 // sources (OCI registries and HTTPS Helm repos). Instead of streaming local files via
 // GenerateManifestWithFiles, it calls GenerateManifest directly — the repo-server will
@@ -211,7 +224,8 @@ func (a *ArgoClient) generateManifestForExternalChart(ctx context.Context, app v
 		Repo:               repo,
 		Revision:           source.TargetRevision,
 		AppLabelKey:        argoSettings.AppLabelKey,
-		AppName:            app.Name,
+		AppName:            a.appInstanceName(app, argoSettings),
+		InstallationID:     argoSettings.GetInstallationID(),
 		Namespace:          app.Spec.Destination.Namespace,
 		ApplicationSource:  &source,
 		Repos:              permittedHelmRepos,
@@ -376,7 +390,8 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		Repo:               &v1alpha1.Repository{Repo: source.RepoURL},
 		Revision:           source.TargetRevision,
 		AppLabelKey:        argoSettings.AppLabelKey,
-		AppName:            app.Name,
+		AppName:            a.appInstanceName(app, argoSettings),
+		InstallationID:     argoSettings.GetInstallationID(),
 		Namespace:          app.Spec.Destination.Namespace,
 		ApplicationSource:  &source,
 		Repos:              permittedHelmRepos,
