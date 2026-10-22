@@ -217,6 +217,69 @@ func (_c *MockClient_CreateHook_Call) RunAndReturn(run func(ctx context.Context,
 	return _c
 }
 
+// DeleteMessage provides a mock function for the type MockClient
+func (_mock *MockClient) DeleteMessage(ctx context.Context, pr vcs.PullRequest, noteID int) error {
+	ret := _mock.Called(ctx, pr, noteID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteMessage")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, vcs.PullRequest, int) error); ok {
+		r0 = returnFunc(ctx, pr, noteID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockClient_DeleteMessage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteMessage'
+type MockClient_DeleteMessage_Call struct {
+	*mock.Call
+}
+
+// DeleteMessage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pr vcs.PullRequest
+//   - noteID int
+func (_e *MockClient_Expecter) DeleteMessage(ctx interface{}, pr interface{}, noteID interface{}) *MockClient_DeleteMessage_Call {
+	return &MockClient_DeleteMessage_Call{Call: _e.mock.On("DeleteMessage", ctx, pr, noteID)}
+}
+
+func (_c *MockClient_DeleteMessage_Call) Run(run func(ctx context.Context, pr vcs.PullRequest, noteID int)) *MockClient_DeleteMessage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 vcs.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(vcs.PullRequest)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_DeleteMessage_Call) Return(err error) *MockClient_DeleteMessage_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockClient_DeleteMessage_Call) RunAndReturn(run func(ctx context.Context, pr vcs.PullRequest, noteID int) error) *MockClient_DeleteMessage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DownloadArchive provides a mock function for the type MockClient
 func (_mock *MockClient) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (string, error) {
 	ret := _mock.Called(ctx, pr)

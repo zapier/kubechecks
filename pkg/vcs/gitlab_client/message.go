@@ -113,6 +113,20 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, noteID i
 	return nil
 }
 
+func (c *Client) DeleteMessage(ctx context.Context, pr vcs.PullRequest, noteID int) error {
+	_, span := tracer.Start(ctx, "DeleteMessage")
+	defer span.End()
+
+	log.Debug().Caller().Msgf("Deleting note %d for %s", noteID, pr.FullName)
+
+	if _, err := c.c.Notes.DeleteMergeRequestNote(pr.FullName, int64(pr.CheckID), int64(noteID), gitlab.WithContext(ctx)); err != nil {
+		telemetry.SetError(span, err, "Delete Merge Request Note")
+		return errors.Wrap(err, "could not delete note from MR")
+	}
+
+	return nil
+}
+
 func (c *Client) editNote(ctx context.Context, pr vcs.PullRequest, noteID int, body string) error {
 	_, _, err := c.c.Notes.UpdateMergeRequestNote(pr.FullName, int64(pr.CheckID), int64(noteID),
 		&gitlab.UpdateMergeRequestNoteOptions{Body: pkg.Pointer(body)}, gitlab.WithContext(ctx))

@@ -60,6 +60,7 @@ configMap:
   # KUBECHECKS_OTEL_ENABLED: "true"
   # KUBECHECKS_VCS_TYPE: "github"
   # KUBECHECKS_TIDY_OUTDATED_COMMENTS_MODE: "hide" # other options delete
+  # KUBECHECKS_ANNOUNCE_NO_CHANGES: "true" # set to false to stay quiet when a run finds no changes
   # KUBECHECKS_ARCHIVE_CACHE_DIR: "/tmp/kubechecks/archives"
   # KUBECHECKS_ARCHIVE_CACHE_TTL: "24h"
   # KUBECHECKS_REPO_CACHE_DIR: "/tmp/kubechecks/repos"

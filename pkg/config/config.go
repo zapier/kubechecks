@@ -103,6 +103,7 @@ type ServerConfig struct {
 
 	// misc
 	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`
+	AnnounceNoChanges        bool          `mapstructure:"announce-no-changes"`
 	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`
 	LabelFilter              string        `mapstructure:"label-filter"`
 	LogLevel                 zerolog.Level `mapstructure:"log-level"`
