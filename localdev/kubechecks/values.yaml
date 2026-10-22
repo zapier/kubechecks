@@ -16,8 +16,7 @@ configMap:
     # OTEL
     KUBECHECKS_OTEL_COLLECTOR_PORT: "4317"
     KUBECHECKS_OTEL_ENABLED: "false"
-    # Webhook Management
-    KUBECHECKS_ENSURE_WEBHOOKS: "true"
+    # Webhook Management (KUBECHECKS_WEBHOOK_REPOSITORIES is set by the Tiltfile)
     KUBECHECKS_MONITOR_ALL_APPLICATIONS: "true"
     #
     # KUBECHECKS_LABEL_FILTER: "test" # On your PR/MR, prefix this with "kubechecks:"

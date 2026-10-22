@@ -131,7 +131,6 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_ENABLE_HOOKS_RENDERER`|Render hooks.|`true`|
 |`KUBECHECKS_ENABLE_KUBECONFORM`|Enable kubeconform checks.|`true`|
 |`KUBECHECKS_ENABLE_PREUPGRADE`|Enable preupgrade checks.|`true`|
-|`KUBECHECKS_ENSURE_WEBHOOKS`|Ensure that webhooks are created in repositories referenced by argo.|`false`|
 |`KUBECHECKS_FALLBACK_K8S_VERSION`|Fallback target Kubernetes version for schema / upgrade checks.|`1.23.0`|
 |`KUBECHECKS_GITHUB_APP_ID`|Github App ID.|`0`|
 |`KUBECHECKS_GITHUB_INSTALLATION_ID`|Github Installation ID.|`0`|
@@ -168,6 +167,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_VCS_TYPE`|VCS type. One of gitlab or github.|`gitlab`|
 |`KUBECHECKS_VCS_UPLOAD_URL`|VCS upload url, required for enterprise github.||
 |`KUBECHECKS_VCS_USERNAME`|VCS Username.||
+|`KUBECHECKS_WEBHOOK_REPOSITORIES`|Repositories that kubechecks ensures have a webhook pointing at it. Accepts clone urls (https or ssh) or 'owner/repo' paths. Requires 'webhook-url-base'.|`[]`|
 |`KUBECHECKS_WEBHOOK_SECRET`|Optional secret key for validating the source of incoming webhooks.||
 |`KUBECHECKS_WEBHOOK_URL_BASE`|The endpoint to listen on for incoming PR/MR event webhooks. For example, 'https://checker.mycompany.com'.||
 |`KUBECHECKS_WEBHOOK_URL_PREFIX`|If your application is running behind a proxy that uses path based routing, set this value to match the path prefix. For example, '/hello/world'.||

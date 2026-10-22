@@ -123,18 +123,6 @@ func (v2a VcsToArgoMap) DeleteApp(app *v1alpha1.Application) {
 	})
 }
 
-func (v2a VcsToArgoMap) GetVcsRepos() []string {
-	var repos []string
-
-	for key := range v2a.appDirByRepo {
-		repos = append(repos, key.CloneURL(v2a.username))
-	}
-	for key := range v2a.appSetDirByRepo {
-		repos = append(repos, key.CloneURL(v2a.username))
-	}
-	return repos
-}
-
 func (v2a VcsToArgoMap) AddAppSet(app *v1alpha1.ApplicationSet) {
 	if app.Spec.Template.Spec.GetSource().RepoURL == "" {
 		log.Warn().Msgf("%s/%s: no source, skipping", app.Namespace, app.Name)

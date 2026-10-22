@@ -65,7 +65,10 @@ func (c *Client) ParseHook(ctx context.Context, r *http.Request, request []byte)
 }
 
 func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl string) (*vcs.WebHookConfig, error) {
-	owner, repoName := parseRepo(ownerAndRepoName)
+	owner, repoName, err := parseRepo(ownerAndRepoName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse repo url")
+	}
 	items, _, err := c.googleClient.Repositories.ListHooks(ctx, owner, repoName, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list hooks")
@@ -90,7 +93,10 @@ func (c *Client) GetHookByUrl(ctx context.Context, ownerAndRepoName, webhookUrl 
 }
 
 func (c *Client) CreateHook(ctx context.Context, ownerAndRepoName, webhookUrl, webhookSecret string) error {
-	owner, repoName := parseRepo(ownerAndRepoName)
+	owner, repoName, err := parseRepo(ownerAndRepoName)
+	if err != nil {
+		return errors.Wrap(err, "failed to parse repo url")
+	}
 	_, resp, err := c.googleClient.Repositories.CreateHook(ctx, owner, repoName, &github.Hook{
 		Active: pkg.Pointer(true),
 		Config: &github.HookConfig{
