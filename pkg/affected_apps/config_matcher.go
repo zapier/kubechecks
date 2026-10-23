@@ -169,7 +169,7 @@ func dirMatchForApp(changeDir, appDir string) bool {
 	appDir = path.Clean(appDir)
 	changeDir = path.Clean(changeDir)
 
-	if strings.HasSuffix(changeDir, appDir) {
+	if hasPathSuffix(changeDir, appDir) {
 		return true
 	} else if changeDir == "." && appDir == "/" {
 		return true
@@ -185,12 +185,32 @@ func dirMatchForAppSet(changeDir, appSetDir string) bool {
 
 	log.Debug().Caller().Msgf("appSetDir: %s; changeDir: %s", appSetDir, changeDir)
 
-	if strings.HasSuffix(changeDir, appSetDir) {
+	if hasPathSuffix(changeDir, appSetDir) {
 		return true
-	} else if strings.HasPrefix(changeDir, appSetDir) {
+	} else if hasPathPrefix(changeDir, appSetDir) {
 		return true
 	} else if changeDir == "." && appSetDir == "/" {
 		return true
 	}
 	return false
+}
+
+// hasPathSuffix reports whether p ends with suffix on a path segment boundary,
+// so that "prod/app" does not match "preprod/app".
+func hasPathSuffix(p, suffix string) bool {
+	if !strings.HasSuffix(p, suffix) {
+		return false
+	}
+	rest := strings.TrimSuffix(p, suffix)
+	return rest == "" || strings.HasSuffix(rest, "/") || strings.HasPrefix(suffix, "/")
+}
+
+// hasPathPrefix reports whether p starts with prefix on a path segment boundary,
+// so that "apps/team" does not match "apps/team-b".
+func hasPathPrefix(p, prefix string) bool {
+	if !strings.HasPrefix(p, prefix) {
+		return false
+	}
+	rest := strings.TrimPrefix(p, prefix)
+	return rest == "" || strings.HasPrefix(rest, "/") || strings.HasSuffix(prefix, "/")
 }
