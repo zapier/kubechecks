@@ -2,6 +2,10 @@ package github_client
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"strings"
@@ -1215,4 +1219,65 @@ func NewMockPullRequestsServicesWithGet(t *testing.T, responses ...prResponse) *
 	}
 
 	return mockPR
+}
+
+// testRSAPrivateKeyPEM generates an ephemeral RSA private key in PKCS#1 PEM
+// form, as GitHub issues for a GitHub App. ghinstallation.New requires a
+// parseable key, so a real one is generated rather than hard-coded.
+func testRSAPrivateKeyPEM(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	pemBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+	return string(pemBytes)
+}
+
+// TestCreateHttpClientAppBaseURL verifies that for GitHub App auth the
+// ghinstallation transport's BaseURL is pointed at the configured GitHub
+// Enterprise API, not the default api.github.com. Without this, installation
+// access-token requests go to api.github.com and 404 on Enterprise.
+func TestCreateHttpClientAppBaseURL(t *testing.T) {
+	key := testRSAPrivateKeyPEM(t)
+
+	testcases := []struct {
+		name            string
+		vcsBaseURL      string
+		expectedBaseURL string
+	}{
+		{
+			name:            "enterprise base url is applied to the app transport",
+			vcsBaseURL:      "https://github.example.com/api/v3",
+			expectedBaseURL: "https://github.example.com/api/v3",
+		},
+		{
+			name:            "trailing slash is trimmed",
+			vcsBaseURL:      "https://github.example.com/api/v3/",
+			expectedBaseURL: "https://github.example.com/api/v3",
+		},
+		{
+			name:            "no base url leaves the default (public github)",
+			vcsBaseURL:      "",
+			expectedBaseURL: "https://api.github.com",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.ServerConfig{
+				GithubAppID:          123,
+				GithubInstallationID: 456,
+				GithubPrivateKey:     key,
+				VcsBaseUrl:           tc.vcsBaseURL,
+			}
+			require.True(t, cfg.IsGithubApp())
+
+			_, appTransport, err := createHttpClient(context.Background(), cfg)
+			require.NoError(t, err)
+			require.NotNil(t, appTransport)
+			assert.Equal(t, tc.expectedBaseURL, appTransport.BaseURL)
+		})
+	}
 }

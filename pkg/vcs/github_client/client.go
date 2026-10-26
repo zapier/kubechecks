@@ -137,6 +137,15 @@ func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Clien
 			return nil, nil, errors.Wrap(err, "failed to create github app transport")
 		}
 
+		// GitHub Enterprise: ghinstallation.Transport defaults its BaseURL to
+		// https://api.github.com. Unlike the go-github client (configured via
+		// WithEnterpriseURLs below), the App transport is never told about the
+		// Enterprise host, so installation-token requests go to api.github.com
+		// and 404. Point it at the configured Enterprise API base URL.
+		if cfg.VcsBaseUrl != "" {
+			appTransport.BaseURL = strings.TrimRight(cfg.VcsBaseUrl, "/")
+		}
+
 		return &http.Client{Transport: appTransport}, appTransport, nil
 	}
 
