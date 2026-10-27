@@ -36,29 +36,31 @@ func (c *gen) GenerateApplicationSetApps(ctx context.Context, appset argov1alpha
 	return apps, nil
 }
 
-// GetGenerators returns the generators that will be used to generate applications for the ApplicationSet
+// getGenerators returns the generators that will be used to generate applications for the ApplicationSet.
 //
-// only support List and Clusters generators
+// It supports the List, Clusters, Matrix and Merge generators. Every other generator type is registered as a
+// stub that returns an UnsupportedGeneratorError, as are Matrix and Merge nested more than one level deep,
+// which Argo CD does not allow either.
 func getGenerators(c client.Client, namespace string) map[string]argogenerator.Generator {
 
-	terminalGenerators := map[string]argogenerator.Generator{
+	terminalGenerators := withUnsupportedGenerators(map[string]argogenerator.Generator{
 		"List":     argogenerator.NewListGenerator(),
 		"Clusters": argogenerator.NewClusterGenerator(c, namespace),
-	}
+	})
 
-	nestedGenerators := map[string]argogenerator.Generator{
+	nestedGenerators := withUnsupportedGenerators(map[string]argogenerator.Generator{
 		"List":     terminalGenerators["List"],
 		"Clusters": terminalGenerators["Clusters"],
 		"Matrix":   argogenerator.NewMatrixGenerator(terminalGenerators),
 		"Merge":    argogenerator.NewMergeGenerator(terminalGenerators),
-	}
+	})
 
-	topLevelGenerators := map[string]argogenerator.Generator{
+	topLevelGenerators := withUnsupportedGenerators(map[string]argogenerator.Generator{
 		"List":     terminalGenerators["List"],
 		"Clusters": terminalGenerators["Clusters"],
 		"Matrix":   argogenerator.NewMatrixGenerator(nestedGenerators),
 		"Merge":    argogenerator.NewMergeGenerator(nestedGenerators),
-	}
+	})
 	return topLevelGenerators
 }
 

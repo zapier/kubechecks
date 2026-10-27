@@ -2,6 +2,7 @@ package generator
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/argoproj/argo-cd/v3/applicationset/utils"
@@ -93,9 +94,16 @@ func TestGetTempApplication(t *testing.T) {
 func TestGetGenerators(t *testing.T) {
 	generators := getGenerators(fake.NewClientBuilder().Build(), "argocd")
 
-	assert.Len(t, generators, 4)
-	for _, name := range []string{"List", "Clusters", "Matrix", "Merge"} {
-		assert.NotNil(t, generators[name], "expected generator %q to be registered", name)
+	assert.Len(t, generators, len(generatorNames))
+	supported := []string{"List", "Clusters", "Matrix", "Merge"}
+	for _, name := range generatorNames {
+		_, isStub := generators[name].(unsupportedGenerator)
+		if slices.Contains(supported, name) {
+			assert.NotNil(t, generators[name], "expected generator %q to be registered", name)
+			assert.False(t, isStub, "expected generator %q to not be a stub", name)
+		} else {
+			assert.True(t, isStub, "expected generator %q to be a stub", name)
+		}
 	}
 }
 
@@ -418,4 +426,42 @@ func TestGenerateApplicationSetApps(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, apps)
 	})
+}
+
+func TestGenerateApplications_UnsupportedGenerators(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().Build()
+
+	for name, gen := range map[string]argov1alpha1.ApplicationSetGenerator{
+		"Git":         {Git: &argov1alpha1.GitGenerator{}},
+		"SCMProvider": {SCMProvider: &argov1alpha1.SCMProviderGenerator{}},
+		"PullRequest": {PullRequest: &argov1alpha1.PullRequestGenerator{}},
+		"Merge(List, Plugin)": {Merge: &argov1alpha1.MergeGenerator{
+			MergeKeys: []string{"name"},
+			Generators: []argov1alpha1.ApplicationSetNestedGenerator{
+				{List: &argov1alpha1.ListGenerator{Elements: []apiextensionsv1.JSON{listElement(t, `{"name": "app1"}`)}}},
+				{Plugin: &argov1alpha1.PluginGenerator{}},
+			},
+		}},
+	} {
+		t.Run(name+" generator is reported as unsupported", func(t *testing.T) {
+			appset := argov1alpha1.ApplicationSet{
+				ObjectMeta: metav1ObjectMeta("unsupported", nil),
+				Spec: argov1alpha1.ApplicationSetSpec{
+					GoTemplate: true,
+					Generators: []argov1alpha1.ApplicationSetGenerator{gen},
+					Template: argov1alpha1.ApplicationSetTemplate{
+						ApplicationSetTemplateMeta: argov1alpha1.ApplicationSetTemplateMeta{Name: "{{ .name }}"},
+						Spec:                       baseApplicationSpec(),
+					},
+				},
+			}
+
+			var err error
+			require.NotPanics(t, func() {
+				_, _, err = generateApplications(appset, getGenerators(fakeClient, "argocd"), fakeClient)
+			})
+			var unsupported UnsupportedGeneratorError
+			assert.ErrorAs(t, err, &unsupported)
+		})
+	}
 }
