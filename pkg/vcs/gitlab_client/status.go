@@ -17,6 +17,11 @@ import (
 
 const GitlabCommitStatusContext = "kubechecks"
 
+const mergeRequestEventSource = "merge_request_event"
+
+// runningStatusMaxWait caps how long a running status waits for the MR pipeline.
+const runningStatusMaxWait = 10 * time.Second
+
 var errNoPipelineStatus = errors.New("nil pipeline status")
 
 func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg.CommitState) error {
@@ -39,7 +44,7 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 
 	// Only retry if we found pipelines but couldn't match one
 	// This avoids wasteful retries for projects without CI/CD
-	if pipelineStatus == nil {
+	if !pipelineMatches(pipelineStatus, state) {
 		log.Debug().Caller().Msg("no pipeline found on first attempt, checking if retries are needed")
 
 		// Do a quick check for ANY pipelines on this commit (not just matching sources)
@@ -53,13 +58,16 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 			log.Debug().Caller().Int("pipeline_count", len(pipelines)).Msg("pipelines exist but none matched, retrying...")
 
 			getStatusFn := func() error {
-				pipelineStatus = c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
-				if pipelineStatus == nil {
+				p := c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
+				if p != nil {
+					pipelineStatus = p
+				}
+				if !pipelineMatches(p, state) {
 					return errNoPipelineStatus
 				}
 				return nil
 			}
-			retryErr := backoff.Retry(getStatusFn, configureBackOff())
+			retryErr := backoff.Retry(getStatusFn, c.statusBackOff(ctx, state))
 			if retryErr != nil {
 				log.Debug().Msg("could not find matching pipeline after retries")
 			}
@@ -74,6 +82,15 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 		status.PipelineID = &pipelineStatus.ID
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	runningKey := pr.FullName + "@" + pr.SHA
+	if state != pkg.StateRunning {
+		c.finishRunningPipeline(ctx, runningKey, pr, status)
+	}
+
 	log.Debug().
 		Caller().
 		Str("project", pr.FullName).
@@ -81,12 +98,48 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 		Str("kubechecks_status", description).
 		Str("gitlab_status", string(status.State)).
 		Msg("gitlab client: updating commit status")
-	_, setErr := c.setCommitStatus(pr.FullName, pr.SHA, status)
+	_, setErr := c.setCommitStatus(ctx, pr.FullName, pr.SHA, status)
 	if setErr != nil {
 		log.Error().Err(setErr).Str("project", pr.FullName).Msg("gitlab client: could not set commit status")
 		return setErr
 	}
+	if state == pkg.StateRunning && status.PipelineID != nil {
+		c.runningPipelines.Store(runningKey, *status.PipelineID)
+	}
 	return nil
+}
+
+// pipelineMatches reports whether p is the pipeline a status for state should
+// attach to. A running status is often posted as soon as the MR opens, before
+// GitLab creates the MR pipeline, so it waits briefly for that pipeline: on
+// projects with MR pipelines it is the MR's head pipeline, the one merge when
+// pipeline succeeds evaluates. Projects without MR pipelines fall back to the
+// best pipeline found once the wait expires.
+func pipelineMatches(p *gitlab.PipelineInfo, state pkg.CommitState) bool {
+	if p == nil {
+		return false
+	}
+	return state != pkg.StateRunning || p.Source == mergeRequestEventSource
+}
+
+// finishRunningPipeline sets the final state on the pipeline an earlier running
+// status was attached to, when the final status goes to a different pipeline.
+// Otherwise that job would stay running in the GitLab UI.
+func (c *Client) finishRunningPipeline(ctx context.Context, key string, pr vcs.PullRequest, final *gitlab.SetCommitStatusOptions) {
+	v, ok := c.runningPipelines.LoadAndDelete(key)
+	if !ok {
+		return
+	}
+	id := v.(int64)
+	if final.PipelineID != nil && *final.PipelineID == id {
+		return
+	}
+
+	previous := *final
+	previous.PipelineID = &id
+	if _, err := c.setCommitStatus(ctx, pr.FullName, pr.SHA, &previous); err != nil {
+		log.Warn().Err(err).Int64("pipeline_id", id).Str("project", pr.FullName).Msg("gitlab client: could not finish earlier running status")
+	}
 }
 
 func convertState(state pkg.CommitState) gitlab.BuildStateValue {
@@ -103,9 +156,23 @@ func convertState(state pkg.CommitState) gitlab.BuildStateValue {
 	return gitlab.Failed
 }
 
-func (c *Client) setCommitStatus(projectWithNS string, commitSHA string, status *gitlab.SetCommitStatusOptions) (*gitlab.CommitStatus, error) {
-	commitStatus, _, err := c.c.Commits.SetCommitStatus(projectWithNS, commitSHA, status)
+func (c *Client) setCommitStatus(ctx context.Context, projectWithNS string, commitSHA string, status *gitlab.SetCommitStatusOptions) (*gitlab.CommitStatus, error) {
+	commitStatus, _, err := c.c.Commits.SetCommitStatus(projectWithNS, commitSHA, status, gitlab.WithContext(ctx))
 	return commitStatus, err
+}
+
+// statusBackOff returns the retry policy for finding a pipeline to attach a
+// status to. It stops when ctx is cancelled, and a running status waits at most
+// runningStatusMaxWait.
+func (c *Client) statusBackOff(ctx context.Context, state pkg.CommitState) backoff.BackOff {
+	if c.newStatusBackOff != nil {
+		return backoff.WithContext(c.newStatusBackOff(), ctx)
+	}
+	b := configureBackOff()
+	if state == pkg.StateRunning {
+		b.MaxElapsedTime = runningStatusMaxWait
+	}
+	return backoff.WithContext(b, ctx)
 }
 
 // configureBackOff returns a backoff configuration to use to retry requests

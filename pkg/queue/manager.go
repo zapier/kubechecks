@@ -31,6 +31,12 @@ type CheckRequest struct {
 	Processors      []checks.ProcessorEntry
 	AIReviewChecker AIReviewChecker
 	Timestamp       time.Time
+
+	// queuedStatusPosted is closed once the queued (running) commit status call
+	// has returned. The worker waits on it so the final status always lands last.
+	queuedStatusPosted chan struct{}
+	queuedStatusCtx    context.Context
+	cancelQueuedStatus context.CancelFunc
 }
 
 // RepoQueue manages a queue of check requests for a single repository
@@ -52,6 +58,15 @@ type QueueManager struct {
 	queueSize   int
 	processFunc ProcessFunc
 }
+
+const (
+	// queuedStatusTimeout bounds the running status call made at enqueue time,
+	// including any wait for the VCS pipeline it attaches to.
+	queuedStatusTimeout = 20 * time.Second
+
+	// droppedRequestTimeout bounds each VCS call made for a request dropped on shutdown.
+	droppedRequestTimeout = 3 * time.Second
+)
 
 // Config holds queue manager configuration
 type Config struct {
@@ -123,17 +138,16 @@ func (qm *QueueManager) Enqueue(ctx context.Context, params EnqueueParams) error
 	}
 
 	// Create check request
-	request := &CheckRequest{
-		PullRequest:     params.PullRequest,
-		Container:       params.Container,
-		Processors:      params.Processors,
-		AIReviewChecker: params.AIReviewChecker,
-		Timestamp:       time.Now(),
-	}
+	request := newCheckRequest(params)
 
 	// Try to enqueue (non-blocking)
 	select {
 	case queue.queue <- request:
+		// Report the check as running while it waits in the queue, so the VCS
+		// doesn't treat the PR/MR as passing before kubechecks has reported.
+		// Sent asynchronously so the webhook returns quickly.
+		go postQueuedStatus(request)
+
 		repoWorkerRequestsTotal.Inc()
 		repoWorkerQueueSize.WithLabelValues(repoKey).Set(float64(len(queue.queue)))
 		qm.updateTotalQueueMetrics()
@@ -144,6 +158,7 @@ func (qm *QueueManager) Enqueue(ctx context.Context, params EnqueueParams) error
 			Msg("enqueued PR check request")
 		return nil
 	default:
+		request.cancelQueuedStatus()
 		// Queue is full, return error immediately without blocking
 		log.Warn().
 			Str("repo", params.PullRequest.CloneURL).
@@ -187,64 +202,95 @@ func (rq *RepoQueue) startWorker() {
 	}
 }
 
+// newCheckRequest builds a queued check request with its queued-status bookkeeping.
+func newCheckRequest(params EnqueueParams) *CheckRequest {
+	ctx, cancel := context.WithTimeout(context.Background(), queuedStatusTimeout)
+	return &CheckRequest{
+		PullRequest:     params.PullRequest,
+		Container:       params.Container,
+		Processors:      params.Processors,
+		AIReviewChecker: params.AIReviewChecker,
+		Timestamp:       time.Now(),
+
+		queuedStatusPosted: make(chan struct{}),
+		queuedStatusCtx:    ctx,
+		cancelQueuedStatus: cancel,
+	}
+}
+
+// postQueuedStatus marks the commit as running and then closes queuedStatusPosted.
+func postQueuedStatus(request *CheckRequest) {
+	defer close(request.queuedStatusPosted)
+	defer request.cancelQueuedStatus()
+
+	if err := request.Container.VcsClient.CommitStatus(request.queuedStatusCtx, request.PullRequest, pkg.StateRunning); err != nil {
+		log.Warn().
+			Err(err).
+			Str("repo", request.PullRequest.CloneURL).
+			Int("check_id", request.PullRequest.CheckID).
+			Msg("failed to set queued commit status")
+	}
+}
+
 // notifyDroppedRequests notifies PRs about dropped items during shutdown
 func (rq *RepoQueue) notifyDroppedRequests() {
-	// Deduplicate by PR to avoid rate limiting (multiple items for same PR = 1 comment)
-	prMap := make(map[int]*CheckRequest) // key: CheckID
-
-	// Drain queue and deduplicate
-	drained := 0
-	for {
-		select {
-		case request := <-rq.queue:
-			prMap[request.PullRequest.CheckID] = request
-			drained++
-		default:
-			// Queue empty
-			goto notify
-		}
+	// This worker is the queue's only consumer, so a non-empty queue can't block.
+	var dropped []*CheckRequest
+	for len(rq.queue) > 0 {
+		dropped = append(dropped, <-rq.queue)
 	}
 
-notify:
-	if len(prMap) == 0 {
+	if len(dropped) == 0 {
 		return
 	}
 
 	log.Info().
 		Str("repo", rq.repoURL).
-		Int("drained", drained).
-		Int("unique_prs", len(prMap)).
+		Int("drained", len(dropped)).
 		Msg("notifying PRs about dropped items")
 
-	// Notify each unique PR (with timeout to avoid blocking shutdown)
-	notifyCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// Stop any running status still in flight, and wait for it to return, so it
+	// can't land after the error status set below.
+	for _, request := range dropped {
+		request.cancelQueuedStatus()
+	}
+	for _, request := range dropped {
+		<-request.queuedStatusPosted
+	}
 
-	for _, request := range prMap {
-		select {
-		case <-notifyCtx.Done():
-			log.Warn().Msg("timeout reached while notifying PRs, stopping")
-			return
-		default:
-			message := fmt.Sprintf("⚠️ Kubechecks is shutting down. This check request was dropped.\n\n"+
-				"Please re-trigger by commenting `%s`.",
-				request.Container.Config.ReplanCommentMessage)
+	// Every dropped commit gets an error status, so none is left running. The
+	// shutdown comment is posted once per PR, even if its status update failed.
+	finalized := make(map[string]bool)
+	commented := make(map[int]bool)
+	for _, request := range dropped {
+		pr := request.PullRequest
+		logger := log.With().Str("repo", pr.CloneURL).Int("check_id", pr.CheckID).Str("sha", pr.SHA).Logger()
 
-			if _, err := request.Container.VcsClient.PostMessage(notifyCtx, request.PullRequest, message); err != nil {
-				log.Error().
-					Err(err).
-					Caller().
-					Str("repo", request.PullRequest.CloneURL).
-					Int("check_id", request.PullRequest.CheckID).
-					Msg("failed to post shutdown notification")
-			} else {
-				log.Debug().
-					Caller().
-					Str("repo", request.PullRequest.CloneURL).
-					Int("check_id", request.PullRequest.CheckID).
-					Msg("posted shutdown notification")
+		if commitKey := pr.FullName + "@" + pr.SHA; !finalized[commitKey] {
+			finalized[commitKey] = true
+			ctx, cancel := context.WithTimeout(context.Background(), droppedRequestTimeout)
+			if err := request.Container.VcsClient.CommitStatus(ctx, pr, pkg.StateError); err != nil {
+				logger.Error().Err(err).Caller().Msg("failed to set commit status for dropped request")
 			}
+			cancel()
 		}
+
+		if commented[pr.CheckID] {
+			continue
+		}
+		commented[pr.CheckID] = true
+
+		message := fmt.Sprintf("⚠️ Kubechecks is shutting down. This check request was dropped.\n\n"+
+			"Please re-trigger by commenting `%s`.",
+			request.Container.Config.ReplanCommentMessage)
+
+		ctx, cancel := context.WithTimeout(context.Background(), droppedRequestTimeout)
+		if _, err := request.Container.VcsClient.PostMessage(ctx, pr, message); err != nil {
+			logger.Error().Err(err).Caller().Msg("failed to post shutdown notification")
+		} else {
+			logger.Debug().Caller().Msg("posted shutdown notification")
+		}
+		cancel()
 	}
 }
 
@@ -259,6 +305,9 @@ func (rq *RepoQueue) processRequest(request *CheckRequest) {
 		Int("check_id", request.PullRequest.CheckID).
 		Dur("queued_for", time.Since(request.Timestamp)).
 		Msg("worker processing request")
+
+	// Bounded by queuedStatusTimeout.
+	<-request.queuedStatusPosted
 
 	err := rq.processFunc(
 		context.Background(),

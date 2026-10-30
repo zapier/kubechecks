@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
 	"github.com/zapier/kubechecks/pkg/events"
@@ -132,6 +133,11 @@ func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Co
 	// If we've gotten here, we can now begin running checks (or trying to)
 	cEvent := events.NewCheckEvent(pr, ctr, repoMgr, processors, aiReviewChecker)
 	if err := cEvent.Process(ctx); err != nil {
+		// The commit status may already say "running" (set when the request was
+		// queued), so a failed run must still leave a final state behind.
+		if !cEvent.CommitStatusSet() {
+			cEvent.CommitStatus(ctx, pkg.StateError)
+		}
 		span.RecordError(err)
 		log.Error().Caller().Err(err).Msg("failed to process the request")
 		return errors.Wrap(err, "failed to process the request")
