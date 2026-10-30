@@ -8,8 +8,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -27,6 +29,13 @@ type Client struct {
 	cfg config.ServerConfig
 
 	username, email string
+
+	// runningPipelines records, per project@sha, the pipeline a running status
+	// was attached to, so the final status can also finish that job.
+	runningPipelines sync.Map
+
+	// newStatusBackOff overrides the commit status retry policy in tests.
+	newStatusBackOff func() backoff.BackOff
 }
 
 type GLClient struct {

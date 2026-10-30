@@ -80,6 +80,8 @@ type CheckEvent struct {
 	wg         sync.WaitGroup
 	generator  generator.AppsGenerator
 	matcher    affected_apps.Matcher
+
+	commitStatusSet bool
 }
 
 type repoManager interface {
@@ -354,6 +356,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
+		ce.CommitStatus(ctx, pkg.StateSkip)
 		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
 			return errors.Wrap(err, "failed to post changes")
 		}
@@ -508,7 +511,14 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 
 	if err := ce.ctr.VcsClient.CommitStatus(ctx, ce.pullRequest, status); err != nil {
 		log.Warn().Err(err).Msg("failed to update commit status")
+		return
 	}
+	ce.commitStatusSet = true
+}
+
+// CommitStatusSet reports whether this event has successfully set a commit status.
+func (ce *CheckEvent) CommitStatusSet() bool {
+	return ce.commitStatusSet
 }
 
 const (
