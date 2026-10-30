@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/container"
+	"github.com/zapier/kubechecks/pkg/msg"
 	"github.com/zapier/kubechecks/pkg/vcs"
 )
 
@@ -133,7 +135,7 @@ func TestNotifyDroppedRequests_FinalizesEveryCommitAndCommentsOncePerPR(t *testi
 		rq.queue <- queuedRequest(ctr, pr)
 	}
 
-	rq.notifyDroppedRequests()
+	rq.notifyDroppedRequests(context.Background())
 }
 
 func TestNotifyDroppedRequests_CancelsRunningStatusBeforeError(t *testing.T) {
@@ -176,7 +178,7 @@ func TestNotifyDroppedRequests_CancelsRunningStatusBeforeError(t *testing.T) {
 	rq.queue <- request
 
 	start := time.Now()
-	rq.notifyDroppedRequests()
+	rq.notifyDroppedRequests(context.Background())
 
 	assert.Less(t, time.Since(start), queuedStatusTimeout/2, "shutdown should cancel the running status, not wait it out")
 	assert.Equal(t, []pkg.CommitState{pkg.StateRunning, pkg.StateError}, order)
@@ -193,5 +195,84 @@ func TestNotifyDroppedRequests_CommentsWhenStatusFails(t *testing.T) {
 	rq := &RepoQueue{repoURL: pr.CloneURL, queue: make(chan *CheckRequest, 1)}
 	rq.queue <- queuedRequest(ctr, pr)
 
-	rq.notifyDroppedRequests()
+	rq.notifyDroppedRequests(context.Background())
+}
+
+func TestNotifyDroppedRequests_SetsAllStatusesInParallelBeforeComments(t *testing.T) {
+	vcsClient := vcsmocks.NewMockClient(t)
+	ctr := container.Container{VcsClient: vcsClient}
+	const n = droppedRequestConcurrency
+	const callTime = 200 * time.Millisecond
+
+	var mu sync.Mutex
+	var order []string
+	vcsClient.EXPECT().
+		CommitStatus(mock.Anything, mock.Anything, pkg.StateError).
+		RunAndReturn(func(context.Context, vcs.PullRequest, pkg.CommitState) error {
+			time.Sleep(callTime)
+			mu.Lock()
+			defer mu.Unlock()
+			order = append(order, "status")
+			return nil
+		}).
+		Times(n)
+	vcsClient.EXPECT().
+		PostMessage(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(context.Context, vcs.PullRequest, string) (*msg.Message, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			order = append(order, "comment")
+			return nil, nil
+		}).
+		Times(n)
+
+	rq := &RepoQueue{repoURL: "https://gitlab.com/example/repo.git", queue: make(chan *CheckRequest, n)}
+	for i := 0; i < n; i++ {
+		rq.queue <- queuedRequest(ctr, testPullRequest(i, fmt.Sprintf("sha%d", i)))
+	}
+
+	start := time.Now()
+	rq.notifyDroppedRequests(context.Background())
+
+	assert.Less(t, time.Since(start), n*callTime/2, "status updates should run in parallel")
+	for i, step := range order {
+		if i < n {
+			assert.Equal(t, "status", step)
+		} else {
+			assert.Equal(t, "comment", step)
+		}
+	}
+}
+
+func TestNotifyDroppedRequests_StopsAtShutdownDeadline(t *testing.T) {
+	vcsClient := vcsmocks.NewMockClient(t)
+	ctr := container.Container{VcsClient: vcsClient}
+	const n = 3 * droppedRequestConcurrency
+
+	waitForCtx := func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	vcsClient.EXPECT().
+		CommitStatus(mock.Anything, mock.Anything, pkg.StateError).
+		RunAndReturn(func(ctx context.Context, _ vcs.PullRequest, _ pkg.CommitState) error { return waitForCtx(ctx) }).
+		Times(n)
+	vcsClient.EXPECT().
+		PostMessage(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, _ vcs.PullRequest, _ string) (*msg.Message, error) {
+			return nil, waitForCtx(ctx)
+		}).
+		Times(n)
+
+	rq := &RepoQueue{repoURL: "https://gitlab.com/example/repo.git", queue: make(chan *CheckRequest, n)}
+	for i := 0; i < n; i++ {
+		rq.queue <- queuedRequest(ctr, testPullRequest(i, fmt.Sprintf("sha%d", i)))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	rq.notifyDroppedRequests(ctx)
+
+	assert.Less(t, time.Since(start), droppedRequestTimeout, "cleanup must not outlive the shutdown context")
 }

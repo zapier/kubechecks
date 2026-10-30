@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/checks"
@@ -49,6 +51,9 @@ type RepoQueue struct {
 	queuedAt    time.Time
 	processed   int
 	processFunc ProcessFunc
+
+	// stopCtx is set before done is closed and bounds shutdown cleanup.
+	stopCtx context.Context
 }
 
 // QueueManager manages all repository queues
@@ -66,6 +71,9 @@ const (
 
 	// droppedRequestTimeout bounds each VCS call made for a request dropped on shutdown.
 	droppedRequestTimeout = 3 * time.Second
+
+	// droppedRequestConcurrency caps parallel VCS calls during shutdown cleanup.
+	droppedRequestConcurrency = 10
 )
 
 // Config holds queue manager configuration
@@ -190,7 +198,7 @@ func (rq *RepoQueue) startWorker() {
 					Int("dropped_count", remaining).
 					Msg("shutdown initiated, draining queue and notifying PRs")
 
-				rq.notifyDroppedRequests()
+				rq.notifyDroppedRequests(rq.stopCtx)
 			}
 
 			log.Info().
@@ -232,8 +240,9 @@ func postQueuedStatus(request *CheckRequest) {
 	}
 }
 
-// notifyDroppedRequests notifies PRs about dropped items during shutdown
-func (rq *RepoQueue) notifyDroppedRequests() {
+// notifyDroppedRequests notifies PRs about dropped items during shutdown. ctx
+// is the shutdown context; work left when it expires is abandoned.
+func (rq *RepoQueue) notifyDroppedRequests(ctx context.Context) {
 	// This worker is the queue's only consumer, so a non-empty queue can't block.
 	var dropped []*CheckRequest
 	for len(rq.queue) > 0 {
@@ -258,40 +267,63 @@ func (rq *RepoQueue) notifyDroppedRequests() {
 		<-request.queuedStatusPosted
 	}
 
-	// Every dropped commit gets an error status, so none is left running. The
-	// shutdown comment is posted once per PR, even if its status update failed.
+	// Every dropped commit gets an error status, so none is left running. These
+	// all go out before any comment, since a stuck status is what blocks merges.
+	var commits, prs []*CheckRequest
 	finalized := make(map[string]bool)
 	commented := make(map[int]bool)
 	for _, request := range dropped {
 		pr := request.PullRequest
-		logger := log.With().Str("repo", pr.CloneURL).Int("check_id", pr.CheckID).Str("sha", pr.SHA).Logger()
-
 		if commitKey := pr.FullName + "@" + pr.SHA; !finalized[commitKey] {
 			finalized[commitKey] = true
-			ctx, cancel := context.WithTimeout(context.Background(), droppedRequestTimeout)
-			if err := request.Container.VcsClient.CommitStatus(ctx, pr, pkg.StateError); err != nil {
-				logger.Error().Err(err).Caller().Msg("failed to set commit status for dropped request")
-			}
-			cancel()
+			commits = append(commits, request)
 		}
-
-		if commented[pr.CheckID] {
-			continue
+		if !commented[pr.CheckID] {
+			commented[pr.CheckID] = true
+			prs = append(prs, request)
 		}
-		commented[pr.CheckID] = true
+	}
 
+	forEachDropped(ctx, commits, func(callCtx context.Context, request *CheckRequest) {
+		if err := request.Container.VcsClient.CommitStatus(callCtx, request.PullRequest, pkg.StateError); err != nil {
+			droppedLogger(request).Error().Err(err).Caller().Msg("failed to set commit status for dropped request")
+		}
+	})
+
+	// The shutdown comment is posted once per PR, even if its status update failed.
+	forEachDropped(ctx, prs, func(callCtx context.Context, request *CheckRequest) {
 		message := fmt.Sprintf("⚠️ Kubechecks is shutting down. This check request was dropped.\n\n"+
 			"Please re-trigger by commenting `%s`.",
 			request.Container.Config.ReplanCommentMessage)
 
-		ctx, cancel := context.WithTimeout(context.Background(), droppedRequestTimeout)
-		if _, err := request.Container.VcsClient.PostMessage(ctx, pr, message); err != nil {
-			logger.Error().Err(err).Caller().Msg("failed to post shutdown notification")
+		if _, err := request.Container.VcsClient.PostMessage(callCtx, request.PullRequest, message); err != nil {
+			droppedLogger(request).Error().Err(err).Caller().Msg("failed to post shutdown notification")
 		} else {
-			logger.Debug().Caller().Msg("posted shutdown notification")
+			droppedLogger(request).Debug().Caller().Msg("posted shutdown notification")
 		}
-		cancel()
+	})
+}
+
+// forEachDropped calls fn for every request, at most droppedRequestConcurrency
+// at a time, each with its own droppedRequestTimeout derived from ctx.
+func forEachDropped(ctx context.Context, requests []*CheckRequest, fn func(context.Context, *CheckRequest)) {
+	var g errgroup.Group
+	g.SetLimit(droppedRequestConcurrency)
+	for _, request := range requests {
+		g.Go(func() error {
+			callCtx, cancel := context.WithTimeout(ctx, droppedRequestTimeout)
+			defer cancel()
+			fn(callCtx, request)
+			return nil
+		})
 	}
+	_ = g.Wait()
+}
+
+func droppedLogger(request *CheckRequest) *zerolog.Logger {
+	pr := request.PullRequest
+	logger := log.With().Str("repo", pr.CloneURL).Int("check_id", pr.CheckID).Str("sha", pr.SHA).Logger()
+	return &logger
 }
 
 // processRequest handles a single check request
@@ -353,6 +385,7 @@ func (qm *QueueManager) Shutdown(ctx context.Context) error {
 
 	// Signal all workers to stop
 	for _, queue := range queues {
+		queue.stopCtx = ctx
 		close(queue.done)
 	}
 

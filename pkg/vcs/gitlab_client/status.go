@@ -53,9 +53,11 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 			SHA: pkg.Pointer(pr.SHA),
 		}, gitlab.WithContext(ctx))
 
-		if err == nil && len(pipelines) > 0 {
+		// A running status is usually posted as the MR opens, before GitLab has
+		// created any pipeline, so it waits (bounded) even when none exist yet.
+		if err == nil && (len(pipelines) > 0 || state == pkg.StateRunning) {
 			// There are pipelines but we didn't match any - retry with backoff
-			log.Debug().Caller().Int("pipeline_count", len(pipelines)).Msg("pipelines exist but none matched, retrying...")
+			log.Debug().Caller().Int("pipeline_count", len(pipelines)).Msg("no matching pipeline yet, retrying...")
 
 			getStatusFn := func() error {
 				p := c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
@@ -98,13 +100,18 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 		Str("kubechecks_status", description).
 		Str("gitlab_status", string(status.State)).
 		Msg("gitlab client: updating commit status")
-	_, setErr := c.setCommitStatus(ctx, pr.FullName, pr.SHA, status)
+	commitStatus, setErr := c.setCommitStatus(ctx, pr.FullName, pr.SHA, status)
 	if setErr != nil {
 		log.Error().Err(setErr).Str("project", pr.FullName).Msg("gitlab client: could not set commit status")
 		return setErr
 	}
-	if state == pkg.StateRunning && status.PipelineID != nil {
-		c.runningPipelines.Store(runningKey, *status.PipelineID)
+	if state == pkg.StateRunning {
+		// Without a PipelineID GitLab picks (or creates) the pipeline itself.
+		if status.PipelineID != nil {
+			c.runningPipelines.Store(runningKey, *status.PipelineID)
+		} else if commitStatus != nil && commitStatus.PipelineID != 0 {
+			c.runningPipelines.Store(runningKey, commitStatus.PipelineID)
+		}
 	}
 	return nil
 }
