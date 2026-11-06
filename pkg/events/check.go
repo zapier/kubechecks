@@ -344,6 +344,8 @@ func (ce *CheckEvent) Process(ctx context.Context) (retErr error) {
 		Msg("archived repo stored in clonedRepos under multiple keys (HeadRef, BaseRef, HEAD)")
 	ce.repoLock.Unlock()
 
+
+
 	// Get changed files from VCS API (replaces git diff)
 	ce.fileList, err = ce.ctr.ArchiveManager.GetChangedFiles(ctx, ce.pullRequest)
 	if err != nil {
@@ -696,3 +698,7 @@ func buildRawReviewBody(appReviews map[string]string) string {
 	}
 	return sb.String()
 }
+
+// extractRepoCRDSchemas collects kubeconform schemas from the CustomResourceDefinitions
+// in the checkout. Failing to do so is not fatal: without them, custom resources
+
