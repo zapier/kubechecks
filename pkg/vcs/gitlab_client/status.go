@@ -88,11 +88,6 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 		return err
 	}
 
-	runningKey := pr.FullName + "@" + pr.SHA
-	if state != pkg.StateRunning {
-		c.finishRunningPipeline(ctx, runningKey, pr, status)
-	}
-
 	log.Debug().
 		Caller().
 		Str("project", pr.FullName).
@@ -105,13 +100,22 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 		log.Error().Err(setErr).Str("project", pr.FullName).Msg("gitlab client: could not set commit status")
 		return setErr
 	}
+
+	// Without a PipelineID GitLab picks (or creates) the pipeline itself.
+	var landedOn int64
+	if status.PipelineID != nil {
+		landedOn = *status.PipelineID
+	} else if commitStatus != nil {
+		landedOn = commitStatus.PipelineID
+	}
+
+	runningKey := pr.FullName + "@" + pr.SHA
 	if state == pkg.StateRunning {
-		// Without a PipelineID GitLab picks (or creates) the pipeline itself.
-		if status.PipelineID != nil {
-			c.runningPipelines.Store(runningKey, *status.PipelineID)
-		} else if commitStatus != nil && commitStatus.PipelineID != 0 {
-			c.runningPipelines.Store(runningKey, commitStatus.PipelineID)
+		if landedOn != 0 {
+			c.runningPipelines.Store(runningKey, landedOn)
 		}
+	} else {
+		c.finishRunningPipeline(ctx, runningKey, pr, status, landedOn)
 	}
 	return nil
 }
@@ -130,23 +134,25 @@ func pipelineMatches(p *gitlab.PipelineInfo, state pkg.CommitState) bool {
 }
 
 // finishRunningPipeline sets the final state on the pipeline an earlier running
-// status was attached to, when the final status goes to a different pipeline.
-// Otherwise that job would stay running in the GitLab UI.
-func (c *Client) finishRunningPipeline(ctx context.Context, key string, pr vcs.PullRequest, final *gitlab.SetCommitStatusOptions) {
-	v, ok := c.runningPipelines.LoadAndDelete(key)
+// status was attached to, when the final status landed on a different pipeline.
+// Otherwise that job would stay running in the GitLab UI. A failure is only
+// logged: the final status already landed where it counts, and the pipeline is
+// kept so the next final status for this commit tries again.
+func (c *Client) finishRunningPipeline(ctx context.Context, key string, pr vcs.PullRequest, final *gitlab.SetCommitStatusOptions, landedOn int64) {
+	v, ok := c.runningPipelines.Load(key)
 	if !ok {
 		return
 	}
 	id := v.(int64)
-	if final.PipelineID != nil && *final.PipelineID == id {
-		return
+	if id != landedOn {
+		previous := *final
+		previous.PipelineID = &id
+		if _, err := c.setCommitStatus(ctx, pr.FullName, pr.SHA, &previous); err != nil {
+			log.Warn().Err(err).Int64("pipeline_id", id).Str("project", pr.FullName).Msg("gitlab client: could not finish earlier running status")
+			return
+		}
 	}
-
-	previous := *final
-	previous.PipelineID = &id
-	if _, err := c.setCommitStatus(ctx, pr.FullName, pr.SHA, &previous); err != nil {
-		log.Warn().Err(err).Int64("pipeline_id", id).Str("project", pr.FullName).Msg("gitlab client: could not finish earlier running status")
-	}
+	c.runningPipelines.CompareAndDelete(key, v)
 }
 
 func convertState(state pkg.CommitState) gitlab.BuildStateValue {

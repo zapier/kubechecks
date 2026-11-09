@@ -305,12 +305,19 @@ func (rq *RepoQueue) notifyDroppedRequests(ctx context.Context) {
 }
 
 // forEachDropped calls fn for every request, at most droppedRequestConcurrency
-// at a time, each with its own droppedRequestTimeout derived from ctx.
+// at a time, each with its own droppedRequestTimeout derived from ctx. Nothing
+// new starts once ctx is done, since not every VCS call honours its context.
 func forEachDropped(ctx context.Context, requests []*CheckRequest, fn func(context.Context, *CheckRequest)) {
 	var g errgroup.Group
 	g.SetLimit(droppedRequestConcurrency)
 	for _, request := range requests {
+		if ctx.Err() != nil {
+			break
+		}
 		g.Go(func() error {
+			if ctx.Err() != nil {
+				return nil
+			}
 			callCtx, cancel := context.WithTimeout(ctx, droppedRequestTimeout)
 			defer cancel()
 			fn(callCtx, request)

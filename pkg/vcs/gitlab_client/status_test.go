@@ -2,6 +2,7 @@ package gitlab_client
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/cenkalti/backoff/v4"
@@ -38,6 +39,9 @@ type fakeCommits struct {
 
 	// implicitPipelineID is the pipeline GitLab reports when no PipelineID is passed.
 	implicitPipelineID int64
+
+	// failPipelineID makes status updates on that pipeline fail.
+	failPipelineID int64
 }
 
 func (f *fakeCommits) SetCommitStatus(_ interface{}, _ string, opt *gitlab.SetCommitStatusOptions, _ ...gitlab.RequestOptionFunc) (*gitlab.CommitStatus, *gitlab.Response, error) {
@@ -45,6 +49,9 @@ func (f *fakeCommits) SetCommitStatus(_ interface{}, _ string, opt *gitlab.SetCo
 	pipelineID := f.implicitPipelineID
 	if opt.PipelineID != nil {
 		pipelineID = *opt.PipelineID
+	}
+	if f.failPipelineID != 0 && pipelineID == f.failPipelineID {
+		return nil, nil, errors.New("gitlab unavailable")
 	}
 	return &gitlab.CommitStatus{PipelineID: pipelineID}, nil, nil
 }
@@ -147,7 +154,8 @@ func TestCommitStatus_FinalStatusFinishesEarlierRunningPipeline(t *testing.T) {
 	pipelines.reset([]*gitlab.PipelineInfo{externalPipeline, mergeRequestPipeline})
 	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateFailure))
 
-	assert.Equal(t, []int64{externalPipeline.ID, externalPipeline.ID, mergeRequestPipeline.ID}, commits.pipelineIDs())
+	// The selected pipeline gets its final status before the earlier one is cleaned up.
+	assert.Equal(t, []int64{externalPipeline.ID, mergeRequestPipeline.ID, externalPipeline.ID}, commits.pipelineIDs())
 	assert.Equal(t, gitlab.Failed, commits.set[1].State)
 	assert.Equal(t, gitlab.Failed, commits.set[2].State)
 }
@@ -160,8 +168,38 @@ func TestCommitStatus_FinalStatusFinishesPipelineGitLabPickedForRunning(t *testi
 	pipelines.reset([]*gitlab.PipelineInfo{mergeRequestPipeline})
 	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateFailure))
 
-	assert.Equal(t, []int64{0, 7, mergeRequestPipeline.ID}, commits.pipelineIDs())
-	assert.Equal(t, gitlab.Failed, commits.set[1].State)
+	assert.Equal(t, []int64{0, mergeRequestPipeline.ID, 7}, commits.pipelineIDs())
+	assert.Equal(t, gitlab.Failed, commits.set[2].State)
+}
+
+func TestCommitStatus_FinalStatusOnPipelineGitLabPickedIsSetOnce(t *testing.T) {
+	c, _, commits := newStatusTestClient([]*gitlab.PipelineInfo{})
+	commits.implicitPipelineID = 7
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateRunning))
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateSuccess))
+
+	assert.Equal(t, []int64{0, 0}, commits.pipelineIDs())
+}
+
+func TestCommitStatus_FailedCleanupIsRetriedByNextFinalStatus(t *testing.T) {
+	c, pipelines, commits := newStatusTestClient([]*gitlab.PipelineInfo{externalPipeline})
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateRunning))
+
+	pipelines.reset([]*gitlab.PipelineInfo{mergeRequestPipeline})
+	commits.failPipelineID = externalPipeline.ID
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateFailure),
+		"the selected pipeline got its status, so a failed cleanup must not fail the call")
+
+	commits.failPipelineID = 0
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateFailure))
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateFailure))
+
+	assert.Equal(t, []int64{
+		externalPipeline.ID,
+		mergeRequestPipeline.ID, externalPipeline.ID, // cleanup fails
+		mergeRequestPipeline.ID, externalPipeline.ID, // cleanup retried
+		mergeRequestPipeline.ID, // nothing left to clean up
+	}, commits.pipelineIDs())
 }
 
 func TestCommitStatus_FinalStatusOnSamePipelineIsSetOnce(t *testing.T) {

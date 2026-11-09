@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -249,20 +250,15 @@ func TestNotifyDroppedRequests_StopsAtShutdownDeadline(t *testing.T) {
 	ctr := container.Container{VcsClient: vcsClient}
 	const n = 3 * droppedRequestConcurrency
 
-	waitForCtx := func(ctx context.Context) error {
-		<-ctx.Done()
-		return ctx.Err()
-	}
+	var statusCalls atomic.Int32
 	vcsClient.EXPECT().
 		CommitStatus(mock.Anything, mock.Anything, pkg.StateError).
-		RunAndReturn(func(ctx context.Context, _ vcs.PullRequest, _ pkg.CommitState) error { return waitForCtx(ctx) }).
-		Times(n)
-	vcsClient.EXPECT().
-		PostMessage(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, _ vcs.PullRequest, _ string) (*msg.Message, error) {
-			return nil, waitForCtx(ctx)
+		RunAndReturn(func(ctx context.Context, _ vcs.PullRequest, _ pkg.CommitState) error {
+			statusCalls.Add(1)
+			<-ctx.Done()
+			return ctx.Err()
 		}).
-		Times(n)
+		Maybe()
 
 	rq := &RepoQueue{repoURL: "https://gitlab.com/example/repo.git", queue: make(chan *CheckRequest, n)}
 	for i := 0; i < n; i++ {
@@ -275,4 +271,6 @@ func TestNotifyDroppedRequests_StopsAtShutdownDeadline(t *testing.T) {
 	rq.notifyDroppedRequests(ctx)
 
 	assert.Less(t, time.Since(start), droppedRequestTimeout, "cleanup must not outlive the shutdown context")
+	assert.LessOrEqual(t, int(statusCalls.Load()), droppedRequestConcurrency, "no status call may start after the shutdown context is done")
+	vcsClient.AssertNotCalled(t, "PostMessage", mock.Anything, mock.Anything, mock.Anything)
 }
