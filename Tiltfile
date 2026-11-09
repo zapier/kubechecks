@@ -119,6 +119,7 @@ tfcOutputs=local_terraform_resource(
 )
 
 kubeProject=""
+kubeProjectUrl=""
 if cfg.get('enable_repo', True):
   if cfg.get('vcs-type') == 'gitlab':
     check_env_set("GITLAB_TOKEN")
@@ -143,6 +144,7 @@ if cfg.get('enable_repo', True):
       labels=['terraform']
     )
     kubeProject=gitlabOutputs.setdefault('gitlab_project_name', '') if gitlabOutputs else 'foo'
+    kubeProjectUrl=gitlabOutputs.setdefault('gitlab_project_url', '').strip() if gitlabOutputs else ''
     watch_file('./localdev/terraform/gitlab/project.url')
   else:
     check_env_set("GITHUB_TOKEN")
@@ -167,6 +169,7 @@ if cfg.get('enable_repo', True):
       labels=['terraform']
     )
     kubeProject=githubOutputs.setdefault('github_repo_name', '') if githubOutputs else 'foo'
+    kubeProjectUrl=githubOutputs.setdefault('github_project_url', '').strip() if githubOutputs else ''
     watch_file('./localdev/terraform/github/project.url')
 
 # /////////////////////////////////////////////////////////////////////////////
@@ -288,6 +291,8 @@ _helm_flags = [
     '--set=configMap.env.KUBECHECKS_ARGOCD_WEBHOOK_URL=' + get_ngrok_url(cfg) +'/argocd/api/webhook',
     '--set=configMap.env.KUBECHECKS_VCS_TYPE=' + cfg.get('vcs-type', 'gitlab'),
 ]
+if kubeProjectUrl:
+    _helm_flags.append('--set=configMap.env.KUBECHECKS_WEBHOOK_REPOSITORIES=' + kubeProjectUrl)
 
 helm_resource(name='kubechecks',
               chart='./charts/kubechecks',

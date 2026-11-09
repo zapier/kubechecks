@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -278,11 +279,21 @@ func (ce *CheckEvent) getRepo(ctx context.Context, cloneURL, branchName string) 
 	return repo, nil
 }
 
-func (ce *CheckEvent) Process(ctx context.Context) error {
+func (ce *CheckEvent) Process(ctx context.Context) (retErr error) {
 	start := time.Now()
 
 	_, span := tracer.Start(ctx, "GenerateListOfAffectedApps")
 	defer span.End()
+
+	defer func() {
+		if r := recover(); r != nil {
+			stack := debug.Stack()
+			ce.logger.Error().Caller().Any("error", r).Str("stack", string(stack)).Msg("panic while processing check event")
+			telemetry.SetError(span, fmt.Errorf("%v", r), "panic while processing check event")
+			ce.reportPanic(ctx, r, stack)
+			retErr = fmt.Errorf("panic while processing check event: %v", r)
+		}
+	}()
 
 	var repo *git.Repo
 	var err error
@@ -356,11 +367,7 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		ce.CommitStatus(ctx, pkg.StateSkip)
-		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
-			return errors.Wrap(err, "failed to post changes")
-		}
-		return nil
+		return ce.reportNoAffectedApps(ctx)
 	}
 
 	// We make one comment per run, containing output for all the apps
@@ -417,25 +424,19 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 
 	ce.logger.Info().Msg("Finished")
 
-	chunks := ce.vcsNote.BuildComment(ctx, msg.CommentOptions{
-		Start:         start,
-		CommitSHA:     ce.pullRequest.SHA,
-		LabelFilter:   ce.ctr.Config.LabelFilter,
-		ShowDebugInfo: ce.ctr.Config.ShowDebugInfo,
-		Identifier:    ce.ctr.Config.Identifier,
-		AppsChecked:   len(ce.addedAppsSet),
-		TotalChecked:  int(ce.appsSent),
-		MaxLength:     ce.ctr.VcsClient.MaxCommentLength(),
-		MaxComments:   ce.ctr.Config.MaxCommentsPerCheck,
-	})
-
 	// returned once the commit status is set, the checks did run
-	postErr := ce.ctr.VcsClient.UpdateMessage(ctx, ce.pullRequest, ce.vcsNote.NoteID, chunks)
+	postErr := ce.postReport(ctx, start)
 
 	worstStatus := ce.vcsNote.WorstState()
 
 	// Update the AI review comment with aggregated results
-	if ce.aiNote != nil {
+	if ce.aiNote != nil && ce.silentAboutNoChanges() && !ce.hasAIReviewResults() {
+		// an empty AI review has nothing to say either, its placeholder goes the same way
+		ce.logger.Info().Msg("no AI review results and announce-no-changes is off, deleting the AI review comment")
+		if err := ce.ctr.VcsClient.DeleteMessage(ctx, ce.pullRequest, ce.aiNote.NoteID); err != nil {
+			ce.logger.Error().Caller().Err(err).Msg("failed to delete AI review comment")
+		}
+	} else if ce.aiNote != nil {
 		aiComment, aiWorstState, suggestions := ce.buildAIReviewComment(ctx)
 		if maxLen := ce.ctr.VcsClient.MaxCommentLength(); len(aiComment) > maxLen {
 			ce.logger.Warn().Int("original_length", len(aiComment)).Msg("trimming AI review comment size")
@@ -464,6 +465,52 @@ func (ce *CheckEvent) Process(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// silentAboutNoChanges reports whether a run with nothing to report should leave
+// no comment behind. Repositories watched by several kubechecks instances turn
+// this on so that only the instances with something to say comment.
+func (ce *CheckEvent) silentAboutNoChanges() bool {
+	return !ce.ctr.Config.AnnounceNoChanges
+}
+
+// reportNoAffectedApps finishes a run that matched no apps or appsets. The skip
+// status is set even when announce-no-changes keeps the run quiet, since the
+// commit may already be marked running.
+func (ce *CheckEvent) reportNoAffectedApps(ctx context.Context) error {
+	ce.CommitStatus(ctx, pkg.StateSkip)
+	if ce.silentAboutNoChanges() {
+		ce.logger.Info().Msg("announce-no-changes is off, not commenting")
+		return nil
+	}
+	if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
+		return errors.Wrap(err, "failed to post changes")
+	}
+	return nil
+}
+
+// postReport puts the finished report on the PR/MR. A run that found no changes
+// leaves no comment when announce-no-changes is off, which means taking back the
+// placeholder comment that is already there.
+func (ce *CheckEvent) postReport(ctx context.Context, start time.Time) error {
+	if ce.silentAboutNoChanges() && !ce.vcsNote.HasChanges() {
+		ce.logger.Info().Msg("nothing to report and announce-no-changes is off, deleting the report comment")
+		return ce.ctr.VcsClient.DeleteMessage(ctx, ce.pullRequest, ce.vcsNote.NoteID)
+	}
+
+	chunks := ce.vcsNote.BuildComment(ctx, msg.CommentOptions{
+		Start:         start,
+		CommitSHA:     ce.pullRequest.SHA,
+		LabelFilter:   ce.ctr.Config.LabelFilter,
+		ShowDebugInfo: ce.ctr.Config.ShowDebugInfo,
+		Identifier:    ce.ctr.Config.Identifier,
+		AppsChecked:   len(ce.addedAppsSet),
+		TotalChecked:  int(ce.appsSent),
+		MaxLength:     ce.ctr.VcsClient.MaxCommentLength(),
+		MaxComments:   ce.ctr.Config.MaxCommentsPerCheck,
+	})
+
+	return ce.ctr.VcsClient.UpdateMessage(ctx, ce.pullRequest, ce.vcsNote.NoteID, chunks)
 }
 
 func (ce *CheckEvent) removeApp(app v1alpha1.Application) {
@@ -572,6 +619,13 @@ func (ce *CheckEvent) claimAIReviewSlot() bool {
 		return false
 	}
 	return true
+}
+
+// hasAIReviewResults reports whether any app came back with an AI review (thread-safe).
+func (ce *CheckEvent) hasAIReviewResults() bool {
+	ce.aiReviewResultsLock.Lock()
+	defer ce.aiReviewResultsLock.Unlock()
+	return len(ce.aiReviewResults) > 0
 }
 
 // addAIReviewResult collects an AI review result (thread-safe).

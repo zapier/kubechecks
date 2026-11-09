@@ -90,6 +90,20 @@ func (c *Client) UpdateMessage(ctx context.Context, pr vcs.PullRequest, noteID i
 	return nil
 }
 
+func (c *Client) DeleteMessage(ctx context.Context, pr vcs.PullRequest, noteID int) error {
+	_, span := tracer.Start(ctx, "DeleteMessage")
+	defer span.End()
+
+	log.Debug().Caller().Msgf("Deleting comment %d from PR %d in repo %s", noteID, pr.CheckID, pr.FullName)
+
+	if _, err := c.googleClient.Issues.DeleteComment(ctx, pr.Owner, pr.Name, int64(noteID)); err != nil {
+		telemetry.SetError(span, err, "Delete Pull Request comment")
+		return errors.Wrap(err, "could not delete comment from PR")
+	}
+
+	return nil
+}
+
 // Pull all comments for the specified PR, and delete any comments that already exist from the bot
 // This is different from updating an existing message, as this will delete comments from previous runs of the bot
 // Whereas updates occur mid-execution

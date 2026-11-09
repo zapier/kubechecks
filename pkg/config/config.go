@@ -65,10 +65,12 @@ type ServerConfig struct {
 	GitCreds GitCredsFunc `mapstructure:"-" json:"-"`
 
 	// webhooks
-	EnsureWebhooks bool   `mapstructure:"ensure-webhooks"`
-	WebhookSecret  string `mapstructure:"webhook-secret"`
-	WebhookUrlBase string `mapstructure:"webhook-url-base"`
-	UrlPrefix      string `mapstructure:"webhook-url-prefix"`
+	// WebhookRepositories are the repositories that kubechecks ensures have a webhook
+	// pointing back at it. When empty, no webhooks are managed.
+	WebhookRepositories []string `mapstructure:"webhook-repositories"`
+	WebhookSecret       string   `mapstructure:"webhook-secret"`
+	WebhookUrlBase      string   `mapstructure:"webhook-url-base"`
+	UrlPrefix           string   `mapstructure:"webhook-url-prefix"`
 
 	// checks
 	// -- conftest
@@ -103,6 +105,7 @@ type ServerConfig struct {
 
 	// misc
 	AdditionalAppsNamespaces []string      `mapstructure:"additional-apps-namespaces"`
+	AnnounceNoChanges        bool          `mapstructure:"announce-no-changes"`
 	FallbackK8sVersion       string        `mapstructure:"fallback-k8s-version"`
 	LabelFilter              string        `mapstructure:"label-filter"`
 	LogLevel                 zerolog.Level `mapstructure:"log-level"`

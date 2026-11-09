@@ -137,6 +137,15 @@ func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Clien
 			return nil, nil, errors.Wrap(err, "failed to create github app transport")
 		}
 
+		// GitHub Enterprise: ghinstallation.Transport defaults its BaseURL to
+		// https://api.github.com. Unlike the go-github client (configured via
+		// WithEnterpriseURLs below), the App transport is never told about the
+		// Enterprise host, so installation-token requests go to api.github.com
+		// and 404. Point it at the configured Enterprise API base URL.
+		if cfg.VcsBaseUrl != "" {
+			appTransport.BaseURL = strings.TrimRight(cfg.VcsBaseUrl, "/")
+		}
+
 		return &http.Client{Transport: appTransport}, appTransport, nil
 	}
 
@@ -261,10 +270,10 @@ func (c *Client) buildRepoFromComment(context context.Context, comment *github.I
 	return c.buildRepo(pr), nil
 }
 
-func parseRepo(cloneUrl string) (string, string) {
+func parseRepo(cloneUrl string) (string, string, error) {
 	result, err := giturls.Parse(cloneUrl)
 	if err != nil {
-		panic(fmt.Errorf("%s: %s", cloneUrl, err.Error()))
+		return "", "", fmt.Errorf("%s: %w", cloneUrl, err)
 	}
 
 	path := result.Path
@@ -272,12 +281,12 @@ func parseRepo(cloneUrl string) (string, string) {
 	path = strings.TrimSuffix(path, ".git")
 	parts := strings.Split(path, "/")
 	if len(parts) != 2 {
-		panic(fmt.Errorf("%s: invalid path", cloneUrl))
+		return "", "", fmt.Errorf("%s: invalid path", cloneUrl)
 	}
 
 	owner := parts[0]
 	repoName := strings.TrimSuffix(parts[1], ".git")
-	return owner, repoName
+	return owner, repoName, nil
 }
 
 func unPtr[T interface{ string | int }](ps *T) T {

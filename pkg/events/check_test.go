@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	gogit "github.com/go-git/go-git/v5"
 	gogitconfig "github.com/go-git/go-git/v5/config"
@@ -20,6 +21,7 @@ import (
 	affectedappsmocks "github.com/zapier/kubechecks/mocks/affected_apps/mocks"
 	generatorsmocks "github.com/zapier/kubechecks/mocks/generator/mocks"
 	vcsmocks "github.com/zapier/kubechecks/mocks/vcs/mocks"
+	"github.com/zapier/kubechecks/pkg"
 	"github.com/zapier/kubechecks/pkg/affected_apps"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/config"
@@ -426,6 +428,80 @@ func TestCheckEvent_GenerateListOfAffectedApps(t *testing.T) {
 			}
 			tt.wantErr(t, ce.GenerateListOfAffectedApps(tt.args.ctx, tt.args.repo, tt.args.targetBranch, tt.args.initMatcherFn), fmt.Sprintf("GenerateListOfAffectedApps(%v, %v, %v, %v)", tt.args.ctx, tt.args.repo, tt.args.targetBranch, tt.args.initMatcherFn))
 
+		})
+	}
+}
+
+func TestPostReport(t *testing.T) {
+	const noteID = 42
+
+	tests := []struct {
+		name              string
+		announceNoChanges bool
+		results           []msg.Result
+		wantDeleted       bool
+		wantChunk         string
+	}{
+		{
+			name:              "no changes, announced",
+			announceNoChanges: true,
+			results:           []msg.Result{{NoChangesDetected: true, Summary: "No changes"}},
+			wantChunk:         "# Kubechecks test Report\nNo changes\n\n<small> _Done. CommitSHA: sha_ <small>\n",
+		},
+		{
+			name:              "no changes, not announced",
+			announceNoChanges: false,
+			results:           []msg.Result{{NoChangesDetected: true, Summary: "No changes"}},
+			wantDeleted:       true,
+		},
+		{
+			name:              "changes, not announced",
+			announceNoChanges: false,
+			results:           []msg.Result{{State: pkg.StateSuccess, Summary: "1 added, 0 modified, 0 removed"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.TODO()
+
+			vcsClient := new(vcsmocks.MockClient)
+			vcsClient.EXPECT().ToEmoji(mock.Anything).Return(":emoji:").Maybe()
+			vcsClient.EXPECT().MaxCommentLength().Return(64 * 1024).Maybe()
+
+			pr := vcs.PullRequest{SHA: "sha"}
+			note := msg.NewMessage("repo", 1, noteID, vcsClient)
+			note.AddNewApp(ctx, "some-app")
+			for _, result := range tt.results {
+				note.AddToAppMessage(ctx, "some-app", result)
+			}
+
+			if tt.wantDeleted {
+				vcsClient.EXPECT().DeleteMessage(ctx, pr, noteID).Return(nil).Once()
+			} else {
+				vcsClient.EXPECT().UpdateMessage(ctx, pr, noteID, mock.Anything).
+					Run(func(_ context.Context, _ vcs.PullRequest, _ int, chunks []string) {
+						require.Len(t, chunks, 1)
+						if tt.wantChunk != "" {
+							assert.Equal(t, tt.wantChunk, chunks[0])
+						}
+					}).Return(nil).Once()
+			}
+
+			ce := CheckEvent{
+				pullRequest: pr,
+				vcsNote:     note,
+				ctr: container.Container{
+					VcsClient: vcsClient,
+					Config: config.ServerConfig{
+						AnnounceNoChanges: tt.announceNoChanges,
+						Identifier:        "test",
+					},
+				},
+			}
+
+			require.NoError(t, ce.postReport(ctx, time.Now()))
+			vcsClient.AssertExpectations(t)
 		})
 	}
 }
