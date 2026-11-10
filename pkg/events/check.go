@@ -81,6 +81,8 @@ type CheckEvent struct {
 	wg         sync.WaitGroup
 	generator  generator.AppsGenerator
 	matcher    affected_apps.Matcher
+
+	commitStatusSet bool
 }
 
 type repoManager interface {
@@ -365,14 +367,7 @@ func (ce *CheckEvent) Process(ctx context.Context) (retErr error) {
 
 	if len(ce.affectedItems.Applications) <= 0 && len(ce.affectedItems.ApplicationSets) <= 0 {
 		ce.logger.Info().Msg("No affected apps or appsets, skipping")
-		if ce.silentAboutNoChanges() {
-			ce.logger.Info().Msg("announce-no-changes is off, not commenting")
-			return nil
-		}
-		if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
-			return errors.Wrap(err, "failed to post changes")
-		}
-		return nil
+		return ce.reportNoAffectedApps(ctx)
 	}
 
 	// We make one comment per run, containing output for all the apps
@@ -479,6 +474,21 @@ func (ce *CheckEvent) silentAboutNoChanges() bool {
 	return !ce.ctr.Config.AnnounceNoChanges
 }
 
+// reportNoAffectedApps finishes a run that matched no apps or appsets. The skip
+// status is set even when announce-no-changes keeps the run quiet, since the
+// commit may already be marked queued or running.
+func (ce *CheckEvent) reportNoAffectedApps(ctx context.Context) error {
+	ce.CommitStatus(ctx, pkg.StateSkip)
+	if ce.silentAboutNoChanges() {
+		ce.logger.Info().Msg("announce-no-changes is off, not commenting")
+		return nil
+	}
+	if _, err := ce.ctr.VcsClient.PostMessage(ctx, ce.pullRequest, fmt.Sprintf("## Kubechecks %s Report\nNo changes", ce.ctr.Config.Identifier)); err != nil {
+		return errors.Wrap(err, "failed to post changes")
+	}
+	return nil
+}
+
 // postReport puts the finished report on the PR/MR. A run that found no changes
 // leaves no comment when announce-no-changes is off, which means taking back the
 // placeholder comment that is already there.
@@ -548,7 +558,14 @@ func (ce *CheckEvent) CommitStatus(ctx context.Context, status pkg.CommitState) 
 
 	if err := ce.ctr.VcsClient.CommitStatus(ctx, ce.pullRequest, status); err != nil {
 		log.Warn().Err(err).Msg("failed to update commit status")
+		return
 	}
+	ce.commitStatusSet = true
+}
+
+// CommitStatusSet reports whether this event has successfully set a commit status.
+func (ce *CheckEvent) CommitStatusSet() bool {
+	return ce.commitStatusSet
 }
 
 const (

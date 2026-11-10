@@ -17,7 +17,20 @@ import (
 
 const GitlabCommitStatusContext = "kubechecks"
 
+const mergeRequestEventSource = "merge_request_event"
+
+// runningStatusMaxWait caps how long a queued or running status waits for the MR pipeline.
+const runningStatusMaxWait = 10 * time.Second
+
 var errNoPipelineStatus = errors.New("nil pipeline status")
+
+// trackedPipeline is the pipeline a queued or running status was attached to.
+type trackedPipeline struct {
+	id int64
+	// mergeRequest is set when this is the MR pipeline, the one merge when
+	// pipeline succeeds evaluates.
+	mergeRequest bool
+}
 
 func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg.CommitState) error {
 	description := fmt.Sprintf("%s %s", state.BareString(), c.ToEmoji(state))
@@ -28,6 +41,74 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 		Description: pkg.Pointer(description),
 		State:       convertState(state),
 	}
+
+	runningKey := pr.FullName + "@" + pr.SHA
+	var onMergeRequestPipeline bool
+	var superseded *trackedPipeline
+	if v, ok := c.runningPipelines.Load(runningKey); ok && state == pkg.StateRunning {
+		// The queued status already waited for a pipeline; the running status
+		// follows it there, so the check doesn't wait a second time.
+		cached := v.(trackedPipeline)
+		status.PipelineID = &cached.id
+		onMergeRequestPipeline = cached.mergeRequest
+
+		// If the queued status gave up waiting for the MR pipeline, look once more
+		// (no retries). Merge when pipeline succeeds only evaluates the MR
+		// pipeline, so a running status left elsewhere wouldn't hold the merge.
+		if !cached.mergeRequest {
+			if p := c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA); p != nil && p.Source == mergeRequestEventSource {
+				status.PipelineID = &p.ID
+				onMergeRequestPipeline = true
+				superseded = &cached
+			}
+		}
+	} else if pipelineStatus := c.findPipeline(ctx, pr, state); pipelineStatus != nil {
+		log.Trace().Int64("pipeline_id", pipelineStatus.ID).Msg("pipeline status")
+		status.PipelineID = &pipelineStatus.ID
+		onMergeRequestPipeline = pipelineStatus.Source == mergeRequestEventSource
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	log.Debug().
+		Caller().
+		Str("project", pr.FullName).
+		Str("commit_sha", pr.SHA).
+		Str("kubechecks_status", description).
+		Str("gitlab_status", string(status.State)).
+		Msg("gitlab client: updating commit status")
+	commitStatus, setErr := c.setCommitStatus(ctx, pr.FullName, pr.SHA, status)
+	if setErr != nil {
+		log.Error().Err(setErr).Str("project", pr.FullName).Msg("gitlab client: could not set commit status")
+		return setErr
+	}
+
+	// Without a PipelineID GitLab picks (or creates) the pipeline itself.
+	var landedOn int64
+	if status.PipelineID != nil {
+		landedOn = *status.PipelineID
+	} else if commitStatus != nil {
+		landedOn = commitStatus.PipelineID
+	}
+
+	if inProgress(state) {
+		if landedOn != 0 {
+			c.runningPipelines.Store(runningKey, trackedPipeline{id: landedOn, mergeRequest: onMergeRequestPipeline})
+		}
+		if superseded != nil {
+			c.cancelSupersededStatus(ctx, pr, status, superseded.id)
+		}
+	} else {
+		c.finishRunningPipeline(ctx, runningKey, pr, status, landedOn)
+	}
+	return nil
+}
+
+// findPipeline returns the pipeline a status for state should attach to, or nil
+// to let GitLab pick one.
+func (c *Client) findPipeline(ctx context.Context, pr vcs.PullRequest, state pkg.CommitState) *gitlab.PipelineInfo {
 	// Get pipelineStatus so we can attach new status to existing pipeline. We
 	// retry a few times to avoid creating a duplicate external pipeline status if
 	// another service is also setting it.
@@ -39,7 +120,7 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 
 	// Only retry if we found pipelines but couldn't match one
 	// This avoids wasteful retries for projects without CI/CD
-	if pipelineStatus == nil {
+	if !pipelineMatches(pipelineStatus, state) {
 		log.Debug().Caller().Msg("no pipeline found on first attempt, checking if retries are needed")
 
 		// Do a quick check for ANY pipelines on this commit (not just matching sources)
@@ -48,18 +129,23 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 			SHA: pkg.Pointer(pr.SHA),
 		}, gitlab.WithContext(ctx))
 
-		if err == nil && len(pipelines) > 0 {
+		// A queued status is usually posted as the MR opens, before GitLab has
+		// created any pipeline, so it waits (bounded) even when none exist yet.
+		if err == nil && (len(pipelines) > 0 || inProgress(state)) {
 			// There are pipelines but we didn't match any - retry with backoff
-			log.Debug().Caller().Int("pipeline_count", len(pipelines)).Msg("pipelines exist but none matched, retrying...")
+			log.Debug().Caller().Int("pipeline_count", len(pipelines)).Msg("no matching pipeline yet, retrying...")
 
 			getStatusFn := func() error {
-				pipelineStatus = c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
-				if pipelineStatus == nil {
+				p := c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA)
+				if p != nil {
+					pipelineStatus = p
+				}
+				if !pipelineMatches(p, state) {
 					return errNoPipelineStatus
 				}
 				return nil
 			}
-			retryErr := backoff.Retry(getStatusFn, configureBackOff())
+			retryErr := backoff.Retry(getStatusFn, c.statusBackOff(ctx, state))
 			if retryErr != nil {
 				log.Debug().Msg("could not find matching pipeline after retries")
 			}
@@ -69,28 +155,66 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 		}
 	}
 
-	if pipelineStatus != nil {
-		log.Trace().Int64("pipeline_id", pipelineStatus.ID).Msg("pipeline status")
-		status.PipelineID = &pipelineStatus.ID
-	}
+	return pipelineStatus
+}
 
-	log.Debug().
-		Caller().
-		Str("project", pr.FullName).
-		Str("commit_sha", pr.SHA).
-		Str("kubechecks_status", description).
-		Str("gitlab_status", string(status.State)).
-		Msg("gitlab client: updating commit status")
-	_, setErr := c.setCommitStatus(pr.FullName, pr.SHA, status)
-	if setErr != nil {
-		log.Error().Err(setErr).Str("project", pr.FullName).Msg("gitlab client: could not set commit status")
-		return setErr
+// inProgress reports whether state is posted before a check has finished.
+func inProgress(state pkg.CommitState) bool {
+	return state == pkg.StateQueued || state == pkg.StateRunning
+}
+
+// pipelineMatches reports whether p is the pipeline a status for state should
+// attach to. A queued status is often posted as soon as the MR opens, before
+// GitLab creates the MR pipeline, so it waits briefly for that pipeline: on
+// projects with MR pipelines it is the MR's head pipeline, the one merge when
+// pipeline succeeds evaluates. Projects without MR pipelines fall back to the
+// best pipeline found once the wait expires.
+func pipelineMatches(p *gitlab.PipelineInfo, state pkg.CommitState) bool {
+	if p == nil {
+		return false
 	}
-	return nil
+	return !inProgress(state) || p.Source == mergeRequestEventSource
+}
+
+// finishRunningPipeline sets the final state on the pipeline an earlier running
+// status was attached to, when the final status landed on a different pipeline.
+// Otherwise that job would stay running in the GitLab UI. A failure is only
+// logged: the final status already landed where it counts, and the pipeline is
+// kept so the next final status for this commit tries again.
+func (c *Client) finishRunningPipeline(ctx context.Context, key string, pr vcs.PullRequest, final *gitlab.SetCommitStatusOptions, landedOn int64) {
+	v, ok := c.runningPipelines.Load(key)
+	if !ok {
+		return
+	}
+	id := v.(trackedPipeline).id
+	if id != landedOn {
+		previous := *final
+		previous.PipelineID = &id
+		if _, err := c.setCommitStatus(ctx, pr.FullName, pr.SHA, &previous); err != nil {
+			log.Warn().Err(err).Int64("pipeline_id", id).Str("project", pr.FullName).Msg("gitlab client: could not finish earlier running status")
+			return
+		}
+	}
+	c.runningPipelines.CompareAndDelete(key, v)
+}
+
+// cancelSupersededStatus cancels the queued job left on an earlier pipeline once
+// the running status has moved to the MR pipeline, so it doesn't stay pending.
+// A failure is only logged: the running status already landed where it counts.
+func (c *Client) cancelSupersededStatus(ctx context.Context, pr vcs.PullRequest, running *gitlab.SetCommitStatusOptions, pipelineID int64) {
+	previous := *running
+	previous.PipelineID = &pipelineID
+	previous.State = gitlab.Canceled
+	previous.Description = pkg.Pointer("Moved to the merge request pipeline")
+	if _, err := c.setCommitStatus(ctx, pr.FullName, pr.SHA, &previous); err != nil {
+		log.Warn().Err(err).Int64("pipeline_id", pipelineID).Str("project", pr.FullName).Msg("gitlab client: could not cancel superseded queued status")
+	}
 }
 
 func convertState(state pkg.CommitState) gitlab.BuildStateValue {
 	switch state {
+	case pkg.StateQueued:
+		return gitlab.Pending
 	case pkg.StateRunning:
 		return gitlab.Running
 	case pkg.StateFailure, pkg.StateError, pkg.StatePanic:
@@ -103,9 +227,23 @@ func convertState(state pkg.CommitState) gitlab.BuildStateValue {
 	return gitlab.Failed
 }
 
-func (c *Client) setCommitStatus(projectWithNS string, commitSHA string, status *gitlab.SetCommitStatusOptions) (*gitlab.CommitStatus, error) {
-	commitStatus, _, err := c.c.Commits.SetCommitStatus(projectWithNS, commitSHA, status)
+func (c *Client) setCommitStatus(ctx context.Context, projectWithNS string, commitSHA string, status *gitlab.SetCommitStatusOptions) (*gitlab.CommitStatus, error) {
+	commitStatus, _, err := c.c.Commits.SetCommitStatus(projectWithNS, commitSHA, status, gitlab.WithContext(ctx))
 	return commitStatus, err
+}
+
+// statusBackOff returns the retry policy for finding a pipeline to attach a
+// status to. It stops when ctx is cancelled, and a queued or running status
+// waits at most runningStatusMaxWait.
+func (c *Client) statusBackOff(ctx context.Context, state pkg.CommitState) backoff.BackOff {
+	if c.newStatusBackOff != nil {
+		return backoff.WithContext(c.newStatusBackOff(), ctx)
+	}
+	b := configureBackOff()
+	if inProgress(state) {
+		b.MaxElapsedTime = runningStatusMaxWait
+	}
+	return backoff.WithContext(b, ctx)
 }
 
 // configureBackOff returns a backoff configuration to use to retry requests
