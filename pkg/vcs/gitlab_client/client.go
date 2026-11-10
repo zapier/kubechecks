@@ -32,7 +32,7 @@ type Client struct {
 
 	// runningPipelines records, per project@sha, the pipeline a queued or running
 	// status was attached to, so the final status can also finish that job.
-	runningPipelines sync.Map
+	runningPipelines sync.Map // project@sha -> trackedPipeline
 
 	// newStatusBackOff overrides the commit status retry policy in tests.
 	newStatusBackOff func() backoff.BackOff

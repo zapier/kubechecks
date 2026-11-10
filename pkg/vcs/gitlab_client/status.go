@@ -24,6 +24,14 @@ const runningStatusMaxWait = 10 * time.Second
 
 var errNoPipelineStatus = errors.New("nil pipeline status")
 
+// trackedPipeline is the pipeline a queued or running status was attached to.
+type trackedPipeline struct {
+	id int64
+	// mergeRequest is set when this is the MR pipeline, the one merge when
+	// pipeline succeeds evaluates.
+	mergeRequest bool
+}
+
 func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg.CommitState) error {
 	description := fmt.Sprintf("%s %s", state.BareString(), c.ToEmoji(state))
 
@@ -35,14 +43,29 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 	}
 
 	runningKey := pr.FullName + "@" + pr.SHA
+	var onMergeRequestPipeline bool
+	var superseded *trackedPipeline
 	if v, ok := c.runningPipelines.Load(runningKey); ok && state == pkg.StateRunning {
 		// The queued status already waited for a pipeline; the running status
 		// follows it there, so the check doesn't wait a second time.
-		id := v.(int64)
-		status.PipelineID = &id
+		cached := v.(trackedPipeline)
+		status.PipelineID = &cached.id
+		onMergeRequestPipeline = cached.mergeRequest
+
+		// If the queued status gave up waiting for the MR pipeline, look once more
+		// (no retries). Merge when pipeline succeeds only evaluates the MR
+		// pipeline, so a running status left elsewhere wouldn't hold the merge.
+		if !cached.mergeRequest {
+			if p := c.GetLastPipelinesForCommit(ctx, pr.FullName, pr.SHA); p != nil && p.Source == mergeRequestEventSource {
+				status.PipelineID = &p.ID
+				onMergeRequestPipeline = true
+				superseded = &cached
+			}
+		}
 	} else if pipelineStatus := c.findPipeline(ctx, pr, state); pipelineStatus != nil {
 		log.Trace().Int64("pipeline_id", pipelineStatus.ID).Msg("pipeline status")
 		status.PipelineID = &pipelineStatus.ID
+		onMergeRequestPipeline = pipelineStatus.Source == mergeRequestEventSource
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -72,7 +95,10 @@ func (c *Client) CommitStatus(ctx context.Context, pr vcs.PullRequest, state pkg
 
 	if inProgress(state) {
 		if landedOn != 0 {
-			c.runningPipelines.Store(runningKey, landedOn)
+			c.runningPipelines.Store(runningKey, trackedPipeline{id: landedOn, mergeRequest: onMergeRequestPipeline})
+		}
+		if superseded != nil {
+			c.cancelSupersededStatus(ctx, pr, status, superseded.id)
 		}
 	} else {
 		c.finishRunningPipeline(ctx, runningKey, pr, status, landedOn)
@@ -160,7 +186,7 @@ func (c *Client) finishRunningPipeline(ctx context.Context, key string, pr vcs.P
 	if !ok {
 		return
 	}
-	id := v.(int64)
+	id := v.(trackedPipeline).id
 	if id != landedOn {
 		previous := *final
 		previous.PipelineID = &id
@@ -170,6 +196,19 @@ func (c *Client) finishRunningPipeline(ctx context.Context, key string, pr vcs.P
 		}
 	}
 	c.runningPipelines.CompareAndDelete(key, v)
+}
+
+// cancelSupersededStatus cancels the queued job left on an earlier pipeline once
+// the running status has moved to the MR pipeline, so it doesn't stay pending.
+// A failure is only logged: the running status already landed where it counts.
+func (c *Client) cancelSupersededStatus(ctx context.Context, pr vcs.PullRequest, running *gitlab.SetCommitStatusOptions, pipelineID int64) {
+	previous := *running
+	previous.PipelineID = &pipelineID
+	previous.State = gitlab.Canceled
+	previous.Description = pkg.Pointer("Moved to the merge request pipeline")
+	if _, err := c.setCommitStatus(ctx, pr.FullName, pr.SHA, &previous); err != nil {
+		log.Warn().Err(err).Int64("pipeline_id", pipelineID).Str("project", pr.FullName).Msg("gitlab client: could not cancel superseded queued status")
+	}
 }
 
 func convertState(state pkg.CommitState) gitlab.BuildStateValue {

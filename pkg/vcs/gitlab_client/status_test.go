@@ -99,20 +99,44 @@ func TestCommitStatus_QueuedWaitsForMergeRequestPipeline(t *testing.T) {
 	assert.Equal(t, gitlab.Pending, commits.set[0].State)
 }
 
-func TestCommitStatus_RunningFollowsQueuedPipeline(t *testing.T) {
+func TestCommitStatus_RunningFollowsQueuedMergeRequestPipeline(t *testing.T) {
+	c, pipelines, commits := newStatusTestClient([]*gitlab.PipelineInfo{mergeRequestPipeline})
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateQueued))
+
+	pipelines.reset([]*gitlab.PipelineInfo{mergeRequestPipeline})
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateRunning))
+	assert.Equal(t, 0, pipelines.calls, "running reuses the queued MR pipeline without looking again")
+
+	assert.Equal(t, []int64{mergeRequestPipeline.ID, mergeRequestPipeline.ID}, commits.pipelineIDs())
+}
+
+func TestCommitStatus_RunningMovesToLateMergeRequestPipeline(t *testing.T) {
 	c, pipelines, commits := newStatusTestClient([]*gitlab.PipelineInfo{externalPipeline})
 	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateQueued))
 
 	// The MR pipeline appears after the queued status gave up waiting for it.
-	pipelines.reset([]*gitlab.PipelineInfo{mergeRequestPipeline})
+	pipelines.reset([]*gitlab.PipelineInfo{externalPipeline, mergeRequestPipeline})
 	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateRunning))
-	assert.Equal(t, 0, pipelines.calls, "running reuses the queued pipeline instead of waiting again")
+	assert.Equal(t, 1, pipelines.calls, "running looks once more, without retrying")
 
 	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateSuccess))
 
-	assert.Equal(t, []int64{externalPipeline.ID, externalPipeline.ID, mergeRequestPipeline.ID, externalPipeline.ID}, commits.pipelineIDs())
-	assert.Equal(t, []gitlab.BuildStateValue{gitlab.Pending, gitlab.Running, gitlab.Success, gitlab.Success},
+	// queued on external, running on MR, the external job cancelled, success on MR.
+	assert.Equal(t, []int64{externalPipeline.ID, mergeRequestPipeline.ID, externalPipeline.ID, mergeRequestPipeline.ID}, commits.pipelineIDs())
+	assert.Equal(t, []gitlab.BuildStateValue{gitlab.Pending, gitlab.Running, gitlab.Canceled, gitlab.Success},
 		[]gitlab.BuildStateValue{commits.set[0].State, commits.set[1].State, commits.set[2].State, commits.set[3].State})
+}
+
+func TestCommitStatus_RunningStaysWhenNoMergeRequestPipeline(t *testing.T) {
+	c, pipelines, commits := newStatusTestClient([]*gitlab.PipelineInfo{externalPipeline})
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateQueued))
+
+	pipelines.reset([]*gitlab.PipelineInfo{externalPipeline})
+	require.NoError(t, c.CommitStatus(context.Background(), testPR, pkg.StateRunning))
+	assert.Equal(t, 1, pipelines.calls, "running looks once more, without retrying")
+
+	assert.Equal(t, []int64{externalPipeline.ID, externalPipeline.ID}, commits.pipelineIDs())
+	assert.Equal(t, gitlab.Running, commits.set[1].State)
 }
 
 func TestCommitStatus_RunningWithoutQueuedStatusWaitsForMergeRequestPipeline(t *testing.T) {
