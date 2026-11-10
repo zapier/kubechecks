@@ -133,9 +133,8 @@ func ProcessCheckEvent(ctx context.Context, pr vcs.PullRequest, ctr container.Co
 	// If we've gotten here, we can now begin running checks (or trying to)
 	cEvent := events.NewCheckEvent(pr, ctr, repoMgr, processors, aiReviewChecker)
 	err := cEvent.Process(ctx)
-	// The commit status may already say "running" (set when the request was
-	// queued), so every run must leave a final state behind, including one whose
-	// final status update failed.
+	// The commit status may already say "queued" or "running", so every run must
+	// leave a final state behind, including one whose final status update failed.
 	if !cEvent.CommitStatusSet() {
 		cEvent.CommitStatus(ctx, pkg.StateError)
 	}

@@ -42,22 +42,39 @@ func queuedRequest(ctr container.Container, pr vcs.PullRequest) *CheckRequest {
 	return request
 }
 
-func TestEnqueue_SetsRunningStatusBeforeProcessing(t *testing.T) {
+func TestEnqueue_SetsQueuedThenRunningBeforeProcessing(t *testing.T) {
 	vcsClient := vcsmocks.NewMockClient(t)
 	ctr := container.Container{VcsClient: vcsClient}
 	pr := testPullRequest(1, "aaa")
 
-	releaseStatus := make(chan struct{})
+	var mu sync.Mutex
+	var order []string
+	record := func(step string) {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, step)
+	}
+
+	releaseQueued := make(chan struct{})
+	vcsClient.EXPECT().
+		CommitStatus(mock.Anything, pr, pkg.StateQueued).
+		RunAndReturn(func(context.Context, vcs.PullRequest, pkg.CommitState) error {
+			<-releaseQueued
+			record("queued")
+			return nil
+		}).
+		Once()
 	vcsClient.EXPECT().
 		CommitStatus(mock.Anything, pr, pkg.StateRunning).
 		RunAndReturn(func(context.Context, vcs.PullRequest, pkg.CommitState) error {
-			<-releaseStatus
+			record("running")
 			return nil
 		}).
 		Once()
 
 	processed := make(chan struct{})
 	qm := NewQueueManager(Config{QueueSize: 10}, func(context.Context, vcs.PullRequest, container.Container, []checks.ProcessorEntry, AIReviewChecker) error {
+		record("processed")
 		close(processed)
 		return nil
 	})
@@ -66,26 +83,31 @@ func TestEnqueue_SetsRunningStatusBeforeProcessing(t *testing.T) {
 
 	select {
 	case <-processed:
-		t.Fatal("request was processed before the running status was set")
+		t.Fatal("request was processed before the queued status was set")
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	close(releaseStatus)
+	close(releaseQueued)
 
 	select {
 	case <-processed:
 	case <-time.After(time.Second):
-		t.Fatal("request was not processed after the running status was set")
+		t.Fatal("request was not processed after the queued status was set")
 	}
 
 	require.NoError(t, qm.Shutdown(context.Background()))
+	assert.Equal(t, []string{"queued", "running", "processed"}, order)
 }
 
 func TestEnqueue_QueueFullDoesNotSetStatus(t *testing.T) {
 	vcsClient := vcsmocks.NewMockClient(t)
 	ctr := container.Container{VcsClient: vcsClient}
 
-	// Only the two accepted requests get a running status.
+	// Only the two accepted requests get a queued status, and then a running one.
+	vcsClient.EXPECT().
+		CommitStatus(mock.Anything, mock.Anything, pkg.StateQueued).
+		Return(nil).
+		Times(2)
 	vcsClient.EXPECT().
 		CommitStatus(mock.Anything, mock.Anything, pkg.StateRunning).
 		Return(nil).
@@ -139,7 +161,7 @@ func TestNotifyDroppedRequests_FinalizesEveryCommitAndCommentsOncePerPR(t *testi
 	rq.notifyDroppedRequests(context.Background())
 }
 
-func TestNotifyDroppedRequests_CancelsRunningStatusBeforeError(t *testing.T) {
+func TestNotifyDroppedRequests_CancelsQueuedStatusBeforeError(t *testing.T) {
 	vcsClient := vcsmocks.NewMockClient(t)
 	ctr := container.Container{VcsClient: vcsClient}
 	pr := testPullRequest(1, "aaa")
@@ -154,7 +176,7 @@ func TestNotifyDroppedRequests_CancelsRunningStatusBeforeError(t *testing.T) {
 
 	inFlight := make(chan struct{})
 	vcsClient.EXPECT().
-		CommitStatus(mock.Anything, pr, pkg.StateRunning).
+		CommitStatus(mock.Anything, pr, pkg.StateQueued).
 		RunAndReturn(func(ctx context.Context, _ vcs.PullRequest, state pkg.CommitState) error {
 			close(inFlight)
 			<-ctx.Done()
@@ -181,8 +203,8 @@ func TestNotifyDroppedRequests_CancelsRunningStatusBeforeError(t *testing.T) {
 	start := time.Now()
 	rq.notifyDroppedRequests(context.Background())
 
-	assert.Less(t, time.Since(start), queuedStatusTimeout/2, "shutdown should cancel the running status, not wait it out")
-	assert.Equal(t, []pkg.CommitState{pkg.StateRunning, pkg.StateError}, order)
+	assert.Less(t, time.Since(start), queuedStatusTimeout/2, "shutdown should cancel the queued status, not wait it out")
+	assert.Equal(t, []pkg.CommitState{pkg.StateQueued, pkg.StateError}, order)
 }
 
 func TestNotifyDroppedRequests_CommentsWhenStatusFails(t *testing.T) {

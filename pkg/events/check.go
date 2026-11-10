@@ -476,7 +476,7 @@ func (ce *CheckEvent) silentAboutNoChanges() bool {
 
 // reportNoAffectedApps finishes a run that matched no apps or appsets. The skip
 // status is set even when announce-no-changes keeps the run quiet, since the
-// commit may already be marked running.
+// commit may already be marked queued or running.
 func (ce *CheckEvent) reportNoAffectedApps(ctx context.Context) error {
 	ce.CommitStatus(ctx, pkg.StateSkip)
 	if ce.silentAboutNoChanges() {

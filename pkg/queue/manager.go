@@ -34,8 +34,8 @@ type CheckRequest struct {
 	AIReviewChecker AIReviewChecker
 	Timestamp       time.Time
 
-	// queuedStatusPosted is closed once the queued (running) commit status call
-	// has returned. The worker waits on it so the final status always lands last.
+	// queuedStatusPosted is closed once the queued commit status call has
+	// returned. The worker waits on it so later statuses always land after it.
 	queuedStatusPosted chan struct{}
 	queuedStatusCtx    context.Context
 	cancelQueuedStatus context.CancelFunc
@@ -65,9 +65,13 @@ type QueueManager struct {
 }
 
 const (
-	// queuedStatusTimeout bounds the running status call made at enqueue time,
+	// queuedStatusTimeout bounds the queued status call made at enqueue time,
 	// including any wait for the VCS pipeline it attaches to.
 	queuedStatusTimeout = 20 * time.Second
+
+	// runningStatusTimeout bounds the running status call made when the worker
+	// picks a request up.
+	runningStatusTimeout = 20 * time.Second
 
 	// droppedRequestTimeout bounds each VCS call made for a request dropped on shutdown.
 	droppedRequestTimeout = 3 * time.Second
@@ -151,8 +155,8 @@ func (qm *QueueManager) Enqueue(ctx context.Context, params EnqueueParams) error
 	// Try to enqueue (non-blocking)
 	select {
 	case queue.queue <- request:
-		// Report the check as running while it waits in the queue, so the VCS
-		// doesn't treat the PR/MR as passing before kubechecks has reported.
+		// Report the check as queued while it waits, so the VCS doesn't treat
+		// the PR/MR as passing before kubechecks has reported.
 		// Sent asynchronously so the webhook returns quickly.
 		go postQueuedStatus(request)
 
@@ -226,17 +230,32 @@ func newCheckRequest(params EnqueueParams) *CheckRequest {
 	}
 }
 
-// postQueuedStatus marks the commit as running and then closes queuedStatusPosted.
+// postQueuedStatus marks the commit as queued and then closes queuedStatusPosted.
 func postQueuedStatus(request *CheckRequest) {
 	defer close(request.queuedStatusPosted)
 	defer request.cancelQueuedStatus()
 
-	if err := request.Container.VcsClient.CommitStatus(request.queuedStatusCtx, request.PullRequest, pkg.StateRunning); err != nil {
+	if err := request.Container.VcsClient.CommitStatus(request.queuedStatusCtx, request.PullRequest, pkg.StateQueued); err != nil {
 		log.Warn().
 			Err(err).
 			Str("repo", request.PullRequest.CloneURL).
 			Int("check_id", request.PullRequest.CheckID).
 			Msg("failed to set queued commit status")
+	}
+}
+
+// postRunningStatus marks the commit as running once the worker picks it up.
+// It returns before the check starts, so the final status still lands last.
+func postRunningStatus(request *CheckRequest) {
+	ctx, cancel := context.WithTimeout(context.Background(), runningStatusTimeout)
+	defer cancel()
+
+	if err := request.Container.VcsClient.CommitStatus(ctx, request.PullRequest, pkg.StateRunning); err != nil {
+		log.Warn().
+			Err(err).
+			Str("repo", request.PullRequest.CloneURL).
+			Int("check_id", request.PullRequest.CheckID).
+			Msg("failed to set running commit status")
 	}
 }
 
@@ -258,7 +277,7 @@ func (rq *RepoQueue) notifyDroppedRequests(ctx context.Context) {
 		Int("drained", len(dropped)).
 		Msg("notifying PRs about dropped items")
 
-	// Stop any running status still in flight, and wait for it to return, so it
+	// Stop any queued status still in flight, and wait for it to return, so it
 	// can't land after the error status set below.
 	for _, request := range dropped {
 		request.cancelQueuedStatus()
@@ -347,6 +366,7 @@ func (rq *RepoQueue) processRequest(request *CheckRequest) {
 
 	// Bounded by queuedStatusTimeout.
 	<-request.queuedStatusPosted
+	postRunningStatus(request)
 
 	err := rq.processFunc(
 		context.Background(),

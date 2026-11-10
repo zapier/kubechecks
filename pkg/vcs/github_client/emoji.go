@@ -5,6 +5,7 @@ import "github.com/zapier/kubechecks/pkg"
 var stateEmoji = map[pkg.CommitState]string{
 	pkg.StateNone:    "",
 	pkg.StateSuccess: ":white_check_mark:",
+	pkg.StateQueued:  ":hourglass:",
 	pkg.StateRunning: ":runner:",
 	pkg.StateWarning: ":warning:",
 	pkg.StateFailure: ":red_circle:",

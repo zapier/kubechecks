@@ -30,8 +30,8 @@ type Client struct {
 
 	username, email string
 
-	// runningPipelines records, per project@sha, the pipeline a running status
-	// was attached to, so the final status can also finish that job.
+	// runningPipelines records, per project@sha, the pipeline a queued or running
+	// status was attached to, so the final status can also finish that job.
 	runningPipelines sync.Map
 
 	// newStatusBackOff overrides the commit status retry policy in tests.

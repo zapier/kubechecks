@@ -13,6 +13,7 @@ const (
 	StateNone CommitState = iota
 	StateSkip
 	StateSuccess
+	StateQueued
 	StateRunning
 	StateWarning
 	StateFailure
@@ -32,6 +33,7 @@ var stateString = map[CommitState]string{
 	StateNone:    "",
 	StateSkip:    "Skipped",
 	StateSuccess: "Passed",
+	StateQueued:  "Queued",
 	StateRunning: "Running",
 	StateWarning: "Warning",
 	StateFailure: "Failed",

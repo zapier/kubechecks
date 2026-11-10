@@ -746,6 +746,11 @@ func TestToGithubCommitStatus(t *testing.T) {
 			expected: "failure",
 		},
 		{
+			name:     "queued state",
+			state:    pkg.StateQueued,
+			expected: "pending",
+		},
+		{
 			name:     "running state",
 			state:    pkg.StateRunning,
 			expected: "pending",
