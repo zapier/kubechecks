@@ -32,6 +32,21 @@ import (
 
 type getRepo func(ctx context.Context, cloneURL string, branchName string) (*git.Repo, error)
 
+// AppSourceRemovedError means the pull request deletes the directory every content source of the
+// application renders from. The application's target state after the merge is nothing, so it is
+// checked as a removal rather than reported as a failure to render.
+type AppSourceRemovedError struct {
+	// Paths are the removed source paths, relative to the repository root.
+	Paths []string
+}
+
+func (e *AppSourceRemovedError) Error() string {
+	return fmt.Sprintf("application source removed by the pull request: %s", strings.Join(e.Paths, ", "))
+}
+
+// errSourcePathRemoved marks one content source whose path is gone at the pull request's head.
+var errSourcePathRemoved = errors.New("source path removed by the pull request")
+
 func (a *ArgoClient) GetManifests(ctx context.Context, name string, app v1alpha1.Application, pullRequest vcs.PullRequest, getRepo getRepo) ([]string, error) {
 	ctx, span := tracer.Start(ctx, "GetManifests")
 	defer span.End()
@@ -46,17 +61,44 @@ func (a *ArgoClient) GetManifests(ctx context.Context, name string, app v1alpha1
 
 	contentRefs, refs := preprocessSources(&app, pullRequest)
 
+	manifests, err := collectManifests(contentRefs, pullRequest, func(source v1alpha1.ApplicationSource) ([]string, error) {
+		return a.generateManifests(ctx, app, source, refs, pullRequest, getRepo)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	getManifestsSuccess.WithLabelValues(name).Inc()
+	return manifests, nil
+}
+
+// collectManifests renders every content source with generate. A source whose path the pull request
+// removed contributes nothing. When that is every source the application itself is going away
+// (AppSourceRemovedError); when it is only some, Argo CD will fail to sync what is left, so it is an
+// error like any other.
+func collectManifests(sources []v1alpha1.ApplicationSource, pullRequest vcs.PullRequest, generate func(v1alpha1.ApplicationSource) ([]string, error)) ([]string, error) {
 	var manifests []string
-	for _, source := range contentRefs {
-		moreManifests, err := a.generateManifests(ctx, app, source, refs, pullRequest, getRepo)
+	var removed []string
+	for _, source := range sources {
+		moreManifests, err := generate(source)
+		if errors.Is(err, errSourcePathRemoved) {
+			removed = append(removed, source.Path)
+			continue
+		}
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to generate manifests")
 		}
 		manifests = append(manifests, moreManifests...)
 	}
 
-	getManifestsSuccess.WithLabelValues(name).Inc()
-	return manifests, nil
+	switch {
+	case len(removed) == 0:
+		return manifests, nil
+	case len(removed) == len(sources):
+		return nil, &AppSourceRemovedError{Paths: removed}
+	default:
+		return nil, errors.Errorf("failed to generate manifests: source path %s does not exist at %s", strings.Join(removed, ", "), pullRequest.HeadRef)
+	}
 }
 
 // preprocessSources splits the content sources from the ref sources, and transforms source refs that point at the pull
@@ -279,6 +321,24 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 		return a.generateManifestForExternalChart(ctx, app, source, refs)
 	}
 
+	// The pull request's checkout comes first: a source whose path the pull request deletes needs
+	// nothing from Argo CD.
+	repoTarget := source.TargetRevision
+	if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
+		repoTarget = pullRequest.HeadRef
+	}
+
+	log.Debug().Caller().Str("app", app.Name).Msg("get repo")
+	repo, err := getRepo(ctx, source.RepoURL, repoTarget)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get repo")
+	}
+
+	if sourcePathRemoved(source, pullRequest, repoTarget, repo.Directory) {
+		log.Info().Str("app", app.Name).Str("path", source.Path).Msg("source path removed by the pull request")
+		return nil, errSourcePathRemoved
+	}
+
 	clusterCloser, clusterClient := a.GetClusterClient()
 	defer pkg.WithErrorLogging(clusterCloser.Close, "failed to close connection")
 
@@ -304,17 +364,6 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 	var packageDir string
 
 	{
-		repoTarget := source.TargetRevision
-		if pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) && areSameTargetRef(source.TargetRevision, pullRequest.BaseRef) {
-			repoTarget = pullRequest.HeadRef
-		}
-
-		log.Debug().Caller().Str("app", app.Name).Msg("get repo")
-		repo, err := getRepo(ctx, source.RepoURL, repoTarget)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to get repo")
-		}
-
 		if a.cfg.ArgoCDSendFullRepository {
 			log.Debug().Caller().Str("app", app.Name).Msg("sending full repository")
 			packageDir = repo.Directory
@@ -455,6 +504,20 @@ func (a *ArgoClient) generateManifests(ctx context.Context, app v1alpha1.Applica
 
 	log.Debug().Caller().Str("app", app.Name).Msg("finished generating manifests")
 	return response.Manifests, nil
+}
+
+// sourcePathRemoved reports whether source renders from a directory of the pull request's own
+// repository, read at the pull request's head, that does not exist there. A missing path in any
+// other repository or revision is not something this pull request did, so it is left to fail.
+func sourcePathRemoved(source v1alpha1.ApplicationSource, pullRequest vcs.PullRequest, repoTarget, repoDir string) bool {
+	if source.Path == "" || pullRequest.HeadRef == "" || repoTarget != pullRequest.HeadRef {
+		return false
+	}
+	if !pkg.AreSameRepos(source.RepoURL, pullRequest.CloneURL) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(repoDir, source.Path))
+	return errors.Is(err, os.ErrNotExist)
 }
 
 func copyDir(fs filesys.FileSystem, src, dst string) error {

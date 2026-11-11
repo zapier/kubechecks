@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/zapier/kubechecks/pkg"
+	"github.com/zapier/kubechecks/pkg/argo_client"
 	"github.com/zapier/kubechecks/pkg/checks"
 	"github.com/zapier/kubechecks/pkg/checks/diff"
 	"github.com/zapier/kubechecks/pkg/checks/kubeconform"
@@ -109,6 +111,21 @@ func (w *worker) processApp(ctx context.Context, app v1alpha1.Application) {
 
 	rootLogger.Debug().Caller().Msg("Getting manifests")
 	jsonManifests, err := w.getManifestsWithRetry(ctx, appName, app, rootLogger)
+	var sourceRemoved *argo_client.AppSourceRemovedError
+	if errors.As(err, &sourceRemoved) {
+		// The application has nothing left to render: check it against an empty target, so the
+		// diff shows every resource it manages today as removed.
+		rootLogger.Info().Err(err).Msg("application source removed, checking as a removal")
+		w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
+			State:   pkg.StateNone,
+			Summary: "Application source removed",
+			Details: fmt.Sprintf("This pull request deletes the source of this application (`%s`), so it is checked as a removal: "+
+				"every resource it manages today is shown as removed. "+
+				"If nothing else in the pull request stops declaring this Application, Argo CD will fail to sync it instead.",
+				strings.Join(sourceRemoved.Paths, "`, `")),
+		})
+		jsonManifests, err = []string{}, nil
+	}
 	if err != nil {
 		rootLogger.Error().Caller().Err(err).Str("app", appName).Str("repo", w.pullRequest.Name).Msg("Unable to get manifests")
 		w.vcsNote.AddToAppMessage(ctx, appName, msg.Result{
