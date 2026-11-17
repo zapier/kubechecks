@@ -132,20 +132,10 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	// default, so the signed URL (already authenticated via query string) is fetched
 	// without leaking the token. See issue #525.
 	//
-	// Enterprise detection mirrors createHttpClient: GHE requires both VcsBaseUrl and
-	// VcsUploadUrl to be set. VcsBaseUrl alone isn't a reliable signal because config
-	// defaults it to "https://github.com" when unset, so checking it would route
-	// cloud users into the enterprise branch and build a bogus
-	// `https://github.com/repos/...` URL that 404s.
-	var archiveURL string
-	if c.cfg.VcsUploadUrl != "" && c.cfg.VcsBaseUrl != "" {
-		// GitHub Enterprise: VcsBaseUrl is the API base (typically includes /api/v3).
-		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
-		archiveURL = fmt.Sprintf("%s/repos/%s/%s/zipball/%s", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
-	} else {
-		// GitHub.com
-		archiveURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/zipball/%s", pr.Owner, pr.Name, mergeCommitSHA)
-	}
+	// VcsBaseUrl is the API base: https://api.github.com by default, and
+	// https://<host>/api/v3 on GitHub Enterprise.
+	baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
+	archiveURL := fmt.Sprintf("%s/repos/%s/%s/zipball/%s", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
 
 	log.Debug().
 		Caller().

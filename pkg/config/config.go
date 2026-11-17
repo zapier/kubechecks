@@ -170,7 +170,7 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	}
 
 	if cfg.VcsBaseUrl == "" {
-		cfg.VcsBaseUrl = fmt.Sprintf("https://%s.com", cfg.VcsType)
+		cfg.VcsBaseUrl = defaultVcsBaseUrl(cfg.VcsType)
 	}
 
 	// not set at all, which is the case when there are no flag defaults behind viper
@@ -188,4 +188,18 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	log.Info().Msgf("ArgoCD Namespace: %s", cfg.ArgoCDNamespace)
 
 	return cfg, nil
+}
+
+// defaultVcsBaseUrl is the API base for the public instance of each VCS, in the
+// form every client expects of VcsBaseUrl: the GitHub client uses it as the API
+// root, and the GitLab client appends /api/v4 to the instance root itself.
+func defaultVcsBaseUrl(vcsType string) string {
+	switch vcsType {
+	case "github":
+		return "https://api.github.com"
+	case "gitlab":
+		return "https://gitlab.com"
+	default:
+		return ""
+	}
 }

@@ -49,3 +49,25 @@ func TestNew_MaxCommentsPerCheck(t *testing.T) {
 		require.ErrorContains(t, err, "max-comments-per-check", "%d", value)
 	}
 }
+
+func TestNew_VcsBaseUrlDefault(t *testing.T) {
+	for vcsType, want := range map[string]string{
+		"github": "https://api.github.com",
+		"gitlab": "https://gitlab.com",
+	} {
+		v := viper.New()
+		v.Set("vcs-type", vcsType)
+
+		cfg, err := NewWithViper(v)
+		require.NoError(t, err, vcsType)
+		assert.Equal(t, want, cfg.VcsBaseUrl, vcsType)
+	}
+
+	v := viper.New()
+	v.Set("vcs-type", "github")
+	v.Set("vcs-base-url", "https://github.example.com/api/v3")
+
+	cfg, err := NewWithViper(v)
+	require.NoError(t, err)
+	assert.Equal(t, "https://github.example.com/api/v3", cfg.VcsBaseUrl, "an explicit base url is kept")
+}

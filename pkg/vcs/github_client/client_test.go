@@ -998,6 +998,7 @@ func TestClient_DownloadArchive_HappyPath(t *testing.T) {
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
+		cfg:          config.ServerConfig{VcsBaseUrl: "https://api.github.com"},
 		archiveRetry: fastRetry,
 	}
 
@@ -1036,6 +1037,7 @@ func TestClient_DownloadArchive_StaleMergeCommitThenReady(t *testing.T) {
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
+		cfg:          config.ServerConfig{VcsBaseUrl: "https://api.github.com"},
 		archiveRetry: fastRetry,
 	}
 
@@ -1155,39 +1157,6 @@ func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
 	mockPR.AssertExpectations(t)
 }
 
-func TestClient_DownloadArchive_DefaultedVcsBaseUrl(t *testing.T) {
-	// pkg/config defaults VcsBaseUrl to "https://github.com" when unset, so a cloud
-	// configuration arrives at DownloadArchive with a non-empty VcsBaseUrl. The cloud
-	// branch must still fire (api.github.com), not the enterprise branch which would
-	// build a bogus `https://github.com/repos/...` URL. See issue #525 review.
-	mockPR := NewMockPullRequestsServicesWithGet(t,
-		prResponse{
-			headSHA:        "sha1",
-			mergeCommitSHA: "merge-sha",
-			mergeable:      github.Ptr(true),
-		},
-	)
-
-	c := &Client{
-		googleClient: &GClient{PullRequests: mockPR},
-		cfg:          config.ServerConfig{VcsBaseUrl: "https://github.com"}, // no VcsUploadUrl
-		archiveRetry: fastRetry,
-	}
-
-	pr := vcs.PullRequest{
-		Owner:    "owner",
-		Name:     "repo",
-		FullName: "owner/repo",
-		CheckID:  1,
-		SHA:      "sha1",
-	}
-
-	url, err := c.DownloadArchive(context.Background(), pr)
-	require.NoError(t, err)
-	assert.Equal(t, "https://api.github.com/repos/owner/repo/zipball/merge-sha", url)
-	mockPR.AssertExpectations(t)
-}
-
 // --- test helpers ---
 
 // fastRetry returns a retryConfig with near-zero delays for tests.
@@ -1242,9 +1211,9 @@ func testRSAPrivateKeyPEM(t *testing.T) string {
 }
 
 // TestCreateHttpClientAppBaseURL verifies that for GitHub App auth the
-// ghinstallation transport's BaseURL is pointed at the configured GitHub
-// Enterprise API, not the default api.github.com. Without this, installation
-// access-token requests go to api.github.com and 404 on Enterprise.
+// ghinstallation transport's BaseURL is the configured API base: the
+// Enterprise API on GHE, where api.github.com would 404, and pkg/config's
+// github.com default otherwise.
 func TestCreateHttpClientAppBaseURL(t *testing.T) {
 	key := testRSAPrivateKeyPEM(t)
 
@@ -1264,8 +1233,8 @@ func TestCreateHttpClientAppBaseURL(t *testing.T) {
 			expectedBaseURL: "https://github.example.com/api/v3",
 		},
 		{
-			name:            "no base url leaves the default (public github)",
-			vcsBaseURL:      "",
+			name:            "config's github default is the public api",
+			vcsBaseURL:      "https://api.github.com",
 			expectedBaseURL: "https://api.github.com",
 		},
 	}
