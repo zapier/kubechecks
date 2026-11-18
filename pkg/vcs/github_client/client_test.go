@@ -1070,6 +1070,7 @@ func TestClient_DownloadArchive_NotMergeable(t *testing.T) {
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
+		cfg:          config.ServerConfig{VcsBaseUrl: "https://api.github.com"},
 		archiveRetry: fastRetry,
 	}
 
@@ -1103,6 +1104,7 @@ func TestClient_DownloadArchive_ContextCancelled(t *testing.T) {
 
 	c := &Client{
 		googleClient: &GClient{PullRequests: mockPR},
+		cfg:          config.ServerConfig{VcsBaseUrl: "https://api.github.com"},
 		archiveRetry: fastRetry,
 	}
 
@@ -1155,6 +1157,26 @@ func TestClient_DownloadArchive_GHEnterprise(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://github.example.com/api/v3/repos/myorg/myrepo/zipball/merge-sha", url)
 	mockPR.AssertExpectations(t)
+}
+
+func TestClient_DownloadArchive_EmptyVcsBaseUrl(t *testing.T) {
+	// A client built without going through pkg/config (which defaults VcsBaseUrl
+	// from vcs-type) must fail loudly instead of building a relative archive URL.
+	c := &Client{
+		cfg:          config.ServerConfig{},
+		archiveRetry: fastRetry,
+	}
+
+	pr := vcs.PullRequest{
+		Owner:    "owner",
+		Name:     "repo",
+		FullName: "owner/repo",
+		CheckID:  1,
+		SHA:      "sha1",
+	}
+
+	_, err := c.DownloadArchive(context.Background(), pr)
+	require.ErrorContains(t, err, "vcs-base-url is empty")
 }
 
 // --- test helpers ---

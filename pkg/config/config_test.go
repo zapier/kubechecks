@@ -71,3 +71,14 @@ func TestNew_VcsBaseUrlDefault(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://github.example.com/api/v3", cfg.VcsBaseUrl, "an explicit base url is kept")
 }
+
+func TestNew_InvalidVcsType(t *testing.T) {
+	// vcs-type is validated here because a value from KUBECHECKS_VCS_TYPE reaches
+	// viper without flag-level validation.
+	v := viper.New()
+	v.Set("vcs-type", "bitbucket")
+
+	_, err := NewWithViper(v)
+	require.ErrorContains(t, err, "vcs-type must be one of github or gitlab")
+	require.ErrorContains(t, err, `"bitbucket"`)
+}

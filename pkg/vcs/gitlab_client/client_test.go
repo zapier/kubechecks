@@ -556,3 +556,44 @@ func TestCreateGitlabClient_NoToken(t *testing.T) {
 	})
 	assert.Equal(t, ErrNoToken, err)
 }
+
+func TestGitlabArchiveURL(t *testing.T) {
+	const path = "owner%2Frepo"
+	tests := []struct {
+		name         string
+		instanceRoot string
+		want         string
+	}{
+		{
+			name:         "empty falls back to gitlab.com",
+			instanceRoot: "",
+			want:         "https://gitlab.com/api/v4/projects/owner%2Frepo/repository/archive.zip?sha=sha1",
+		},
+		{
+			name:         "instance root gets /api/v4 appended",
+			instanceRoot: "https://gitlab.example.com",
+			want:         "https://gitlab.example.com/api/v4/projects/owner%2Frepo/repository/archive.zip?sha=sha1",
+		},
+		{
+			name:         "trailing slash is trimmed",
+			instanceRoot: "https://gitlab.example.com/",
+			want:         "https://gitlab.example.com/api/v4/projects/owner%2Frepo/repository/archive.zip?sha=sha1",
+		},
+		{
+			name:         "existing /api/v4 suffix is not doubled",
+			instanceRoot: "https://gitlab.example.com/api/v4",
+			want:         "https://gitlab.example.com/api/v4/projects/owner%2Frepo/repository/archive.zip?sha=sha1",
+		},
+		{
+			name:         "existing /api/v4 suffix with trailing slash is not doubled",
+			instanceRoot: "https://gitlab.example.com/api/v4/",
+			want:         "https://gitlab.example.com/api/v4/projects/owner%2Frepo/repository/archive.zip?sha=sha1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, gitlabArchiveURL(tt.instanceRoot, path, "sha1"))
+		})
+	}
+}

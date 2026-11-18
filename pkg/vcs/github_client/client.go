@@ -141,7 +141,7 @@ func createHttpClient(ctx context.Context, cfg config.ServerConfig) (*http.Clien
 		// and, unlike the go-github client (configured via WithEnterpriseURLs
 		// below), is never told about an Enterprise host. Point it at the
 		// configured API base, which pkg/config defaults to api.github.com.
-		appTransport.BaseURL = strings.TrimRight(cfg.VcsBaseUrl, "/")
+		appTransport.BaseURL = strings.TrimSuffix(cfg.VcsBaseUrl, "/")
 
 		return &http.Client{Transport: appTransport}, appTransport, nil
 	}
