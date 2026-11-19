@@ -181,10 +181,17 @@ func addResourceDiffToMessage(ctx context.Context, diffBuffer *strings.Builder, 
 	var target *unstructured.Unstructured
 	if item.target != nil && item.live != nil {
 		target = &unstructured.Unstructured{}
-		live = item.live
+		live = &unstructured.Unstructured{}
 		if err := json.Unmarshal(diffRes.PredictedLive, target); err != nil {
 			telemetry.SetError(span, err, "JSON Unmarshall")
 			log.Warn().Err(err).Msg("failed to unmarshall json")
+		}
+		// Render the same normalized pair that Modified was computed from, so fields
+		// removed by normalization (e.g. ignoreDifferences) don't show up as changes.
+		if err := json.Unmarshal(diffRes.NormalizedLive, live); err != nil {
+			telemetry.SetError(span, err, "JSON Unmarshall")
+			log.Warn().Err(err).Msg("failed to unmarshall normalized live state")
+			live = item.live
 		}
 	} else {
 		live = item.live

@@ -3,6 +3,7 @@ package diff
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/argoproj/argo-cd/gitops-engine/pkg/utils/kube"
@@ -72,6 +73,7 @@ func TestDiffWithComparisonErrorLiveState(t *testing.T) {
 	live.SetResourceVersion("12345")
 	live.Object["metadata"].(map[string]any)["managedFields"] = []any{map[string]any{"manager": "argocd-controller", "operation": "Apply"}}
 	live.Object["status"] = map[string]any{"observedGeneration": int64(3)}
+	live.Object["data"].(map[string]any)["ignored"] = "set-by-a-controller"
 
 	key := kube.ResourceKey{Name: "settings", Namespace: "app", Kind: "ConfigMap"}
 	resources := []*argoappv1.ResourceDiff{{
@@ -83,13 +85,18 @@ func TestDiffWithComparisonErrorLiveState(t *testing.T) {
 	}}
 	argoSettings := &settings.Settings{}
 	request := newRequest("app", "argocd", "argocd")
+	request.App.Spec.IgnoreDifferences = argoappv1.IgnoreDifferences{{
+		Kind:         "ConfigMap",
+		JSONPointers: []string{"/data/ignored"},
+	}}
 
 	for name, tc := range map[string]struct {
 		target       *unstructured.Unstructured
 		wantModified bool
+		wantChanges  []string
 	}{
 		"unchanged resource": {target: configMap("old"), wantModified: false},
-		"changed resource":   {target: configMap("new"), wantModified: true},
+		"changed resource":   {target: configMap("new"), wantModified: true, wantChanges: []string{"-  key: old", "+  key: new"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			objs := map[kube.ResourceKey]*unstructured.Unstructured{key: tc.target}
@@ -101,6 +108,22 @@ func TestDiffWithComparisonErrorLiveState(t *testing.T) {
 			diffRes, err := generateDiff(context.Background(), request, argoSettings, items[0])
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantModified, diffRes.Modified)
+			if !diffRes.Modified {
+				return
+			}
+
+			// The posted diff must show only real changes, not cluster-populated or
+			// ignoreDifferences fields that exist only in the raw live state.
+			var rendered strings.Builder
+			require.NoError(t, addResourceDiffToMessage(context.Background(), &rendered, "/ConfigMap app/settings", items[0], diffRes))
+			var changes []string
+			for _, line := range strings.Split(rendered.String(), "\n") {
+				if (strings.HasPrefix(line, "-") || strings.HasPrefix(line, "+")) &&
+					!strings.HasPrefix(line, "---") && !strings.HasPrefix(line, "+++") {
+					changes = append(changes, line)
+				}
+			}
+			assert.Equal(t, tc.wantChanges, changes, rendered.String())
 		})
 	}
 }
