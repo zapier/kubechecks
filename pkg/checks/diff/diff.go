@@ -342,8 +342,8 @@ func groupObjsByKey(localObs []*unstructured.Unstructured, liveObjs []*unstructu
 func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.ResourceKey]*unstructured.Unstructured, items []objKeyLiveTarget, argoSettings *settings.Settings, appName string, namespace string) ([]objKeyLiveTarget, error) {
 	resourceTracking := argo.NewResourceTracking()
 	for _, res := range resources {
-		var live = &unstructured.Unstructured{}
-		if err := json.Unmarshal([]byte(res.NormalizedLiveState), &live); err != nil {
+		live, err := liveStateForDiff(res)
+		if err != nil {
 			return nil, err
 		}
 
@@ -377,6 +377,20 @@ func groupObjsForDiff(resources []*argoappv1.ResourceDiff, objs map[kube.Resourc
 	}
 
 	return items, nil
+}
+
+// liveStateForDiff returns the live object to diff a resource against. When Argo CD
+// cannot compare an app (a ComparisonError, e.g. duplicate env entries), it reports
+// "{}" as every resource's normalized live state, so fall back to the raw live state.
+func liveStateForDiff(res *argoappv1.ResourceDiff) (*unstructured.Unstructured, error) {
+	for _, state := range []string{res.NormalizedLiveState, res.LiveState} {
+		switch strings.TrimSpace(state) {
+		case "", "null", "{}":
+			continue
+		}
+		return argoappv1.UnmarshalToUnstructured(state)
+	}
+	return nil, nil
 }
 
 // from https://github.com/argoproj/argo-cd/blob/d3ff9757c460ae1a6a11e1231251b5d27aadcdd1/cmd/argocd/commands/app.go#L879
