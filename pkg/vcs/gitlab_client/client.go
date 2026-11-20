@@ -479,18 +479,7 @@ retryLoop:
 
 	// Construct archive URL using GitLab API
 	// IMPORTANT: Use the resolved SHA, not the ref path, for cache key extraction
-	// Format: https://gitlab.com/api/v4/projects/{project_path_encoded}/repository/archive.zip?sha={sha}
-	var archiveURL string
-	if c.cfg.VcsBaseUrl != "" {
-		// Self-hosted GitLab
-		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
-		archiveURL = fmt.Sprintf("%s/api/v4/projects/%s/repository/archive.zip?sha=%s",
-			baseURL, projectPathEncoded, mergeRefSHA)
-	} else {
-		// GitLab.com
-		archiveURL = fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/archive.zip?sha=%s",
-			projectPathEncoded, mergeRefSHA)
-	}
+	archiveURL := gitlabArchiveURL(c.cfg.VcsBaseUrl, projectPathEncoded, mergeRefSHA)
 
 	log.Debug().
 		Caller().
@@ -503,6 +492,25 @@ retryLoop:
 		Msg("generated archive URL using resolved merge ref SHA")
 
 	return archiveURL, nil
+}
+
+// gitlabArchiveURL builds the merge-ref archive endpoint URL for a resolved SHA:
+// {instance}/api/v4/projects/{project_path_encoded}/repository/archive.zip?sha={sha}.
+// instanceRoot is the GitLab instance root: https://gitlab.com by default (set by
+// pkg/config), or https://<host> for self-hosted GitLab. Older configurations may
+// carry the /api/v4 suffix explicitly, so it is appended exactly once, whichever
+// form is given.
+func gitlabArchiveURL(instanceRoot, projectPathEncoded, sha string) string {
+	baseURL := strings.TrimSuffix(instanceRoot, "/")
+	if baseURL == "" {
+		// Matches the gitlab library's own default; an empty VcsBaseUrl only
+		// happens when a client is built without going through pkg/config.
+		baseURL = "https://gitlab.com"
+	}
+	if !strings.HasSuffix(baseURL, "/api/v4") {
+		baseURL += "/api/v4"
+	}
+	return fmt.Sprintf("%s/projects/%s/repository/archive.zip?sha=%s", baseURL, projectPathEncoded, sha)
 }
 
 // MRReadinessStatus represents the readiness state of a merge request

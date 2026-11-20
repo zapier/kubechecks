@@ -169,8 +169,17 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 		return cfg, errors.Wrap(err, "failed to read configuration")
 	}
 
+	// vcs-type is documented as "one of gitlab or github", but that is help text only:
+	// a value from KUBECHECKS_VCS_TYPE reaches viper without flag-level validation.
+	// Reject unknown types here so they fail at config load, not later when a VCS
+	// client is created. An empty type (config not populated from the CLI) is left
+	// to the caller, which reports it when a client is actually needed.
+	if cfg.VcsType != "" && cfg.VcsType != "github" && cfg.VcsType != "gitlab" {
+		return cfg, fmt.Errorf("vcs-type must be one of github or gitlab, got %q", cfg.VcsType)
+	}
+
 	if cfg.VcsBaseUrl == "" {
-		cfg.VcsBaseUrl = fmt.Sprintf("https://%s.com", cfg.VcsType)
+		cfg.VcsBaseUrl = defaultVcsBaseUrl(cfg.VcsType)
 	}
 
 	// not set at all, which is the case when there are no flag defaults behind viper
@@ -188,4 +197,20 @@ func NewWithViper(v *viper.Viper) (ServerConfig, error) {
 	log.Info().Msgf("ArgoCD Namespace: %s", cfg.ArgoCDNamespace)
 
 	return cfg, nil
+}
+
+// defaultVcsBaseUrl is the API base for the public instance of each VCS, in the
+// form every client expects of VcsBaseUrl: the GitHub client uses it as the API
+// root, and the GitLab client appends /api/v4 to the instance root itself (the
+// gitlab library's WithBaseURL does this). NewWithViper rejects unknown vcs types
+// before calling this; an unset (empty) type yields an empty base URL.
+func defaultVcsBaseUrl(vcsType string) string {
+	switch vcsType {
+	case "github":
+		return "https://api.github.com"
+	case "gitlab":
+		return "https://gitlab.com"
+	default:
+		return ""
+	}
 }

@@ -18,6 +18,13 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	ctx, span := tracer.Start(ctx, "DownloadArchive")
 	defer span.End()
 
+	// VcsBaseUrl is the API base: https://api.github.com by default, and
+	// https://<host>/api/v3 on GitHub Enterprise. pkg/config defaults it from
+	// vcs-type; fail loudly if a client was built without going through it.
+	if c.cfg.VcsBaseUrl == "" {
+		return "", errors.New("vcs-base-url is empty; expected pkg/config to default it from vcs-type")
+	}
+
 	// Retry configuration for waiting on GitHub to compute merge commit SHA.
 	// This waits for a condition; for a call that fails, see retryConfig.do.
 	rc := c.archiveRetry.withDefaults(10, 1*time.Second, 16*time.Second)
@@ -131,21 +138,8 @@ func (c *Client) DownloadArchive(ctx context.Context, pr vcs.PullRequest) (strin
 	// Go's http.Client strips the Authorization header on that cross-host redirect by
 	// default, so the signed URL (already authenticated via query string) is fetched
 	// without leaking the token. See issue #525.
-	//
-	// Enterprise detection mirrors createHttpClient: GHE requires both VcsBaseUrl and
-	// VcsUploadUrl to be set. VcsBaseUrl alone isn't a reliable signal because config
-	// defaults it to "https://github.com" when unset, so checking it would route
-	// cloud users into the enterprise branch and build a bogus
-	// `https://github.com/repos/...` URL that 404s.
-	var archiveURL string
-	if c.cfg.VcsUploadUrl != "" && c.cfg.VcsBaseUrl != "" {
-		// GitHub Enterprise: VcsBaseUrl is the API base (typically includes /api/v3).
-		baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
-		archiveURL = fmt.Sprintf("%s/repos/%s/%s/zipball/%s", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
-	} else {
-		// GitHub.com
-		archiveURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/zipball/%s", pr.Owner, pr.Name, mergeCommitSHA)
-	}
+	baseURL := strings.TrimSuffix(c.cfg.VcsBaseUrl, "/")
+	archiveURL := fmt.Sprintf("%s/repos/%s/%s/zipball/%s", baseURL, pr.Owner, pr.Name, mergeCommitSHA)
 
 	log.Debug().
 		Caller().
