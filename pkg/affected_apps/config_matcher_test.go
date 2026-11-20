@@ -28,6 +28,22 @@ func Test_dirMatchForApp(t *testing.T) {
 			},
 			true,
 		},
+		{
+			"same dir",
+			args{
+				"prod/app",
+				"prod/app",
+			},
+			true,
+		},
+		{
+			"suffix inside a dir name",
+			args{
+				"preprod/app",
+				"prod/app",
+			},
+			false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -168,6 +184,30 @@ func TestDirMatchForAppSet(t *testing.T) {
 			args{
 				"/tmp/repo/apps/appsetdir",
 				"apps/appdir",
+			},
+			false,
+		},
+		{
+			"subdir of appset dir",
+			args{
+				"apps/team/app",
+				"apps/team",
+			},
+			true,
+		},
+		{
+			"prefix inside a dir name",
+			args{
+				"apps/team-b/app",
+				"apps/team",
+			},
+			false,
+		},
+		{
+			"suffix inside a dir name",
+			args{
+				"nonprod/apps",
+				"prod/apps",
 			},
 			false,
 		},
