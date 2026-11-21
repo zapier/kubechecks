@@ -93,8 +93,8 @@ location that was searched, which is usually enough to spot a template that does
 the files are laid out.
 
 A relative location that is not a directory in the commit being checked is logged and skipped,
-rather than silently contributing nothing. These are ordinary JSON Schema files wherever they
-come from; only how the location is resolved differs.
+ rather than silently contributing nothing. These are ordinary JSON Schema files wherever they
+ come from; only how the location is resolved differs.
 
 ## Configuration
 
@@ -158,6 +158,7 @@ The full list of supported environment variables is described below:
 |`KUBECHECKS_REPO_CACHE_DIR`|Directory for persistent repository cache.|`/tmp/kubechecks/repos`|
 |`KUBECHECKS_REPO_CACHE_ENABLED`|Enable persistent repository caching.|`true`|
 |`KUBECHECKS_REPO_CACHE_TTL`|Time-to-live for cached repositories.|`24h0m0s`|
+|`KUBECHECKS_REPO_CRD_SCHEMA_PATHS`|Directories, relative to the repository root, to search for CustomResourceDefinitions, so that a CRD and an instance of it added in the same pull request validate against each other. Empty turns this off; "." searches the whole repository.|`[]`|
 |`KUBECHECKS_REPO_REFRESH_INTERVAL`|Interval between static repo refreshes (for schemas and policies).|`5m`|
 |`KUBECHECKS_SCHEMAS_LOCATION`|Sets schema locations to be used for every check request. An absolute path on the host, or a git url in either git or http(s) format, is used as given. A relative path names a directory inside the repository being checked, so that schemas committed alongside the manifests that use them are found. Any location may be a kubeconform path template, such as ".github/schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json", when the files are not named "<kind>-<group>-<version>.json".|`[]`|
 |`KUBECHECKS_SHOW_DEBUG_INFO`|Set to true to print debug info to the footer of MR comments.|`false`|
